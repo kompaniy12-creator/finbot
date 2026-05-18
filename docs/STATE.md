@@ -2,28 +2,28 @@
 
 ```yaml
 status: in_progress
-current_milestone: M5
-last_completed_milestone: M4
-last_completed_step: "M4 done: tg-webhook with auth+dedupe+router deployed. Telegram webhook registered. 6 commands working. setMyCommands + Mini App menu button configured."
-next_step: "M5: _shared/claude.ts with tool_use + prompt caching + cost tracking. _shared/budget.ts two-tier (per-user soft 0.30, global hard 1.00 USD/day). anthropic_usage inserts"
+current_milestone: M6
+last_completed_milestone: M5
+last_completed_step: "M5 done: claude.ts (callClaude+cost+caching) + budget.ts (2-tier daily) + 18 tests"
+next_step: "M6: embedder via Supabase.ai gte-small + categorizer (kNN -> Claude fallback) + cron-retraining"
 blockers: []
 notes:
-  - "Supabase project: bltbuptzsswaislqagwe. Deployed Edge Functions: setup-once, cron-retry-failed, tg-webhook (+ pre-existing process-photo not ours)"
-  - "Telegram webhook live at https://bltbuptzsswaislqagwe.supabase.co/functions/v1/tg-webhook?secret=<token>"
-  - "Bot @KSSfinance_bot: 8 commands registered (start/help/dashboard/history/stats/categories/undo/recurring), menu button -> mini app URL"
-  - "Mini App URL (placeholder until M13 GitHub Pages deploy): https://kompaniy12-creator.github.io/finbot/webapp/"
-  - "Auth flow: authorize() -> on null reject + notifyAdminText. Dedupe: only for non-command messages. Commands always responsive"
-  - "Admin commands gated by member.role==='admin': /health, /audit <uuid>, /budget (placeholder)"
-  - "Tests: 41 unit + 6 integration = 47 total, all green"
-  - "Git: feat(auth): authorization and base commands -> main"
-  - "M7+ commands (history/stats/undo/recurring/budget) currently return placeholder text"
+  - "Deployed Edge Functions: setup-once, cron-retry-failed, tg-webhook"
+  - "Bot live, 6 commands working, webhook registered, BotFather menu configured"
+  - "_shared modules: log, supabase, types, auth, cors, idempotency, retry, webhook_secret, budget, claude"
+  - "Budget: per-user soft 0.30 USD warn-only, global hard 1.00 USD throws BudgetExceededError"
+  - "Pricing: Haiku 4.5 input $0.80/MTok output $4.00, Sonnet 4.6 input $3.00 output $15.00 (cache reads/writes per SPEC §5)"
+  - "callClaude: enforceBudget pre-check -> Anthropic create -> computeCost -> recordUsage. cachedSystem helper for prompt caching"
+  - "Tests: 59 unit + 6 integration = 65 total, all green"
+  - "Git: feat(ai): claude with two-tier budget -> main"
 todo_carry_over:
-  - "M7: wire real text-pipeline into cron-retry-failed reprocess() (replace stub)"
-  - "M15 cron-backup MUST whitelist FinBot tables only (per CLAUDE.local.md)"
-  - "M16 CI/CD: deploy.yml has 'supabase link --password' which needs DB password. Will need reset-then-set OR rewrite to use --project-ref + Management API"
-  - "M14: configure cron GUCs (app.functions_url, app.cron_secret) via Management API query"
+  - "M6: implement embedder + categorizer + cron-retraining"
+  - "M7: wire claude+categorizer+currency into tg-webhook text handler (also wire into cron-retry-failed reprocess)"
+  - "M15 cron-backup MUST whitelist FinBot tables only"
+  - "M16 CI/CD: deploy.yml needs DB password or rewrite to use --project-ref + Management API"
+  - "M14: configure cron GUCs via Management API query"
 family_members:
   - { name: "Серхий", telegram_id: 1436806270, role: "admin" }
   - { name: "Viktoriia", telegram_id: 1061823487, role: "member" }
-last_updated: 2026-05-19T00:15:00Z
+last_updated: 2026-05-19T00:30:00Z
 ```

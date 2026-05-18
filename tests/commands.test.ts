@@ -36,7 +36,7 @@ const MEMBER: FamilyMember = {
 // Minimal table mock that supports order().order() and head-count selects.
 function mockSb(seed: Record<string, Array<Record<string, unknown>>>) {
   function tableBuilder(t: string) {
-    let rows = seed[t] ?? [];
+    const rows = seed[t] ?? [];
     let filtered = rows.slice();
     let _count = false;
     let _limit: number | undefined;
