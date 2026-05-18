@@ -143,10 +143,33 @@ export async function dispatch(
     return { chatId: msg.chat.id, reply: { text: formatVoiceReply(outcome) } };
   }
 
-  // Photo receipt (M9): Sonnet Vision + parse_receipt.
+  // Photo receipt (M9 + M10 media groups).
   if (msg.photo && msg.photo.length > 0) {
-    // Use the largest photo size (last in array per Telegram API).
     const largest = msg.photo[msg.photo.length - 1]!;
+
+    // Media group (M10): buffer photo and ack only on first arrival; cron sweep
+    // processes the group ~30s later.
+    if (msg.media_group_id) {
+      await input.sb.from("media_group_buffer").insert({
+        media_group_id: msg.media_group_id,
+        telegram_message_id: msg.message_id,
+        family_member_id: input.member.id,
+        file_id: largest.file_id,
+      });
+      const first = await input.sb
+        .from("media_group_buffer")
+        .select("telegram_message_id")
+        .eq("media_group_id", msg.media_group_id)
+        .order("telegram_message_id", { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      const firstId = (first.data as { telegram_message_id: number } | null)?.telegram_message_id;
+      if (firstId !== undefined && firstId === msg.message_id) {
+        return { chatId: msg.chat.id, reply: { text: "Принимаю альбом, секунду..." } };
+      }
+      return null;
+    }
+
     const outcome = await processPhotoMessage({
       sb: input.sb,
       member: input.member,
