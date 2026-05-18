@@ -62,6 +62,13 @@ export async function routeCommand(
     case "dashboard":
       return dashboardCommand();
     case "health":
+      if (args.trim().startsWith("backup-confirm")) {
+        const upd = await ctx.sb.from("system_health")
+          .update({ backup_key_confirmed: true })
+          .eq("id", 1);
+        if (upd.error) return { text: `DB error: ${upd.error.message}` };
+        return { text: "Подтверждено. Backups активны." };
+      }
       return await healthCommand(ctx.sb);
     case "audit":
       return await auditCommand(ctx.sb, args.trim());
