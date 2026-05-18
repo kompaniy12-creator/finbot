@@ -45,10 +45,11 @@ coverage:
 	bash scripts/check_coverage.sh
 
 db-push:
-	supabase db push --include-all
+	@echo "Shared-org mode (CLAUDE.local.md): apply migrations via Management API"
+	@for f in supabase/migrations/*.sql; do bash scripts/apply_migration.sh "$$f"; done
 
 deploy-functions:
-	supabase functions deploy --no-verify-jwt
+	supabase functions deploy --no-verify-jwt --import-map deno.json
 
 deploy: db-push deploy-functions
 
