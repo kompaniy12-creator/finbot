@@ -17,7 +17,7 @@ import {
   unauthorizedReply,
   undoCommand,
 } from "./commands.ts";
-import { formatReply, processTextMessage } from "./text_pipeline.ts";
+import { formatReply, highAmountKeyboard, processTextMessage } from "./text_pipeline.ts";
 import { processVoiceMessage } from "./voice_pipeline.ts";
 import { type PhotoOutcome, processPhotoMessage } from "./photo_pipeline.ts";
 
@@ -103,6 +103,25 @@ export async function dispatch(
   const msg = input.update.message ?? input.update.edited_message;
   if (!msg) return null;
 
+  // M11: edited message semantics (SPEC §6.5). Hard-delete the previous
+  // expense rows for this (telegram_message_id, family_member_id), letting the
+  // audit trigger write 'archive' first, then re-process below as usual.
+  if (input.update.edited_message) {
+    const prev = await input.sb
+      .from("expenses")
+      .select("id")
+      .eq("telegram_message_id", msg.message_id)
+      .eq("family_member_id", input.member.id);
+    const ids = ((prev.data ?? []) as Array<{ id: string }>).map((r) => r.id);
+    if (ids.length > 0) {
+      // UPDATE archived=true so audit trigger captures the archive event.
+      await input.sb.from("expenses").update({ archived: true }).in("id", ids);
+      // Then hard-delete so the unique (msg_id, fm_id, line_index) constraint
+      // frees up for the re-insert.
+      await input.sb.from("expenses").delete().in("id", ids);
+    }
+  }
+
   const cmd = parseCommand(msg.text);
   if (cmd) {
     const reply = await routeCommand(
@@ -130,7 +149,16 @@ export async function dispatch(
         },
       };
     }
-    return { chatId: msg.chat.id, reply: { text: formatReply(result) } };
+    const kb = highAmountKeyboard(result);
+    return {
+      chatId: msg.chat.id,
+      reply: kb
+        ? {
+          text: formatReply(result),
+          reply_markup: kb as unknown as CommandReply["reply_markup"],
+        }
+        : { text: formatReply(result) },
+    };
   }
 
   // Voice (M8): transcribe via Groq Whisper -> text pipeline.

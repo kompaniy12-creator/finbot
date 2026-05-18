@@ -54,9 +54,32 @@ export async function handleCallback(args: {
     }
     case "catset":
       return await doCatSet(args.sb, args.member, args.chatId, cb.parts[0]!, cb.parts[1]!);
+    case "conf_yes":
+      return await doConfirm(args.sb, args.chatId, cb.parts[0]!, "yes");
+    case "conf_no":
+      return await doConfirm(args.sb, args.chatId, cb.parts[0]!, "no");
+    case "conf_edit":
+      return await doCatMenu(args.sb, args.member, args.chatId, cb.parts[0]!, 0);
     default:
       return { chatId: args.chatId, reply: { text: `Неизвестный callback: ${cb.kind}` } };
   }
+}
+
+async function doConfirm(
+  sb: SupabaseClient,
+  chatId: number,
+  expenseId: string,
+  action: "yes" | "no",
+): Promise<CallbackOutput> {
+  const patch = action === "yes"
+    ? { needs_confirmation: false }
+    : { archived: true, needs_confirmation: false };
+  const upd = await sb.from("expenses").update(patch).eq("id", expenseId);
+  if (upd.error) return { chatId, reply: { text: `Ошибка: ${upd.error.message}` } };
+  return {
+    chatId,
+    reply: { text: action === "yes" ? "Подтверждено." : "Отменено." },
+  };
 }
 
 async function doUndo(

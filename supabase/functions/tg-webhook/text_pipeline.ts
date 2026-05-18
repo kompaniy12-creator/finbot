@@ -179,3 +179,23 @@ export function formatReply(result: PipelineResult): string {
   const warns = result.warnings.length ? "\n\nWarn: " + result.warnings.join("; ") : "";
   return [head, ...lines, totalLine].join("\n") + warns;
 }
+
+/**
+ * Build the inline keyboard markup for high-amount confirmation
+ * (per SPEC §6.6). Returns null if none of the expenses need confirmation.
+ */
+export function highAmountKeyboard(result: PipelineResult): {
+  inline_keyboard: Array<Array<{ text: string; callback_data: string }>>;
+} | null {
+  const needs = result.expenses.find((e) => e.needs_confirmation);
+  if (!needs) return null;
+  return {
+    inline_keyboard: [
+      [
+        { text: "Да", callback_data: `conf_yes:${needs.id}` },
+        { text: "Изменить", callback_data: `conf_edit:${needs.id}` },
+        { text: "Отмена", callback_data: `conf_no:${needs.id}` },
+      ],
+    ],
+  };
+}
