@@ -1,0 +1,58 @@
+{
+  "tasks": {
+    "test": "deno test --allow-all tests/",
+    "test:coverage": "deno test --allow-all --coverage=cov tests/ && deno coverage cov",
+    "fmt": "deno fmt",
+    "lint": "deno lint",
+    "check": "deno check supabase/functions/**/*.ts",
+    "coverage": "bash scripts/check_coverage.sh",
+    "validate-env": "bash scripts/validate_env.sh"
+  },
+  "lint": {
+    "rules": {
+      "tags": ["recommended"]
+    },
+    "exclude": ["cov", ".supabase", "node_modules", "webapp"]
+  },
+  "fmt": {
+    "lineWidth": 100,
+    "indentWidth": 2,
+    "singleQuote": false,
+    "exclude": [
+      "cov",
+      ".supabase",
+      "node_modules",
+      "docs",
+      "prompts",
+      ".claude",
+      ".github",
+      "SPEC.md",
+      "CLAUDE.md",
+      "CLAUDE.local.md",
+      "QUICKSTART.md",
+      "README.md",
+      "BACKLOG.md"
+    ]
+  },
+  "compilerOptions": {
+    "strict": true,
+    "noImplicitAny": true,
+    "strictNullChecks": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": false
+  },
+  "imports": {
+    "@anthropic-ai/sdk": "npm:@anthropic-ai/sdk@0.96.0",
+    "@supabase/supabase-js": "npm:@supabase/supabase-js@2.57.0",
+    "grammy": "npm:grammy@1.42.0",
+    "groq-sdk": "npm:groq-sdk@1.2.0",
+    "zod": "npm:zod@3.25.0",
+    "magick-wasm": "npm:@imagemagick/magick-wasm@0.0.30",
+    "age-encryption": "npm:age-encryption@0.3.0",
+    "@std/assert": "jsr:@std/assert@1.0.0",
+    "@std/testing": "jsr:@std/testing@1.0.0",
+    "@std/datetime": "jsr:@std/datetime@0.225.0"
+  }
+}

@@ -1,0 +1,164 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(git:*)",
+      "Bash(gh:*)",
+      "Bash(deno:*)",
+      "Bash(supabase:*)",
+      "Bash(curl:*)",
+      "Bash(psql:*)",
+      "Bash(jq:*)",
+      "Bash(yq:*)",
+      "Bash(npm:*)",
+      "Bash(node:*)",
+      "Bash(age:*)",
+      "Bash(age-keygen:*)",
+      "Bash(openssl:*)",
+      "Bash(make:*)",
+      "Bash(mkdir:*)",
+      "Bash(touch:*)",
+      "Bash(cat:*)",
+      "Bash(echo:*)",
+      "Bash(ls:*)",
+      "Bash(find:*)",
+      "Bash(grep:*)",
+      "Bash(sed:*)",
+      "Bash(awk:*)",
+      "Bash(chmod:*)",
+      "Bash(cp:*)",
+      "Bash(mv:*)",
+      "Bash(diff:*)",
+      "Bash(tar:*)",
+      "Bash(gzip:*)",
+      "Bash(gunzip:*)",
+      "Bash(date:*)",
+      "Bash(sleep:*)",
+      "Bash(wc:*)",
+      "Bash(head:*)",
+      "Bash(tail:*)",
+      "Bash(test:*)",
+      "Bash([:*)",
+      "Bash(true)",
+      "Bash(false)",
+      "Bash(rm:*)",
+      "Bash(rmdir:*)",
+      "Bash(bash scripts/*)",
+      "Bash(./scripts/*)",
+      "Bash(./node_modules/.bin/*)",
+      "WebFetch(domain:api.supabase.com)",
+      "WebFetch(domain:*.supabase.co)",
+      "WebFetch(domain:api.anthropic.com)",
+      "WebFetch(domain:api.groq.com)",
+      "WebFetch(domain:api.telegram.org)",
+      "WebFetch(domain:api.github.com)",
+      "WebFetch(domain:api.nbp.pl)",
+      "WebFetch(domain:api.exchangerate.host)",
+      "WebFetch(domain:registry.npmjs.org)",
+      "WebFetch(domain:deno.land)",
+      "WebFetch(domain:jsr.io)",
+      "WebFetch(domain:cdn.jsdelivr.net)",
+      "WebFetch(domain:cdnjs.cloudflare.com)",
+      "WebFetch(domain:cli.github.com)",
+      "Read(*)",
+      "Write(supabase/**)",
+      "Write(webapp/**)",
+      "Write(tests/**)",
+      "Write(scripts/**)",
+      "Write(docs/STATE.md)",
+      "Write(README.md)",
+      "Write(BACKLOG.md)",
+      "Write(Makefile)",
+      "Write(.env.example)",
+      "Write(.gitignore)",
+      "Write(.github/**)",
+      "Write(deno.json)",
+      "Edit(supabase/**)",
+      "Edit(webapp/**)",
+      "Edit(tests/**)",
+      "Edit(scripts/**)",
+      "Edit(docs/STATE.md)",
+      "Edit(README.md)",
+      "Edit(BACKLOG.md)",
+      "Edit(Makefile)",
+      "Edit(.env.example)",
+      "Edit(.gitignore)",
+      "Edit(.github/**)",
+      "Edit(deno.json)"
+    ],
+    "deny": [
+      "Bash(rm -rf /*)",
+      "Bash(rm -rf ~*)",
+      "Bash(rm -rf $HOME*)",
+      "Bash(git push --force origin main*)",
+      "Bash(git push -f origin main*)",
+      "Bash(git reset --hard origin/main*)",
+      "Bash(supabase projects delete*)",
+      "Bash(gh repo delete*)",
+      "Bash(sudo:*)",
+      "Bash(curl*api.anthropic.com*messages*)",
+      "Write(.env)",
+      "Write(SPEC.md)",
+      "Write(CLAUDE.md)",
+      "Write(docs/00_AUTONOMY.md)",
+      "Write(docs/01_BOOTSTRAP.md)",
+      "Write(docs/02_PLAYBOOK.md)",
+      "Write(docs/03_CONVENTIONS.md)",
+      "Write(docs/04_TESTING.md)",
+      "Write(docs/05_TROUBLESHOOTING.md)",
+      "Write(docs/06_PROMPTS.md)",
+      "Write(docs/07_CHECKLISTS.md)",
+      "Write(docs/08_DEPLOY.md)",
+      "Write(docs/09_RECOVERY.md)",
+      "Write(docs/10_GLOSSARY.md)",
+      "Edit(.env)",
+      "Edit(SPEC.md)",
+      "Edit(CLAUDE.md)"
+    ],
+    "ask": []
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash $CLAUDE_PROJECT_DIR/scripts/check_em_dash.sh \"$CLAUDE_TOOL_INPUT_file_path\" 2>/dev/null || true"
+          },
+          {
+            "type": "command",
+            "command": "bash $CLAUDE_PROJECT_DIR/scripts/check_secrets.sh \"$CLAUDE_TOOL_INPUT_file_path\" 2>/dev/null || true"
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash $CLAUDE_PROJECT_DIR/scripts/check_dangerous_cmd.sh \"$CLAUDE_TOOL_INPUT_command\" 2>/dev/null || true"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "test -f $CLAUDE_PROJECT_DIR/docs/STATE.md && head -50 $CLAUDE_PROJECT_DIR/docs/STATE.md || echo 'No STATE.md yet, fresh start. Read CLAUDE.md first.'"
+          }
+        ]
+      }
+    ]
+  },
+  "env": {
+    "FINBOT_AUTONOMOUS_MODE": "1",
+    "FINBOT_DOC_VERSION": "1.0.0"
+  },
+  "model": "claude-opus-4-7",
+  "outputStyle": "default"
+}

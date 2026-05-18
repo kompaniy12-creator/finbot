@@ -1,0 +1,100 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+  actions: write
+
+concurrency:
+  group: deploy-main
+  cancel-in-progress: false
+
+jobs:
+  deploy-functions:
+    runs-on: ubuntu-latest
+    outputs:
+      health_status: ${{ steps.health.outputs.status }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Link project
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: |
+          supabase link \
+            --project-ref ${{ secrets.SUPABASE_PROJECT_REF }} \
+            --password ${{ secrets.SUPABASE_DB_PASSWORD }}
+
+      - name: Apply migrations
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: supabase db push --include-all
+
+      - name: Deploy functions
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+        run: supabase functions deploy --no-verify-jwt
+
+      - name: Health check
+        id: health
+        run: |
+          sleep 15
+          STATUS=$(curl -s -o /tmp/health.json -w "%{http_code}" \
+            "https://${{ secrets.SUPABASE_PROJECT_REF }}.supabase.co/functions/v1/api-health-public")
+          echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+          if [ "$STATUS" != "200" ]; then
+            echo "::error::Health check failed: HTTP $STATUS"
+            cat /tmp/health.json || true
+            exit 1
+          fi
+          echo "Health: $STATUS"
+
+  auto-revert-on-failure:
+    runs-on: ubuntu-latest
+    needs: deploy-functions
+    if: failure() && !contains(github.event.head_commit.message, '[no-auto-revert]')
+    steps:
+      - name: Checkout with history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Configure git
+        run: |
+          git config user.name "FinBot CI"
+          git config user.email "ci@finbot.local"
+
+      - name: Revert last commit and mark
+        run: |
+          git revert --no-edit HEAD
+          git commit --amend -m "$(git log -1 --pretty=%B)
+
+[no-auto-revert]"
+          git push origin main
+
+  deploy-webapp:
+    runs-on: ubuntu-latest
+    needs: deploy-functions
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Deploy Mini App to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./webapp
+          publish_branch: gh-pages
+          force_orphan: true
