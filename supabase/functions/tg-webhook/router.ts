@@ -18,6 +18,7 @@ import {
   undoCommand,
 } from "./commands.ts";
 import { formatReply, processTextMessage } from "./text_pipeline.ts";
+import { processVoiceMessage } from "./voice_pipeline.ts";
 
 export interface RouteContext {
   sb: SupabaseClient;
@@ -111,7 +112,7 @@ export async function dispatch(
     return { chatId: msg.chat.id, reply };
   }
 
-  // Non-command text -> full pipeline (M7). Voice/photo land in M8/M9.
+  // Non-command text -> full pipeline (M7).
   if (msg.text) {
     const result = await processTextMessage({
       sb: input.sb,
@@ -131,7 +132,38 @@ export async function dispatch(
     return { chatId: msg.chat.id, reply: { text: formatReply(result) } };
   }
 
+  // Voice (M8): transcribe via Groq Whisper -> text pipeline.
+  if (msg.voice) {
+    const outcome = await processVoiceMessage({
+      sb: input.sb,
+      member: input.member,
+      msg,
+    });
+    return { chatId: msg.chat.id, reply: { text: formatVoiceReply(outcome) } };
+  }
+
   return { chatId: msg.chat.id, reply: unauthorizedReply() };
+}
+
+function formatVoiceReply(
+  outcome: Awaited<ReturnType<typeof processVoiceMessage>>,
+): string {
+  switch (outcome.kind) {
+    case "too_long":
+      return `Голосовое слишком длинное (${outcome.duration}s, лимит ${outcome.maxAllowed}s).`;
+    case "download_failed":
+      return `Не смог скачать голосовое: ${outcome.error}`;
+    case "transcribe_failed":
+      return `Не смог распознать: ${outcome.error}`;
+    case "language_rejected":
+      return `Распознал язык "${outcome.detected}" - не в whitelist (ru/uk/pl/en).`;
+    case "no_text":
+      return "Не понял, что записать. Скажи как «кофе 12 zł».";
+    case "ok": {
+      const head = `Распознал: ${outcome.transcript.slice(0, 100)}\n\n`;
+      return head + formatReply(outcome.result);
+    }
+  }
 }
 
 export function refuseUnauthorized(
