@@ -19,6 +19,7 @@ import {
 } from "./commands.ts";
 import { formatReply, processTextMessage } from "./text_pipeline.ts";
 import { processVoiceMessage } from "./voice_pipeline.ts";
+import { type PhotoOutcome, processPhotoMessage } from "./photo_pipeline.ts";
 
 export interface RouteContext {
   sb: SupabaseClient;
@@ -142,7 +143,51 @@ export async function dispatch(
     return { chatId: msg.chat.id, reply: { text: formatVoiceReply(outcome) } };
   }
 
+  // Photo receipt (M9): Sonnet Vision + parse_receipt.
+  if (msg.photo && msg.photo.length > 0) {
+    // Use the largest photo size (last in array per Telegram API).
+    const largest = msg.photo[msg.photo.length - 1]!;
+    const outcome = await processPhotoMessage({
+      sb: input.sb,
+      member: input.member,
+      fileId: largest.file_id,
+      telegramMessageId: msg.message_id,
+    });
+    return { chatId: msg.chat.id, reply: { text: formatPhotoReply(outcome) } };
+  }
+
+  // Document (HEIC sometimes lands here): handle if it's an image MIME.
+  if (msg.document && msg.document.mime_type?.startsWith("image/")) {
+    const outcome = await processPhotoMessage({
+      sb: input.sb,
+      member: input.member,
+      fileId: msg.document.file_id,
+      fileMime: msg.document.mime_type,
+      telegramMessageId: msg.message_id,
+    });
+    return { chatId: msg.chat.id, reply: { text: formatPhotoReply(outcome) } };
+  }
+
   return { chatId: msg.chat.id, reply: unauthorizedReply() };
+}
+
+function formatPhotoReply(outcome: PhotoOutcome): string {
+  switch (outcome.kind) {
+    case "heic_unsupported":
+      return "HEIC пока не поддерживаю (M9 v1: только JPEG/PNG). Открой фото на iPhone, нажми «Поделиться -> Сохранить в Файлы» и пришли как файл с расширением .jpg, либо настрой iOS «Камера → Форматы → Совместимый».";
+    case "unsupported_mime":
+      return `Не поддерживаемый формат: ${outcome.mime}. Пришли JPEG или PNG.`;
+    case "download_failed":
+      return "Не смог скачать фото из Telegram.";
+    case "vision_failed":
+      return `Vision не сработал: ${outcome.error}`;
+    case "parse_failed":
+      return "Не смог распознать чек. Сфотографируй ровнее и при хорошем свете.";
+    case "ok":
+      return outcome.reconciled
+        ? `Записал чек, ${outcome.expense_count} позиций.`
+        : `Записал чек, ${outcome.expense_count} позиций. Внимание: сумма позиций не совпала с итогом (±5%), пометил для ревью.`;
+  }
 }
 
 function formatVoiceReply(
