@@ -11,10 +11,13 @@ import {
   dashboardCommand,
   healthCommand,
   helpCommand,
+  historyCommand,
   startCommand,
+  statsCommand,
   unauthorizedReply,
-  unsupportedReply,
+  undoCommand,
 } from "./commands.ts";
+import { formatReply, processTextMessage } from "./text_pipeline.ts";
 
 export interface RouteContext {
   sb: SupabaseClient;
@@ -61,8 +64,11 @@ export async function routeCommand(
     case "audit":
       return await auditCommand(ctx.sb, args.trim());
     case "history":
+      return await historyCommand(ctx.sb, ctx.member);
     case "stats":
+      return await statsCommand(ctx.sb, ctx.member);
     case "undo":
+      return await undoCommand(ctx.sb, ctx.member);
     case "recurring":
     case "budget":
       return {
@@ -105,9 +111,27 @@ export async function dispatch(
     return { chatId: msg.chat.id, reply };
   }
 
-  // Non-command messages: text / voice / photo go to pipelines added in
-  // M7 / M8 / M9. For M4 we acknowledge politely.
-  return { chatId: msg.chat.id, reply: unsupportedReply() };
+  // Non-command text -> full pipeline (M7). Voice/photo land in M8/M9.
+  if (msg.text) {
+    const result = await processTextMessage({
+      sb: input.sb,
+      member: input.member,
+      text: msg.text,
+      telegramMessageId: msg.message_id,
+    });
+    if (!result) {
+      return {
+        chatId: msg.chat.id,
+        reply: {
+          text:
+            "Не понял, что записать. Попробуй: «кофе 12 zł» или «бензин 200 zł и продукты 80 zł».",
+        },
+      };
+    }
+    return { chatId: msg.chat.id, reply: { text: formatReply(result) } };
+  }
+
+  return { chatId: msg.chat.id, reply: unauthorizedReply() };
 }
 
 export function refuseUnauthorized(

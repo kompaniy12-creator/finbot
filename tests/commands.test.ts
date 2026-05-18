@@ -194,30 +194,18 @@ Deno.test("routeCommand: unknown command suggests /help", async () => {
   assertStringIncludes(r.text, "/help");
 });
 
-Deno.test("routeCommand: stubbed M7+ commands return placeholder", async () => {
+Deno.test("routeCommand: stubbed late-milestone commands return placeholder", async () => {
   const sb = mockSb({});
-  for (const cmd of ["history", "stats", "undo", "recurring"]) {
+  for (const cmd of ["recurring", "budget"]) {
     const r = await routeCommand({ sb, member: ADMIN }, cmd, "");
     assertStringIncludes(r.text, "позднем milestone");
   }
 });
 
-Deno.test("dispatch: text message without command returns unsupported", async () => {
-  const sb = mockSb({});
-  const update: TelegramUpdate = {
-    update_id: 1,
-    message: {
-      message_id: 100,
-      from: { id: 1436806270, first_name: "Серхий" },
-      chat: { id: 123, type: "private" },
-      date: 0,
-      text: "купил молоко",
-    },
-  };
-  const out = await dispatch({ update, member: ADMIN, sb });
-  assertEquals(out?.chatId, 123);
-  assertStringIncludes(out!.reply.text, "Парсинг трат");
-});
+// Note: dispatch for non-command text now routes to text_pipeline (M7).
+// We don't unit-test that path here because it would require mocking Anthropic
+// + categorizer + currency; integration tests in tests/text_pipeline.test.ts
+// cover the happy path.
 
 Deno.test("dispatch: returns null for callback_query without message", async () => {
   const sb = mockSb({});

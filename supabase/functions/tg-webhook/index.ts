@@ -17,6 +17,7 @@ import { checkSecret } from "../_shared/webhook_secret.ts";
 import { TelegramUpdateSchema } from "../_shared/types.ts";
 import { type CommandReply, type ReplyKeyboardButton } from "./commands.ts";
 import { dispatch, parseCommand, refuseUnauthorized } from "./router.ts";
+import { handleCallback } from "./callbacks.ts";
 
 const envSchema = z.object({
   TELEGRAM_BOT_TOKEN: z.string().min(40),
@@ -149,6 +150,24 @@ Deno.serve(async (req: Request) => {
   }
 
   try {
+    // Callback queries (inline button presses) take a different path.
+    if (update.callback_query) {
+      const cq = update.callback_query;
+      const out = await handleCallback({
+        sb,
+        member,
+        data: cq.data ?? "",
+        chatId: cq.message?.chat.id ?? cq.from.id,
+      });
+      await sendReply(out.chatId, out.reply);
+      // Acknowledge the callback so the spinning button stops.
+      await tgRequest("answerCallbackQuery", {
+        callback_query_id: cq.id,
+        text: out.answer_text ?? "",
+      });
+      return new Response("ok", { status: 200 });
+    }
+
     const out = await dispatch({ update, member, sb });
     if (out) await sendReply(out.chatId, out.reply);
     if (msg && !cmd) await markDone(msg.message_id, member.id, sb);
