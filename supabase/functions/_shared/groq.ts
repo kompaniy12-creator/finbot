@@ -56,11 +56,32 @@ export async function transcribe(
   };
 }
 
+// Groq Whisper returns language as the full English name ("russian",
+// "ukrainian", etc), but the whitelist env var uses ISO-639-1 codes.
+// Normalize before comparing.
+const LANG_TO_CODE: Record<string, string> = {
+  russian: "ru",
+  ukrainian: "uk",
+  polish: "pl",
+  english: "en",
+  belarusian: "be",
+  czech: "cs",
+  slovak: "sk",
+  german: "de",
+  french: "fr",
+  spanish: "es",
+  italian: "it",
+  albanian: "sq",
+  bulgarian: "bg",
+};
+
 export function languageAllowed(detected: string): boolean {
+  const d = detected.toLowerCase().trim();
+  const normalized = LANG_TO_CODE[d] ?? d;
   const whitelist = (Deno.env.get("WHISPER_LANGUAGES_WHITELIST") ?? "ru,uk,pl,en")
     .split(",")
     .map((s) => s.trim().toLowerCase());
-  return whitelist.includes(detected.toLowerCase());
+  return whitelist.includes(normalized);
 }
 
 export function maxDurationSec(): number {

@@ -14,6 +14,16 @@ Deno.test("languageAllowed: default whitelist ru/uk/pl/en", () => {
   assertEquals(languageAllowed("zh"), false);
 });
 
+Deno.test("languageAllowed: maps Groq's full names to ISO codes", () => {
+  Deno.env.delete("WHISPER_LANGUAGES_WHITELIST");
+  assertEquals(languageAllowed("russian"), true);
+  assertEquals(languageAllowed("ukrainian"), true);
+  assertEquals(languageAllowed("polish"), true);
+  assertEquals(languageAllowed("english"), true);
+  assertEquals(languageAllowed("czech"), false);
+  assertEquals(languageAllowed("german"), false);
+});
+
 Deno.test("languageAllowed: case-insensitive", () => {
   assertEquals(languageAllowed("RU"), true);
   assertEquals(languageAllowed("En"), true);
