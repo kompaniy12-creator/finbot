@@ -6,7 +6,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { FamilyMember } from "../_shared/types.ts";
 
-const WEBAPP_URL_FALLBACK = "https://kompaniy12-creator.github.io/finbot/webapp/";
+const WEBAPP_URL_FALLBACK = "https://kompaniy12-creator.github.io/finbot/";
 
 export interface ReplyKeyboardButton {
   text: string;
