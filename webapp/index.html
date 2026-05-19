@@ -1,60 +1,60 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ru">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-  <title>FinBot Dashboard</title>
-  <script src="https://telegram.org/js/telegram-web-app.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
-  <link rel="stylesheet" href="./styles.css" />
-</head>
-<body>
-  <div id="gate" class="gate">
-    <div class="gate-card">
-      <h1>FinBot</h1>
-      <p>Открой через Telegram, нажми кнопку «Дашборд» в меню бота.</p>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>FinBot Dashboard</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div id="gate" class="gate">
+      <div class="gate-card">
+        <h1>FinBot</h1>
+        <p>Открой через Telegram, нажми кнопку «Дашборд» в меню бота.</p>
+      </div>
     </div>
-  </div>
 
-  <main id="app" class="app hidden">
-    <header>
-      <h1 id="hello">FinBot</h1>
-      <div class="period-tabs">
-        <button data-period="day">День</button>
-        <button data-period="week">Неделя</button>
-        <button class="active" data-period="month">Месяц</button>
-      </div>
-    </header>
-
-    <section class="kpis">
-      <div class="kpi"><label>Всего</label><strong id="kpi-total">- PLN</strong></div>
-      <div class="kpi"><label>Записей</label><strong id="kpi-count">-</strong></div>
-      <div class="kpi"><label>Топ-категория</label><strong id="kpi-top">-</strong></div>
-    </section>
-
-    <section class="chart-row">
-      <div class="chart-card"><h3>По категориям</h3><canvas id="donut"></canvas></div>
-      <div class="chart-card"><h3>По дням</h3><canvas id="line"></canvas></div>
-    </section>
-
-    <section class="chart-card"><h3>Топ-5</h3><canvas id="bar"></canvas></section>
-
-    <section class="transactions">
-      <header class="tx-header">
-        <h3>Транзакции</h3>
-        <input id="search" type="search" placeholder="поиск" />
-        <button id="export">CSV</button>
+    <main id="app" class="app hidden">
+      <header>
+        <h1 id="hello">FinBot</h1>
+        <div class="period-tabs">
+          <button data-period="day">День</button>
+          <button data-period="week">Неделя</button>
+          <button class="active" data-period="month">Месяц</button>
+        </div>
       </header>
-      <ul id="tx-list" class="tx-list"></ul>
-      <div class="tx-pagination">
-        <button id="load-more">Ещё...</button>
-      </div>
-    </section>
 
-    <footer><small id="version">FinBot v1.0</small></footer>
-  </main>
+      <section class="kpis">
+        <div class="kpi"><label>Всего</label><strong id="kpi-total">- PLN</strong></div>
+        <div class="kpi"><label>Записей</label><strong id="kpi-count">-</strong></div>
+        <div class="kpi"><label>Топ-категория</label><strong id="kpi-top">-</strong></div>
+      </section>
 
-  <script src="./tg-webapp.js"></script>
-  <script src="./app.js"></script>
-</body>
+      <section class="chart-row">
+        <div class="chart-card"><h3>По категориям</h3><canvas id="donut"></canvas></div>
+        <div class="chart-card"><h3>По дням</h3><canvas id="line"></canvas></div>
+      </section>
+
+      <section class="chart-card"><h3>Топ-5</h3><canvas id="bar"></canvas></section>
+
+      <section class="transactions">
+        <header class="tx-header">
+          <h3>Транзакции</h3>
+          <input id="search" type="search" placeholder="поиск" />
+          <button id="export">CSV</button>
+        </header>
+        <ul id="tx-list" class="tx-list"></ul>
+        <div class="tx-pagination">
+          <button id="load-more">Ещё...</button>
+        </div>
+      </section>
+
+      <footer><small id="version">FinBot v1.0</small></footer>
+    </main>
+
+    <script src="./tg-webapp.js"></script>
+    <script src="./app.js"></script>
+  </body>
 </html>

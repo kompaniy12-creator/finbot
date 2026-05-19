@@ -57,7 +57,8 @@ async function loadKpis() {
   $("#kpi-count").textContent = r.count || 0;
   if (r.top_category_id) {
     const c = state.categories.get(r.top_category_id);
-    $("#kpi-top").textContent = (c ? c.name : "?") + " (" + (r.top_category_total || 0).toFixed(0) + ")";
+    $("#kpi-top").textContent = (c ? c.name : "?") + " (" + (r.top_category_total || 0).toFixed(0) +
+      ")";
   } else {
     $("#kpi-top").textContent = "-";
   }
@@ -85,8 +86,7 @@ function renderTransactions() {
     const li = document.createElement("li");
     const cat = state.categories.get(t.category_id);
     const fm = state.family.get(t.family_member_id);
-    li.innerHTML =
-      '<div class="name">' + escapeHtml(t.name) +
+    li.innerHTML = '<div class="name">' + escapeHtml(t.name) +
       '<div class="meta">' + t.expense_date + " | " + (cat ? cat.name : "?") +
       (fm ? " | " + escapeHtml(fm.name) : "") + "</div></div>" +
       '<div class="amt">' + Number(t.amount).toFixed(2) + " " + t.currency + "</div>";
@@ -158,7 +158,10 @@ function drawLineByDay() {
 }
 
 function destroy(key) {
-  if (state.charts[key]) { state.charts[key].destroy(); state.charts[key] = null; }
+  if (state.charts[key]) {
+    state.charts[key].destroy();
+    state.charts[key] = null;
+  }
 }
 
 async function refresh() {
