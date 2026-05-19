@@ -9,7 +9,8 @@ const state = {
   period: "month",
   txOffset: 0,
   txSearch: "",
-  txItems: [],
+  txItems: [], // mixed feed: kind=receipt|expense
+  expandedReceipts: new Map(), // receipt_id -> [line items], lazy-loaded
   categories: new Map(),
   family: new Map(),
   charts: { donut: null, line: null, bar: null },
@@ -84,13 +85,59 @@ function renderTransactions() {
   ul.innerHTML = "";
   for (const t of state.txItems) {
     const li = document.createElement("li");
-    const cat = state.categories.get(t.category_id);
+    li.className = "tx-row " + (t.kind === "receipt" ? "tx-receipt" : "tx-expense");
     const fm = state.family.get(t.family_member_id);
-    li.innerHTML = '<div class="name">' + escapeHtml(t.name) +
-      '<div class="meta">' + t.expense_date + " | " + (cat ? cat.name : "?") +
-      (fm ? " | " + escapeHtml(fm.name) : "") + "</div></div>" +
-      '<div class="amt">' + Number(t.amount).toFixed(2) + " " + t.currency + "</div>";
-    ul.appendChild(li);
+    if (t.kind === "receipt") {
+      const expanded = state.expandedReceipts.has(t.id);
+      const caret = expanded ? "▾" : "▸";
+      const meta = `${t.expense_date} | чек, ${t.item_count} поз.` +
+        (fm ? ` | ${escapeHtml(fm.name)}` : "");
+      li.innerHTML =
+        `<div class="name"><span class="caret">${caret}</span> ${
+          escapeHtml(t.title)
+        }<div class="meta">${meta}</div></div>` +
+        `<div class="amt">${Number(t.amount).toFixed(2)} ${t.currency}</div>`;
+      li.style.cursor = "pointer";
+      li.addEventListener("click", () => toggleReceipt(t.id));
+      ul.appendChild(li);
+      if (expanded) {
+        const items = state.expandedReceipts.get(t.id) || [];
+        for (const ln of items) {
+          const sub = document.createElement("li");
+          sub.className = "tx-sub";
+          const cat = state.categories.get(ln.category_id);
+          sub.innerHTML =
+            `<div class="name">${escapeHtml(ln.name)}<div class="meta">${cat ? cat.name : "?"}${
+              ln.needs_review ? " · нужна проверка" : ""
+            }</div></div>` +
+            `<div class="amt">${Number(ln.amount).toFixed(2)} ${ln.currency}</div>`;
+          ul.appendChild(sub);
+        }
+      }
+    } else {
+      const cat = state.categories.get(t.category_id);
+      const meta = `${t.expense_date} | ${cat ? cat.name : "?"}` +
+        (fm ? ` | ${escapeHtml(fm.name)}` : "");
+      li.innerHTML =
+        `<div class="name">${escapeHtml(t.title)}<div class="meta">${meta}</div></div>` +
+        `<div class="amt">${Number(t.amount).toFixed(2)} ${t.currency}</div>`;
+      ul.appendChild(li);
+    }
+  }
+}
+
+async function toggleReceipt(id) {
+  if (state.expandedReceipts.has(id)) {
+    state.expandedReceipts.delete(id);
+    renderTransactions();
+    return;
+  }
+  try {
+    const r = await api("/api-receipt-items?id=" + encodeURIComponent(id)).then((r) => r.json());
+    state.expandedReceipts.set(id, r.items || []);
+    renderTransactions();
+  } catch (e) {
+    TG.showAlert("Не удалось загрузить позиции чека.");
   }
 }
 
