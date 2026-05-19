@@ -168,6 +168,18 @@ canvas {
   color: var(--hint);
   font-size: 11px;
 }
+.tx-row .caret {
+  display: inline-block;
+  width: 12px;
+  color: var(--hint);
+}
+.tx-receipt .name {
+  font-weight: 500;
+}
+.tx-sub {
+  padding-left: 24px !important;
+  opacity: 0.85;
+}
 
 .tx-pagination {
   text-align: center;
