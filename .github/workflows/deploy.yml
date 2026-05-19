@@ -81,9 +81,8 @@ jobs:
       - name: Revert last commit and mark
         run: |
           git revert --no-edit HEAD
-          git commit --amend -m "$(git log -1 --pretty=%B)
-
-[no-auto-revert]"
+          MSG="$(git log -1 --pretty=%B) [no-auto-revert]"
+          git commit --amend -m "$MSG"
           git push origin main
 
   deploy-webapp:
