@@ -49,14 +49,14 @@ async function decryptAndUnzip(cipher: Uint8Array): Promise<Record<string, unkno
   const plain = await dec.decrypt(cipher);
   const ds = new DecompressionStream("gzip");
   const w = ds.writable.getWriter();
-  const ab = plain.buffer.slice(
+  const plainAb = plain.buffer.slice(
     plain.byteOffset,
     plain.byteOffset + plain.byteLength,
   ) as ArrayBuffer;
-  w.write(new Uint8Array(ab));
+  w.write(new Uint8Array(plainAb));
   w.close();
-  const ab = await new Response(ds.readable).arrayBuffer();
-  return JSON.parse(new TextDecoder().decode(ab));
+  const decompressedAb = await new Response(ds.readable).arrayBuffer();
+  return JSON.parse(new TextDecoder().decode(decompressedAb));
 }
 
 async function confirm(prompt: string): Promise<boolean> {
