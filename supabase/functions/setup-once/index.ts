@@ -15,67 +15,70 @@ const envSchema = z.object({
   CRON_SECRET: z.string().min(20),
 });
 
+// Names are user-facing (Russian). Descriptions stay English because they
+// are fed to Supabase.ai gte-small for the category centroid embedding;
+// gte-small is English-trained and degrades on Cyrillic input.
 const CATEGORIES = [
   {
-    name: "Groceries",
+    name: "Продукты",
     description: "Food and household groceries from supermarkets",
   },
   {
-    name: "Cafes and restaurants",
+    name: "Кафе и рестораны",
     description: "Eating out, coffee shops, bars, takeaway",
   },
   {
-    name: "Transport",
+    name: "Транспорт",
     description: "Public transport, taxis, ride-sharing, parking",
   },
-  { name: "Fuel", description: "Gasoline, diesel, EV charging" },
+  { name: "Топливо", description: "Gasoline, diesel, EV charging" },
   {
-    name: "Housing",
+    name: "Жильё",
     description: "Rent, mortgage payment, utilities, repairs, building fees",
   },
   {
-    name: "Connectivity",
+    name: "Связь и интернет",
     description: "Internet, mobile data, landline, hosting",
   },
   {
-    name: "Health",
+    name: "Здоровье и аптеки",
     description: "Pharmacy, doctors, medical procedures, dental, optical",
   },
   {
-    name: "Clothing",
+    name: "Одежда и обувь",
     description: "Apparel, shoes, accessories, alterations",
   },
   {
-    name: "Home goods",
+    name: "Дом и быт",
     description: "Furniture, appliances, household items, decor, tools",
   },
   {
-    name: "Children",
+    name: "Дети",
     description: "Kids' clothing, toys, school supplies, childcare, kid activities",
   },
   {
-    name: "Entertainment",
+    name: "Развлечения",
     description: "Movies, concerts, games, hobbies, books, magazines",
   },
   {
-    name: "Subscriptions",
+    name: "Подписки и сервисы",
     description: "Streaming services, software, online services, memberships",
   },
-  { name: "Gifts", description: "Presents for others, donations" },
+  { name: "Подарки", description: "Presents for others, donations" },
   {
-    name: "Education",
+    name: "Образование",
     description: "Books, courses, school fees, tutoring, workshops",
   },
   {
-    name: "Travel",
+    name: "Путешествия",
     description: "Tickets, hotels, vacation expenses, vehicle rental",
   },
   {
-    name: "Taxes and fees",
+    name: "Налоги и сборы",
     description: "Taxes, government fees, fines, bank fees",
   },
   {
-    name: "Other",
+    name: "Прочее",
     description: "Miscellaneous expenses that do not fit other categories",
     isFallback: true,
   },
