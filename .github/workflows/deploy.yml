@@ -19,6 +19,9 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       health_status: ${{ steps.health.outputs.status }}
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -28,31 +31,30 @@ jobs:
         with:
           version: latest
 
-      - name: Link project
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      # NOTE: shared-org mode does NOT reset DB password, so we skip
+      # `supabase link --password` and route all SQL through the Management
+      # API query endpoint via scripts/apply_migration.sh.
+      - name: Apply migrations via Management API
         run: |
-          supabase link \
-            --project-ref ${{ secrets.SUPABASE_PROJECT_REF }} \
-            --password ${{ secrets.SUPABASE_DB_PASSWORD }}
-
-      - name: Apply migrations
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
-        run: supabase db push --include-all
+          for f in supabase/migrations/*.sql; do
+            bash scripts/apply_migration.sh "$f"
+          done
 
       - name: Deploy functions
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-        run: supabase functions deploy --no-verify-jwt --import-map deno.json
+        run: |
+          for fn in $(ls supabase/functions | grep -v '^_'); do
+            supabase functions deploy "$fn" \
+              --project-ref "$SUPABASE_PROJECT_REF" \
+              --no-verify-jwt \
+              --import-map deno.json
+          done
 
       - name: Health check
         id: health
         run: |
           sleep 15
           STATUS=$(curl -s -o /tmp/health.json -w "%{http_code}" \
-            "https://${{ secrets.SUPABASE_PROJECT_REF }}.supabase.co/functions/v1/api-health-public")
+            "https://${SUPABASE_PROJECT_REF}.supabase.co/functions/v1/api-health-public")
           echo "status=$STATUS" >> "$GITHUB_OUTPUT"
           if [ "$STATUS" != "200" ]; then
             echo "::error::Health check failed: HTTP $STATUS"
