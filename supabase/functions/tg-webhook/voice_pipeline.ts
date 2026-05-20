@@ -10,6 +10,7 @@ import type { z } from "zod";
 import { languageAllowed, maxDurationSec, transcribe } from "../_shared/groq.ts";
 import { log } from "../_shared/log.ts";
 import { type PipelineResult, processTextMessage } from "./text_pipeline.ts";
+import type { ProgressEmitter } from "../_shared/progress.ts";
 
 export type TelegramMessage = z.infer<typeof TelegramMessageSchema>;
 
@@ -25,11 +26,12 @@ export async function processVoiceMessage(args: {
   sb: SupabaseClient;
   member: FamilyMember;
   msg: TelegramMessage;
+  progress?: ProgressEmitter;
 }): Promise<VoiceOutcome> {
   const voice = args.msg.voice;
   if (!voice) return { kind: "no_text" };
+  const p = args.progress;
 
-  // Pre-check duration BEFORE download
   const max = maxDurationSec();
   if (voice.duration > max) {
     log("info", "voice_rejected_duration", {
@@ -39,13 +41,13 @@ export async function processVoiceMessage(args: {
     return { kind: "too_long", duration: voice.duration, maxAllowed: max };
   }
 
-  // Download via Telegram getFile + fetch
+  if (p) await p.update("🎙 Скачиваю голосовое...");
   const buf = await downloadTelegramFile(voice.file_id);
   if (!buf) {
     return { kind: "download_failed", error: "getFile/fetch returned empty" };
   }
 
-  // Transcribe via Groq
+  if (p) await p.update("🎙 Распознаю через Whisper...");
   let transcript;
   try {
     transcript = await transcribe(buf, { language: "auto" });
@@ -61,7 +63,7 @@ export async function processVoiceMessage(args: {
     return { kind: "no_text" };
   }
 
-  // Reuse text pipeline (same Claude parse + categorize + insert)
+  if (p) await p.update(`🤖 Думаю: "${transcript.text.slice(0, 80)}"...`);
   const result = await processTextMessage({
     sb: args.sb,
     member: args.member,

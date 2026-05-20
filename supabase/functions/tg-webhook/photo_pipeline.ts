@@ -15,6 +15,7 @@ import { defaultEmbedFn } from "../_shared/embedder.ts";
 import { buildClaudeFallback } from "../_shared/claude_fallback.ts";
 import { toPln } from "../_shared/currency.ts";
 import { log } from "../_shared/log.ts";
+import type { ProgressEmitter } from "../_shared/progress.ts";
 
 const SIGNED_URL_TTL_SEC = 300;
 const STORAGE_BUCKET = "receipts";
@@ -33,7 +34,10 @@ export async function processPhotoMessage(args: {
   fileId: string;
   fileMime?: string;
   telegramMessageId: number;
+  progress?: ProgressEmitter;
 }): Promise<PhotoOutcome> {
+  const p = args.progress;
+  if (p) await p.update("📥 Скачиваю фото...");
   const buf = await downloadTelegramFile(args.fileId);
   if (!buf) return { kind: "download_failed" };
 
@@ -45,6 +49,8 @@ export async function processPhotoMessage(args: {
   if (!detected.accepted) {
     return { kind: "unsupported_mime", mime: detected.mime };
   }
+
+  if (p) await p.update("📤 Загружаю в хранилище...");
 
   // Upload to Storage
   const stamp = todayWarsawIso();
@@ -64,6 +70,8 @@ export async function processPhotoMessage(args: {
     log("warn", "photo_sign_failed", { error: signed.error?.message });
     return { kind: "download_failed" };
   }
+
+  if (p) await p.update("👁 Распознаю чек через Claude Vision...");
 
   // Call Claude Vision
   const model = Deno.env.get("CLAUDE_MODEL_VISION") ?? "claude-sonnet-4-6";
@@ -136,6 +144,8 @@ export async function processPhotoMessage(args: {
     return { kind: "vision_failed", error: recIns.error?.message ?? "no data" };
   }
   const receiptId = (recIns.data as { id: string }).id;
+
+  if (p) await p.update(`💾 Сохраняю ${receipt.items.length} позиций...`);
 
   // For each item: categorize, currency convert (same date as receipt), insert
   const embedFn = defaultEmbedFn();
