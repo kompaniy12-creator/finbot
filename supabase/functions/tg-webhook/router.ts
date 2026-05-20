@@ -20,6 +20,7 @@ import {
 import { formatReply, highAmountKeyboard, processTextMessage } from "./text_pipeline.ts";
 import { processVoiceMessage } from "./voice_pipeline.ts";
 import { type PhotoOutcome, processPhotoMessage } from "./photo_pipeline.ts";
+import { startProgress } from "../_shared/progress.ts";
 
 export interface RouteContext {
   sb: SupabaseClient;
@@ -170,12 +171,19 @@ export async function dispatch(
 
   // Voice (M8): transcribe via Groq Whisper -> text pipeline.
   if (msg.voice) {
+    const prog = await startProgress(msg.chat.id, "🎙 Принимаю голосовое...");
     const outcome = await processVoiceMessage({
       sb: input.sb,
       member: input.member,
       msg,
+      progress: prog ?? undefined,
     });
-    return { chatId: msg.chat.id, reply: { text: formatVoiceReply(outcome) } };
+    const text = formatVoiceReply(outcome);
+    if (prog) {
+      await prog.update(text);
+      return null; // already edited the bubble, no extra reply needed
+    }
+    return { chatId: msg.chat.id, reply: { text } };
   }
 
   // Photo receipt (M9 + M10 media groups).
@@ -183,35 +191,51 @@ export async function dispatch(
     const largest = msg.photo[msg.photo.length - 1]!;
 
     // Media group (M10): buffer photo and ack only on first arrival; cron sweep
-    // processes the group ~30s later.
+    // processes the group ~30s later and edits the ack bubble with progress.
     if (msg.media_group_id) {
+      // Check if this is the first photo of the group (atomic via sequential
+      // insert + count). If so, send ack and store its msg_id on the row.
+      const existing = await input.sb
+        .from("media_group_buffer")
+        .select("ack_message_id")
+        .eq("media_group_id", msg.media_group_id)
+        .not("ack_message_id", "is", null)
+        .limit(1)
+        .maybeSingle();
+      const existingAckId = (existing.data as { ack_message_id: number } | null)?.ack_message_id ??
+        null;
+
+      let ackMsgId: number | null = existingAckId;
+      if (!ackMsgId) {
+        const prog = await startProgress(msg.chat.id, "📸 Принимаю альбом, секунду...");
+        ackMsgId = prog?.messageId() ?? null;
+      }
+
       await input.sb.from("media_group_buffer").insert({
         media_group_id: msg.media_group_id,
         telegram_message_id: msg.message_id,
         family_member_id: input.member.id,
         file_id: largest.file_id,
+        ack_message_id: ackMsgId,
+        chat_id: msg.chat.id,
       });
-      const first = await input.sb
-        .from("media_group_buffer")
-        .select("telegram_message_id")
-        .eq("media_group_id", msg.media_group_id)
-        .order("telegram_message_id", { ascending: true })
-        .limit(1)
-        .maybeSingle();
-      const firstId = (first.data as { telegram_message_id: number } | null)?.telegram_message_id;
-      if (firstId !== undefined && firstId === msg.message_id) {
-        return { chatId: msg.chat.id, reply: { text: "Принимаю альбом, секунду..." } };
-      }
-      return null;
+      return null; // ack already sent (if at all); cron-sweep will edit it
     }
 
+    const prog = await startProgress(msg.chat.id, "📸 Принимаю фото...");
     const outcome = await processPhotoMessage({
       sb: input.sb,
       member: input.member,
       fileId: largest.file_id,
       telegramMessageId: msg.message_id,
+      progress: prog ?? undefined,
     });
-    return { chatId: msg.chat.id, reply: { text: formatPhotoReply(outcome) } };
+    const text = formatPhotoReply(outcome);
+    if (prog) {
+      await prog.update(text);
+      return null;
+    }
+    return { chatId: msg.chat.id, reply: { text } };
   }
 
   // Document (HEIC sometimes lands here): handle if it's an image MIME.

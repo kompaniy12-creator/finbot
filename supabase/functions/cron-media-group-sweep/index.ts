@@ -6,6 +6,7 @@ import { adminClient } from "../_shared/supabase.ts";
 import { log } from "../_shared/log.ts";
 import { checkCronAuth } from "../_shared/retry.ts";
 import { processPhotoMessage } from "../tg-webhook/photo_pipeline.ts";
+import { makeEmitterFor } from "../_shared/progress.ts";
 
 const STALE_AGE_SEC = 30;
 const MAX_PER_GROUP = 5;
@@ -16,6 +17,8 @@ interface BufferRow {
   family_member_id: string;
   file_id: string;
   received_at: string;
+  ack_message_id: number | null;
+  chat_id: number | null;
 }
 
 interface FamilyMemberRow {
@@ -33,7 +36,9 @@ Deno.serve(async (req: Request) => {
 
   const all = await sb
     .from("media_group_buffer")
-    .select("media_group_id, telegram_message_id, family_member_id, file_id, received_at")
+    .select(
+      "media_group_id, telegram_message_id, family_member_id, file_id, received_at, ack_message_id, chat_id",
+    )
     .lte("received_at", cutoff)
     .order("media_group_id", { ascending: true })
     .order("telegram_message_id", { ascending: true });
@@ -66,13 +71,16 @@ Deno.serve(async (req: Request) => {
     const take = items.slice(0, MAX_PER_GROUP);
     if (items.length > MAX_PER_GROUP) {
       skipped += items.length - MAX_PER_GROUP;
-      log("warn", "mg_sweep_truncated", {
-        media_group_id: groupId,
-        full: items.length,
-        kept: MAX_PER_GROUP,
-      });
     }
-    for (const item of take) {
+    const ackId = items[0]!.ack_message_id;
+    const chatId = items[0]!.chat_id;
+    const groupProg = (ackId && chatId) ? makeEmitterFor(chatId, ackId) : null;
+    let groupProcessed = 0;
+    for (let i = 0; i < take.length; i++) {
+      const item = take[i]!;
+      if (groupProg) {
+        await groupProg.update(`📸 Альбом: чек ${i + 1} из ${take.length}...`);
+      }
       try {
         await processPhotoMessage({
           sb,
@@ -81,6 +89,7 @@ Deno.serve(async (req: Request) => {
           telegramMessageId: item.telegram_message_id,
         });
         processed++;
+        groupProcessed++;
       } catch (err) {
         log("warn", "mg_sweep_photo_failed", {
           group: groupId,
@@ -88,6 +97,14 @@ Deno.serve(async (req: Request) => {
           error: (err as Error).message,
         });
       }
+    }
+    if (groupProg) {
+      const tail = items.length > MAX_PER_GROUP
+        ? ` (последние ${items.length - MAX_PER_GROUP} пропущены, лимит ${MAX_PER_GROUP})`
+        : "";
+      await groupProg.update(
+        `✅ Альбом готов: ${groupProcessed}/${take.length} чеков сохранено${tail}.`,
+      );
     }
     await sb.from("media_group_buffer").delete().eq("media_group_id", groupId);
   }
