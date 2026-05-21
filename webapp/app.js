@@ -13,6 +13,7 @@ const state = {
   expandedReceipts: new Map(), // receipt_id -> [line items], lazy-loaded
   categories: new Map(),
   family: new Map(),
+  byCategory: [], // breakdown from api-stats: all 24 cats with totals incl. zeros
   charts: { donut: null, line: null, bar: null },
 };
 
@@ -62,6 +63,22 @@ async function loadKpis() {
       " EUR)";
   } else {
     $("#kpi-top").textContent = "-";
+  }
+  state.byCategory = Array.isArray(r.by_category) ? r.by_category : [];
+  renderCategories();
+}
+
+function renderCategories() {
+  const ul = $("#cat-list");
+  if (!ul) return;
+  ul.innerHTML = "";
+  for (const c of state.byCategory) {
+    const li = document.createElement("li");
+    li.className = "cat-row" + (c.total_eur > 0 ? "" : " cat-empty");
+    const meta = c.count > 0 ? `${c.count} ${c.count === 1 ? "запись" : "записей"}` : "пусто";
+    li.innerHTML = `<div class="name">${escapeHtml(c.name)}<div class="meta">${meta}</div></div>` +
+      `<div class="amt">${Number(c.total_eur).toFixed(2)} EUR</div>`;
+    ul.appendChild(li);
   }
 }
 

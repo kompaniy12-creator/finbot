@@ -206,6 +206,40 @@ canvas {
   color: var(--text);
 }
 
+.categories {
+  margin: 16px 0;
+}
+.categories h3 {
+  margin: 0 0 8px;
+  font-size: 13px;
+  color: var(--hint);
+}
+.cat-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.cat-list li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--secondary-bg);
+}
+.cat-list .name {
+  flex: 1;
+}
+.cat-list .meta {
+  color: var(--hint);
+  font-size: 11px;
+}
+.cat-list .amt {
+  white-space: nowrap;
+}
+.cat-empty {
+  opacity: 0.5;
+}
+
 .tx-pagination {
   text-align: center;
   margin-top: 12px;

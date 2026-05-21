@@ -26,16 +26,26 @@ Deno.serve(async (req: Request) => {
   const today = todayWarsawIso();
   const startIso = periodStart(period, today);
 
-  let q = sb.from("expenses")
-    .select("amount_pln, category_id, expense_date")
-    .eq("archived", false)
-    .gte("expense_date", startIso);
-  if (me.role !== "admin") q = q.eq("family_member_id", me.id);
-  const res = await q;
-  const rows = (res.data ?? []) as Array<{
+  const [expRes, catRes] = await Promise.all([
+    (async () => {
+      let q = sb.from("expenses")
+        .select("amount_pln, category_id, expense_date")
+        .eq("archived", false)
+        .gte("expense_date", startIso);
+      if (me.role !== "admin") q = q.eq("family_member_id", me.id);
+      return await q;
+    })(),
+    sb.from("categories").select("id, name, is_fallback"),
+  ]);
+  const rows = (expRes.data ?? []) as Array<{
     amount_pln: number;
     category_id: string;
     expense_date: string;
+  }>;
+  const cats = (catRes.data ?? []) as Array<{
+    id: string;
+    name: string;
+    is_fallback: boolean;
   }>;
 
   const dates = rows.map((r) => r.expense_date);
@@ -45,6 +55,7 @@ Deno.serve(async (req: Request) => {
   let totalEur = 0;
   const byCatPln = new Map<string, number>();
   const byCatEur = new Map<string, number>();
+  const byCatCount = new Map<string, number>();
   for (const r of rows) {
     const pln = Number(r.amount_pln);
     const eur = plnToEur(pln, r.expense_date, eurRates) ?? 0;
@@ -52,10 +63,26 @@ Deno.serve(async (req: Request) => {
     totalEur += eur;
     byCatPln.set(r.category_id, (byCatPln.get(r.category_id) ?? 0) + pln);
     byCatEur.set(r.category_id, (byCatEur.get(r.category_id) ?? 0) + eur);
+    byCatCount.set(r.category_id, (byCatCount.get(r.category_id) ?? 0) + 1);
   }
   const count = rows.length;
-  const topCatEntry = [...byCatEur.entries()].sort((a, b) => b[1] - a[1])[0];
-  const topId = topCatEntry?.[0] ?? null;
+
+  // One entry per category in DB, including zero-spend categories.
+  // Sort by total_eur desc; fallback ("Дополнительные расходы") tie-broken to bottom.
+  const breakdown = cats.map((c) => ({
+    id: c.id,
+    name: c.name,
+    is_fallback: c.is_fallback,
+    total_eur: Math.round((byCatEur.get(c.id) ?? 0) * 100) / 100,
+    total_pln: Math.round((byCatPln.get(c.id) ?? 0) * 100) / 100,
+    count: byCatCount.get(c.id) ?? 0,
+  })).sort((a, b) => {
+    if (b.total_eur !== a.total_eur) return b.total_eur - a.total_eur;
+    if (a.is_fallback !== b.is_fallback) return a.is_fallback ? 1 : -1;
+    return a.name.localeCompare(b.name, "ru");
+  });
+
+  const topEntry = breakdown.find((b) => b.total_eur > 0) ?? null;
 
   return json(req, {
     period,
@@ -63,8 +90,9 @@ Deno.serve(async (req: Request) => {
     total_eur: Math.round(totalEur * 100) / 100,
     total_pln: Math.round(totalPln * 100) / 100,
     count,
-    top_category_id: topId,
-    top_category_total: topCatEntry ? Math.round(topCatEntry[1] * 100) / 100 : 0,
-    top_category_total_pln: topId ? Math.round((byCatPln.get(topId) ?? 0) * 100) / 100 : 0,
+    top_category_id: topEntry?.id ?? null,
+    top_category_total: topEntry?.total_eur ?? 0,
+    top_category_total_pln: topEntry?.total_pln ?? 0,
+    by_category: breakdown,
   });
 });
