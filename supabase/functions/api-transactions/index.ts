@@ -8,6 +8,8 @@ import { adminClient } from "../_shared/supabase.ts";
 import { authenticateInitData, extractInitData } from "../_shared/webapp_auth.ts";
 import { handleOptions, json, unauthorized } from "../_shared/api_response.ts";
 import { loadEurRates, plnToEur } from "../_shared/eur_view.ts";
+import { todayWarsawIso } from "../_shared/dates.ts";
+import { resolveDateWindow } from "../_shared/period.ts";
 
 interface FeedItem {
   kind: "receipt" | "expense";
@@ -39,6 +41,10 @@ Deno.serve(async (req: Request) => {
   const limit = Math.min(Number(url.searchParams.get("limit") ?? "50"), 200);
   const offset = Math.max(Number(url.searchParams.get("offset") ?? "0"), 0);
   const search = (url.searchParams.get("search") ?? "").trim();
+  const hasRange = url.searchParams.has("from") || url.searchParams.has("to") ||
+    url.searchParams.has("period");
+  const today = todayWarsawIso();
+  const win = hasRange ? resolveDateWindow(url, today) : null;
 
   // Build SQL via Management API isn't available from Edge; use supabase-js with
   // two queries + merge in JS. This keeps the endpoint stateless.
@@ -49,6 +55,7 @@ Deno.serve(async (req: Request) => {
   ).eq("archived", false);
   if (me.role !== "admin") rq = rq.eq("family_member_id", me.id);
   if (search) rq = rq.ilike("merchant", `%${search}%`);
+  if (win) rq = rq.gte("receipt_date", win.start).lte("receipt_date", win.end);
   rq = rq.order("created_at", { ascending: false }).limit(200);
   const rRes = await rq;
   if (rRes.error) return json(req, { error: rRes.error.message }, 500);
@@ -82,6 +89,7 @@ Deno.serve(async (req: Request) => {
   ).eq("archived", false).is("receipt_id", null);
   if (me.role !== "admin") eq = eq.eq("family_member_id", me.id);
   if (search) eq = eq.ilike("name", `%${search}%`);
+  if (win) eq = eq.gte("expense_date", win.start).lte("expense_date", win.end);
   eq = eq.order("created_at", { ascending: false }).limit(200);
   const eRes = await eq;
   if (eRes.error) return json(req, { error: eRes.error.message }, 500);

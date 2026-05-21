@@ -1,17 +1,12 @@
-// GET /api-stats?period=day|week|month: KPI for current period.
+// GET /api-stats?period=day|week|month | ?from=YYYY-MM-DD&to=YYYY-MM-DD
 // Returns totals in EUR (computed per-row using EUR/PLN rate at expense_date).
 // total_pln is kept for backwards-compat / internal consumers.
 import { adminClient } from "../_shared/supabase.ts";
 import { authenticateInitData, extractInitData } from "../_shared/webapp_auth.ts";
 import { handleOptions, json, unauthorized } from "../_shared/api_response.ts";
-import { addDaysIso, todayWarsawIso } from "../_shared/dates.ts";
+import { todayWarsawIso } from "../_shared/dates.ts";
 import { loadEurRates, plnToEur } from "../_shared/eur_view.ts";
-
-function periodStart(period: string, today: string): string {
-  if (period === "day") return today;
-  if (period === "week") return addDaysIso(today, -6);
-  return today.slice(0, 7) + "-01"; // month default
-}
+import { resolveDateWindow } from "../_shared/period.ts";
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return handleOptions(req);
@@ -22,16 +17,16 @@ Deno.serve(async (req: Request) => {
   if (!me) return unauthorized(req);
 
   const url = new URL(req.url);
-  const period = (url.searchParams.get("period") ?? "month").toLowerCase();
   const today = todayWarsawIso();
-  const startIso = periodStart(period, today);
+  const win = resolveDateWindow(url, today);
 
   const [expRes, catRes] = await Promise.all([
     (async () => {
       let q = sb.from("expenses")
         .select("amount_pln, category_id, expense_date")
         .eq("archived", false)
-        .gte("expense_date", startIso);
+        .gte("expense_date", win.start)
+        .lte("expense_date", win.end);
       if (me.role !== "admin") q = q.eq("family_member_id", me.id);
       return await q;
     })(),
@@ -85,8 +80,9 @@ Deno.serve(async (req: Request) => {
   const topEntry = breakdown.find((b) => b.total_eur > 0) ?? null;
 
   return json(req, {
-    period,
-    period_start: startIso,
+    period: win.period,
+    period_start: win.start,
+    period_end: win.end,
     total_eur: Math.round(totalEur * 100) / 100,
     total_pln: Math.round(totalPln * 100) / 100,
     count,

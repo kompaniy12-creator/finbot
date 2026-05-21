@@ -69,6 +69,34 @@ header h1 {
   color: var(--button-text);
 }
 
+.custom-range {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 12px;
+}
+.custom-range input[type="date"] {
+  flex: 1;
+  padding: 6px 8px;
+  border: 1px solid var(--hint);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+  min-width: 0;
+}
+.custom-range span {
+  color: var(--hint);
+}
+.custom-range button {
+  background: var(--button);
+  color: var(--button-text);
+  border: none;
+  padding: 6px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
 .kpis {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

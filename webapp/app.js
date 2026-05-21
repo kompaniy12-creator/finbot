@@ -7,6 +7,8 @@ const TX_PAGE = 50;
 
 const state = {
   period: "month",
+  from: null, // YYYY-MM-DD when period === "custom"
+  to: null,
   txOffset: 0,
   txSearch: "",
   txItems: [], // mixed feed: kind=receipt|expense
@@ -16,6 +18,13 @@ const state = {
   byCategory: [], // breakdown from api-stats: all 24 cats with totals incl. zeros
   charts: { donut: null, line: null, bar: null },
 };
+
+function periodQuery() {
+  if (state.period === "custom" && state.from && state.to) {
+    return `from=${encodeURIComponent(state.from)}&to=${encodeURIComponent(state.to)}`;
+  }
+  return "period=" + encodeURIComponent(state.period);
+}
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -54,7 +63,7 @@ async function loadCategoriesAndFamily() {
 }
 
 async function loadKpis() {
-  const r = await api("/api-stats?period=" + state.period).then((r) => r.json());
+  const r = await api("/api-stats?" + periodQuery()).then((r) => r.json());
   $("#kpi-total").textContent = (r.total_eur || 0).toFixed(2) + " EUR";
   $("#kpi-count").textContent = r.count || 0;
   if (r.top_category_id) {
@@ -92,7 +101,8 @@ async function loadTransactions(reset = false) {
     offset: String(state.txOffset),
     search: state.txSearch,
   });
-  const r = await api("/api-transactions?" + qs.toString()).then((r) => r.json());
+  const r = await api("/api-transactions?" + qs.toString() + "&" + periodQuery())
+    .then((r) => r.json());
   state.txItems = state.txItems.concat(r.items || []);
   renderTransactions();
 }
@@ -297,13 +307,47 @@ async function main() {
   await refresh();
 
   // Period tabs
+  const customBox = $("#custom-range");
+  const fromInput = $("#range-from");
+  const toInput = $("#range-to");
+  // Default the date inputs to current month so the user only has to tap.
+  const todayIso = new Date().toISOString().slice(0, 10);
+  toInput.value = todayIso;
+  fromInput.value = todayIso.slice(0, 7) + "-01";
+
   document.querySelectorAll(".period-tabs button").forEach((btn) => {
     btn.addEventListener("click", () => {
       document.querySelectorAll(".period-tabs button").forEach((b) => b.classList.remove("active"));
       btn.classList.add("active");
-      state.period = btn.dataset.period;
+      const p = btn.dataset.period;
+      if (p === "custom") {
+        customBox.classList.remove("hidden");
+        // Don't refresh until user hits OK.
+        return;
+      }
+      customBox.classList.add("hidden");
+      state.period = p;
+      state.from = null;
+      state.to = null;
       refresh();
     });
+  });
+
+  $("#range-apply").addEventListener("click", () => {
+    const from = fromInput.value;
+    const to = toInput.value;
+    if (!from || !to) {
+      TG.showAlert("Укажи обе даты.");
+      return;
+    }
+    if (from > to) {
+      TG.showAlert("Начальная дата позже конечной.");
+      return;
+    }
+    state.period = "custom";
+    state.from = from;
+    state.to = to;
+    refresh();
   });
 
   // Search (debounced)
