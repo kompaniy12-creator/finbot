@@ -265,6 +265,15 @@ function formatPhotoReply(outcome: PhotoOutcome): string {
       return `Vision не сработал: ${outcome.error}`;
     case "parse_failed":
       return "Не смог распознать чек. Сфотографируй ровнее и при хорошем свете.";
+    case "duplicate": {
+      const who = outcome.existing_merchant ?? "без названия";
+      const reason = outcome.reason === "image_hash"
+        ? "Это то же фото, что я уже обрабатывал."
+        : "Уже есть чек с такими же магазином, датой и суммой.";
+      return `⚠ Похоже на дубликат. ${reason}\n\nСуществующий чек: ${who}, ${
+        outcome.existing_total.toFixed(2)
+      } ${outcome.existing_currency}, ${outcome.existing_date}.\n\nЕсли это другая покупка, удали старый чек в Mini App и пришли фото заново.`;
+    }
     case "ok": {
       const header = outcome.merchant
         ? `✅ Чек: ${outcome.merchant} (${

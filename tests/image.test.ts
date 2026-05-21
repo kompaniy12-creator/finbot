@@ -1,6 +1,28 @@
-// Tests for _shared/image.ts: detectImage + reconcileTotal.
+// Tests for _shared/image.ts: detectImage + reconcileTotal + sha256Hex.
 import { assertAlmostEquals, assertEquals } from "@std/assert";
-import { detectImage, reconcileTotal } from "../supabase/functions/_shared/image.ts";
+import { detectImage, reconcileTotal, sha256Hex } from "../supabase/functions/_shared/image.ts";
+
+Deno.test("sha256Hex: known vector for empty buffer", async () => {
+  const h = await sha256Hex(new Uint8Array(0));
+  assertEquals(h, "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+});
+
+Deno.test("sha256Hex: 'abc' matches NIST FIPS 180-2 vector", async () => {
+  const h = await sha256Hex(new TextEncoder().encode("abc"));
+  assertEquals(h, "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+});
+
+Deno.test("sha256Hex: identical bytes -> identical hash", async () => {
+  const a = await sha256Hex(new Uint8Array([1, 2, 3, 4, 5]));
+  const b = await sha256Hex(new Uint8Array([1, 2, 3, 4, 5]));
+  assertEquals(a, b);
+});
+
+Deno.test("sha256Hex: 1-byte change flips the hash", async () => {
+  const a = await sha256Hex(new Uint8Array([1, 2, 3]));
+  const b = await sha256Hex(new Uint8Array([1, 2, 4]));
+  if (a === b) throw new Error("expected different");
+});
 
 Deno.test("detectImage: JPEG magic bytes", () => {
   const buf = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10]);

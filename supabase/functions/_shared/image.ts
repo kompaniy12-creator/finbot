@@ -8,6 +8,18 @@
 
 export const ACCEPTED_MIME_TYPES = ["image/jpeg", "image/jpg", "image/png"];
 
+/**
+ * SHA-256 hex digest of raw image bytes. Used for cheap byte-identical
+ * duplicate detection before sending the photo to Claude Vision.
+ */
+export async function sha256Hex(buf: Uint8Array): Promise<string> {
+  const ab = buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength) as ArrayBuffer;
+  const digest = await crypto.subtle.digest("SHA-256", ab);
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
 export interface DetectedImage {
   mime: string;
   isHeic: boolean;

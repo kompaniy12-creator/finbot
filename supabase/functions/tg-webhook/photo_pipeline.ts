@@ -6,7 +6,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { FamilyMember } from "../_shared/types.ts";
-import { detectImage, reconcileTotal } from "../_shared/image.ts";
+import { detectImage, reconcileTotal, sha256Hex } from "../_shared/image.ts";
 import { callClaude } from "../_shared/claude.ts";
 import { buildParseReceiptPrompt, ParsedReceiptSchema } from "../_shared/prompts/parse_receipt.ts";
 import { todayWarsawIso } from "../_shared/dates.ts";
@@ -34,6 +34,15 @@ export type PhotoOutcome =
   | { kind: "vision_failed"; error: string }
   | { kind: "parse_failed" }
   | {
+    kind: "duplicate";
+    reason: "image_hash" | "content_match";
+    existing_receipt_id: string;
+    existing_merchant: string | null;
+    existing_total: number;
+    existing_currency: string;
+    existing_date: string;
+  }
+  | {
     kind: "ok";
     receipt_id: string;
     expense_count: number;
@@ -43,6 +52,8 @@ export type PhotoOutcome =
     currency: string;
     items: ReceiptLineSummary[];
   };
+
+const DEDUP_WINDOW_DAYS = 30;
 
 export async function processPhotoMessage(args: {
   sb: SupabaseClient;
@@ -64,6 +75,37 @@ export async function processPhotoMessage(args: {
   }
   if (!detected.accepted) {
     return { kind: "unsupported_mime", mime: detected.mime };
+  }
+
+  // Layer 1: byte-identical duplicate check via SHA-256 of the bytes.
+  const photoHash = await sha256Hex(buf);
+  const sinceIso = new Date(Date.now() - DEDUP_WINDOW_DAYS * 86_400_000).toISOString();
+  const dupHashRes = await args.sb.from("receipts")
+    .select("id, merchant, total, currency, receipt_date")
+    .eq("family_member_id", args.member.id)
+    .eq("archived", false)
+    .eq("photo_sha256", photoHash)
+    .gte("created_at", sinceIso)
+    .limit(1)
+    .maybeSingle();
+  if (dupHashRes.data) {
+    const ex = dupHashRes.data as {
+      id: string;
+      merchant: string | null;
+      total: number;
+      currency: string;
+      receipt_date: string;
+    };
+    log("info", "photo_duplicate_hash", { existing: ex.id });
+    return {
+      kind: "duplicate",
+      reason: "image_hash",
+      existing_receipt_id: ex.id,
+      existing_merchant: ex.merchant,
+      existing_total: Number(ex.total),
+      existing_currency: ex.currency,
+      existing_date: ex.receipt_date,
+    };
   }
 
   if (p) await p.update("📤 Загружаю в хранилище...");
@@ -144,6 +186,39 @@ export async function processPhotoMessage(args: {
 
   const totalPln = await toPln(args.sb, receipt.total, receipt.currency, receipt.receipt_date);
 
+  // Layer 2: content-fingerprint duplicate check.
+  // Same merchant + receipt_date + total + currency from the same family,
+  // not archived. Catches re-photographed-same-receipt cases.
+  const dupContentRes = await args.sb.from("receipts")
+    .select("id, merchant, total, currency, receipt_date")
+    .eq("family_member_id", args.member.id)
+    .eq("archived", false)
+    .eq("merchant", receipt.merchant)
+    .eq("receipt_date", receipt.receipt_date)
+    .eq("currency", receipt.currency)
+    .eq("total", receipt.total)
+    .limit(1)
+    .maybeSingle();
+  if (dupContentRes.data) {
+    const ex = dupContentRes.data as {
+      id: string;
+      merchant: string | null;
+      total: number;
+      currency: string;
+      receipt_date: string;
+    };
+    log("info", "photo_duplicate_content", { existing: ex.id });
+    return {
+      kind: "duplicate",
+      reason: "content_match",
+      existing_receipt_id: ex.id,
+      existing_merchant: ex.merchant,
+      existing_total: Number(ex.total),
+      existing_currency: ex.currency,
+      existing_date: ex.receipt_date,
+    };
+  }
+
   // Insert receipt
   const recIns = await args.sb.from("receipts").insert({
     merchant: receipt.merchant,
@@ -152,6 +227,7 @@ export async function processPhotoMessage(args: {
     total: receipt.total,
     total_pln: totalPln,
     photo_path: path,
+    photo_sha256: photoHash,
     items: receipt.items,
     family_member_id: args.member.id,
     telegram_message_id: args.telegramMessageId,
