@@ -10,18 +10,9 @@ import { detectImage, reconcileTotal, sha256Hex } from "../_shared/image.ts";
 import { callClaude } from "../_shared/claude.ts";
 import { buildParseReceiptPrompt, ParsedReceiptSchema } from "../_shared/prompts/parse_receipt.ts";
 import { todayWarsawIso } from "../_shared/dates.ts";
-import { categorize } from "../_shared/categorizer.ts";
-import { defaultEmbedFn } from "../_shared/embedder.ts";
-import { buildClaudeFallback } from "../_shared/claude_fallback.ts";
-import { getRate, toPln } from "../_shared/currency.ts";
+import { getRate } from "../_shared/currency.ts";
 import { log } from "../_shared/log.ts";
 import type { ProgressEmitter } from "../_shared/progress.ts";
-import { mapWithConcurrency } from "../_shared/concurrency.ts";
-
-// Bounded parallelism for per-item categorization. Higher = faster but more
-// concurrent Claude-fallback requests. 6 keeps us under common rate limits
-// while shrinking a 38-item receipt from ~60s sequential to ~10s.
-const ITEM_CONCURRENCY = 6;
 
 const SIGNED_URL_TTL_SEC = 300;
 const STORAGE_BUCKET = "receipts";
@@ -149,10 +140,30 @@ export async function processPhotoMessage(args: {
 
   if (p) await p.update("👁 Распознаю чек через Claude Vision...");
 
+  // Preload categories so Vision can assign one per item in a single call.
+  // This collapses the old N-item Claude-fallback loop into 0 extra calls.
+  const catRows = await args.sb
+    .from("categories")
+    .select("id, name, is_fallback")
+    .order("is_fallback", { ascending: true })
+    .order("name", { ascending: true });
+  const categories = (catRows.data ?? []) as Array<
+    { id: string; name: string; is_fallback: boolean }
+  >;
+  const catById = new Map(categories.map((c) => [c.id, c]));
+  const fallbackCatId = categories.find((c) => c.is_fallback)?.id ?? categories[0]?.id ?? null;
+  if (!fallbackCatId) {
+    log("error", "photo_no_categories");
+    return { kind: "parse_failed" };
+  }
+
   // Call Claude Vision
   const model = Deno.env.get("CLAUDE_MODEL_VISION") ?? "claude-sonnet-4-6";
   const todayIso = todayWarsawIso();
-  const { system, tools } = buildParseReceiptPrompt({ todayWarsaw: todayIso });
+  const { system, tools } = buildParseReceiptPrompt({
+    todayWarsaw: todayIso,
+    categories,
+  });
 
   let resp;
   try {
@@ -202,7 +213,10 @@ export async function processPhotoMessage(args: {
     });
   }
 
-  const totalPln = await toPln(args.sb, receipt.total, receipt.currency, receipt.receipt_date);
+  // total->PLN using the same FX rate as line items (computed below from getRate).
+  const receiptRate = await getRate(args.sb, receipt.currency, receipt.receipt_date)
+    .catch(() => 1.0);
+  const totalPln = Math.round(receipt.total * receiptRate * 100) / 100;
 
   // Layer 2: content-fingerprint duplicate check.
   // Same merchant + receipt_date + total + currency from the same family,
@@ -256,62 +270,33 @@ export async function processPhotoMessage(args: {
   const receiptId = (recIns.data as { id: string }).id;
 
   const expected = receipt.items.length;
-  if (p) await p.update(`💾 Распознаю ${expected} позиций (категории)...`);
-
-  // Preload category names for the summary message.
-  const catRows = await args.sb.from("categories").select("id, name");
-  const catNameById = new Map<string, string>();
-  for (const c of (catRows.data ?? []) as Array<{ id: string; name: string }>) {
-    catNameById.set(c.id, c.name);
-  }
-
-  // Receipt items all share the same date+currency, so one FX rate lookup
-  // beats 38 sequential toPln calls.
-  let rate: number;
-  try {
-    rate = await getRate(args.sb, receipt.currency, receipt.receipt_date);
-  } catch (err) {
-    log("warn", "photo_rate_fallback", { error: (err as Error).message });
-    rate = 1.0; // graceful fallback; needs_review will flag for follow-up
-  }
-  const toPlnLocal = (amount: number) => Math.round(amount * rate * 100) / 100;
-
-  // Bounded parallel categorization (max ITEM_CONCURRENCY at once).
-  const embedFn = defaultEmbedFn();
-  const fallback = buildClaudeFallback(args.sb, args.member.id);
-  const prepared = await mapWithConcurrency(
-    receipt.items,
-    ITEM_CONCURRENCY,
-    async (item, _i) =>
-      await categorize(
-        { sb: args.sb, embedFn, fallback },
-        {
-          name: item.name,
-          nameNormalizedEn: item.name_normalized_en,
-          familyMemberId: args.member.id,
-        },
-      ),
-  );
-
   if (p) await p.update(`💾 Сохраняю ${expected} позиций...`);
 
+  // Same currency+date as the receipt total, so reuse the rate we already loaded.
+  const toPlnLocal = (amount: number) => Math.round(amount * receiptRate * 100) / 100;
+
   // Build all rows in memory, then ONE atomic bulk INSERT.
-  const rows = receipt.items.map((item, i) => ({
-    name: item.name,
-    name_normalized: item.name_normalized_en,
-    expense_date: receipt.receipt_date,
-    amount: item.amount,
-    currency: receipt.currency,
-    amount_pln: toPlnLocal(item.amount),
-    category_id: prepared[i]!.categoryId,
-    family_member_id: args.member.id,
-    source: "photo",
-    receipt_id: receiptId,
-    needs_review: !recon.ok,
-    embedding: prepared[i]!.embedding,
-    telegram_message_id: args.telegramMessageId,
-    line_index: i,
-  }));
+  // Vision already assigned category_id to each item; validate against the
+  // category list and fall back to the "miscellaneous" category if Vision
+  // hallucinated an ID that isn't in the DB.
+  const rows = receipt.items.map((item, i) => {
+    const validCat = catById.has(item.category_id) ? item.category_id : fallbackCatId;
+    return {
+      name: item.name,
+      name_normalized: item.name_normalized_en,
+      expense_date: receipt.receipt_date,
+      amount: item.amount,
+      currency: receipt.currency,
+      amount_pln: toPlnLocal(item.amount),
+      category_id: validCat,
+      family_member_id: args.member.id,
+      source: "photo",
+      receipt_id: receiptId,
+      needs_review: !recon.ok,
+      telegram_message_id: args.telegramMessageId,
+      line_index: i,
+    };
+  });
 
   const bulkIns = await args.sb.from("expenses").insert(rows).select("id");
   if (bulkIns.error) {
@@ -326,11 +311,11 @@ export async function processPhotoMessage(args: {
     .eq("archived", false);
   const verifiedCount = verifyRes.count ?? insertedHint;
 
-  const summary: ReceiptLineSummary[] = receipt.items.map((item, i) => ({
-    name: item.name,
-    amount: item.amount,
+  const summary: ReceiptLineSummary[] = rows.map((r) => ({
+    name: r.name,
+    amount: r.amount,
     currency: receipt.currency,
-    category_name: catNameById.get(prepared[i]!.categoryId) ?? "?",
+    category_name: catById.get(r.category_id)?.name ?? "?",
   }));
 
   if (verifiedCount < expected) {

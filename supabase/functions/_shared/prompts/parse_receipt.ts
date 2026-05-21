@@ -6,7 +6,8 @@ import { z } from "zod";
 
 export const ParseReceiptTool: Anthropic.Messages.Tool = {
   name: "record_receipt",
-  description: "Parse a photo of a receipt and extract merchant, date, total, and itemized list.",
+  description:
+    "Parse a photo of a receipt and extract merchant, date, total, itemized list, and the best-fit category for each item from the provided category list.",
   input_schema: {
     type: "object",
     required: ["merchant", "receipt_date", "currency", "total", "items"],
@@ -23,12 +24,17 @@ export const ParseReceiptTool: Anthropic.Messages.Tool = {
         minItems: 1,
         items: {
           type: "object",
-          required: ["name", "name_normalized_en", "amount"],
+          required: ["name", "name_normalized_en", "amount", "category_id"],
           properties: {
             name: { type: "string" },
             name_normalized_en: { type: "string" },
             amount: { type: "number" },
             qty: { type: "number" },
+            category_id: {
+              type: "string",
+              description:
+                "Pick the UUID of the best-fit category from the provided list. Must match one of the IDs exactly. If unsure, pick the fallback category.",
+            },
           },
         },
       },
@@ -37,12 +43,13 @@ export const ParseReceiptTool: Anthropic.Messages.Tool = {
   },
 };
 
-const STATIC_PART = `You are FinBot's receipt parser. Extract structured data from a receipt photo.
+const STATIC_PART =
+  `You are FinBot's receipt parser. Extract structured data from a receipt photo and assign each line item to one of the family's existing categories.
 
 Family context:
 - Based in Poznań, Poland (most receipts are Polish, in PLN, from chains like Biedronka, Lidl, Auchan, Carrefour, Żabka, Rossmann, etc.).
 - Occasional Albanian receipts (ALL currency, business trip context).
-- Receipts may be in Polish, English, German, Ukrainian.
+- Receipts may be in Polish, English, German, Ukrainian, Albanian.
 
 Rules:
 - Always call the record_receipt tool with structured data. Do not respond with prose.
@@ -50,17 +57,34 @@ Rules:
 - amount must be the line total (after any item-level discount), not unit price.
 - Sum of items.amount should match total within +/- 5%. If it doesn't, still emit your best guess for each, the application will reconcile.
 - For each item, name_normalized_en should categorize the item generically in English: 'milk dairy', 'bread bakery', 'cheese dairy', 'fruit fresh', 'shampoo cosmetics', 'detergent household', etc.
+- For each item, category_id MUST be one of the UUIDs from the provided "Available categories" list. Pick the closest semantic match. Pet food + pet care + vet items go to the pets category. Alcohol (wine, beer, spirits) goes to the alcohol category. Cosmetics + grooming + beauty go to the self-care category. Cleaning supplies, household chemicals go to the home-care category. If genuinely unsure or the item is miscellaneous, use the category marked (fallback).
 - If receipt is blurry/unreadable in parts: still emit what you can, set 'note' field describing what's missing.
 - Date format on Polish receipts is usually DD-MM-YYYY or YYYY-MM-DD. Convert to ISO YYYY-MM-DD.
 - Currency: Polish receipts use 'zł' suffix or 'PLN'. Default PLN if unclear.`;
 
-export function buildParseReceiptPrompt(params: { todayWarsaw: string }): {
+export interface VisionCategoryHint {
+  id: string;
+  name: string;
+  is_fallback: boolean;
+}
+
+export function buildParseReceiptPrompt(params: {
+  todayWarsaw: string;
+  categories: VisionCategoryHint[];
+}): {
   system: Anthropic.Messages.TextBlockParam[];
   tools: Anthropic.Messages.Tool[];
 } {
+  const catLines = params.categories
+    .map((c) => `- ${c.id}  ${c.name}${c.is_fallback ? "  (fallback)" : ""}`)
+    .join("\n");
   return {
     system: [
       { type: "text", text: STATIC_PART, cache_control: { type: "ephemeral" } },
+      {
+        type: "text",
+        text: `\n\nAvailable categories (use these UUIDs exactly for category_id):\n${catLines}`,
+      },
       { type: "text", text: `\n\nToday in Europe/Warsaw: ${params.todayWarsaw}.` },
     ],
     tools: [ParseReceiptTool],
@@ -72,6 +96,7 @@ export const ParsedReceiptItemSchema = z.object({
   name_normalized_en: z.string().min(1),
   amount: z.number().positive(),
   qty: z.number().positive().optional(),
+  category_id: z.string().regex(/^[0-9a-f-]{36}$/i),
 });
 export const ParsedReceiptSchema = z.object({
   merchant: z.string(),
