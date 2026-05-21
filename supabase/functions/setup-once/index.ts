@@ -20,65 +20,99 @@ const envSchema = z.object({
 // gte-small is English-trained and degrades on Cyrillic input.
 const CATEGORIES = [
   {
-    name: "Продукты",
-    description: "Food and household groceries from supermarkets",
+    name: "Питание продукты",
+    description: "Groceries, supermarket food, pantry essentials, household food",
   },
   {
-    name: "Кафе и рестораны",
-    description: "Eating out, coffee shops, bars, takeaway",
+    name: "Питание заведения",
+    description: "Restaurants, cafes, coffee shops, takeaway, fast food, bars",
+  },
+  {
+    name: "Алкоголь",
+    description: "Alcohol: wine, beer, spirits, liquor store purchases",
+  },
+  {
+    name: "Комунальные расходы + аренда",
+    description: "Rent, mortgage, utilities, electricity, gas, water, building fees",
+  },
+  {
+    name: "Мобильная связь + интернет",
+    description: "Mobile phone plan, internet provider, landline, hosting fees",
+  },
+  {
+    name: "Одежда, обувь, аксесуары",
+    description: "Clothing, footwear, fashion accessories, jewelry, bags, alterations",
   },
   {
     name: "Транспорт",
-    description: "Public transport, taxis, ride-sharing, parking",
-  },
-  { name: "Топливо", description: "Gasoline, diesel, EV charging" },
-  {
-    name: "Жильё",
-    description: "Rent, mortgage payment, utilities, repairs, building fees",
-  },
-  {
-    name: "Связь и интернет",
-    description: "Internet, mobile data, landline, hosting",
-  },
-  {
-    name: "Здоровье и аптеки",
-    description: "Pharmacy, doctors, medical procedures, dental, optical",
-  },
-  {
-    name: "Одежда и обувь",
-    description: "Apparel, shoes, accessories, alterations",
-  },
-  {
-    name: "Дом и быт",
-    description: "Furniture, appliances, household items, decor, tools",
-  },
-  {
-    name: "Дети",
-    description: "Kids' clothing, toys, school supplies, childcare, kid activities",
+    description: "Public transport, taxi, ride-sharing, parking, fuel, gasoline",
   },
   {
     name: "Развлечения",
-    description: "Movies, concerts, games, hobbies, books, magazines",
+    description: "Movies, concerts, theme parks, events, streaming, games, books",
   },
   {
-    name: "Подписки и сервисы",
-    description: "Streaming services, software, online services, memberships",
-  },
-  { name: "Подарки", description: "Presents for others, donations" },
-  {
-    name: "Образование",
-    description: "Books, courses, school fees, tutoring, workshops",
+    name: "Отдых, поездки",
+    description: "Travel, hotels, flights, vacation expenses, car rental, tours",
   },
   {
-    name: "Путешествия",
-    description: "Tickets, hotels, vacation expenses, vehicle rental",
+    name: "Обучение",
+    description: "Courses, school fees, tutoring, workshops, learning materials, books",
   },
   {
-    name: "Налоги и сборы",
-    description: "Taxes, government fees, fines, bank fees",
+    name: "Расходы на родителей",
+    description: "Support, gifts, and help for parents and family elders",
   },
   {
-    name: "Прочее",
+    name: "Расходы на любимого человека",
+    description: "Spending on partner, romantic gifts, dates, anniversary presents",
+  },
+  {
+    name: "Уход за собой",
+    description: "Cosmetics, hair salon, barber, spa, beauty, personal grooming",
+  },
+  {
+    name: "Уход за домом",
+    description: "Cleaning supplies, household chemicals, laundry, home maintenance",
+  },
+  {
+    name: "Здоровье, спорт",
+    description: "Pharmacy, doctors, dental, gym, sports gear, supplements, fitness",
+  },
+  {
+    name: "Подарки",
+    description: "Presents for friends, colleagues, birthdays, occasions",
+  },
+  {
+    name: "Выплаты по кредиту",
+    description: "Loan repayments, credit card payments, mortgage interest, financing",
+  },
+  {
+    name: "Домашние животные",
+    description: "Pet food, veterinarian, grooming, toys, pet accessories",
+  },
+  {
+    name: "Хобби, увлечения",
+    description: "Hobby supplies, craft materials, musical instruments, collecting",
+  },
+  {
+    name: "Обеспечение страховых програм",
+    description: "Insurance premiums: health, car, home, life, travel insurance",
+  },
+  {
+    name: "Ремонт (мебель, техника)",
+    description: "Furniture, appliances, electronics, repair services, home equipment",
+  },
+  {
+    name: "Расходы на инвестирование",
+    description: "Investments, brokerage fees, stock purchases, savings deposits, crypto",
+  },
+  {
+    name: "Расходы на благотворительность",
+    description: "Charity donations, helping strangers, NGO contributions, alms",
+  },
+  {
+    name: "Дополнительные расходы",
     description: "Miscellaneous expenses that do not fit other categories",
     isFallback: true,
   },
