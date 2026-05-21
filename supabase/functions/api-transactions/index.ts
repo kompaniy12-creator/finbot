@@ -7,6 +7,7 @@
 import { adminClient } from "../_shared/supabase.ts";
 import { authenticateInitData, extractInitData } from "../_shared/webapp_auth.ts";
 import { handleOptions, json, unauthorized } from "../_shared/api_response.ts";
+import { loadEurRates, plnToEur } from "../_shared/eur_view.ts";
 
 interface FeedItem {
   kind: "receipt" | "expense";
@@ -15,6 +16,7 @@ interface FeedItem {
   amount: number;
   currency: string;
   amount_pln: number;
+  amount_eur: number;
   expense_date: string;
   family_member_id: string;
   category_id: string | null;
@@ -97,6 +99,12 @@ Deno.serve(async (req: Request) => {
     created_at: string;
   }>;
 
+  const dates = [
+    ...receipts.map((r) => r.receipt_date),
+    ...solos.map((e) => e.expense_date),
+  ];
+  const eurRates = await loadEurRates(sb, dates);
+
   const merged: FeedItem[] = [
     ...receipts.map<FeedItem>((r) => ({
       kind: "receipt",
@@ -105,6 +113,7 @@ Deno.serve(async (req: Request) => {
       amount: Number(r.total),
       currency: r.currency,
       amount_pln: Number(r.total_pln),
+      amount_eur: plnToEur(Number(r.total_pln), r.receipt_date, eurRates) ?? 0,
       expense_date: r.receipt_date,
       family_member_id: r.family_member_id,
       category_id: null,
@@ -121,6 +130,7 @@ Deno.serve(async (req: Request) => {
       amount: Number(e.amount),
       currency: e.currency,
       amount_pln: Number(e.amount_pln),
+      amount_eur: plnToEur(Number(e.amount_pln), e.expense_date, eurRates) ?? 0,
       expense_date: e.expense_date,
       family_member_id: e.family_member_id,
       category_id: e.category_id,

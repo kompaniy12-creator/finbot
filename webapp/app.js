@@ -54,12 +54,12 @@ async function loadCategoriesAndFamily() {
 
 async function loadKpis() {
   const r = await api("/api-stats?period=" + state.period).then((r) => r.json());
-  $("#kpi-total").textContent = (r.total_pln || 0).toFixed(2) + " PLN";
+  $("#kpi-total").textContent = (r.total_eur || 0).toFixed(2) + " EUR";
   $("#kpi-count").textContent = r.count || 0;
   if (r.top_category_id) {
     const c = state.categories.get(r.top_category_id);
     $("#kpi-top").textContent = (c ? c.name : "?") + " (" + (r.top_category_total || 0).toFixed(0) +
-      ")";
+      " EUR)";
   } else {
     $("#kpi-top").textContent = "-";
   }
@@ -202,11 +202,12 @@ function escapeHtml(s) {
 
 async function loadCharts() {
   // Donut by category: aggregate from /api-transactions (we already have first page).
+  // All chart values are in EUR (per-row, converted at expense_date rate).
   const byCat = new Map();
   for (const t of state.txItems) {
     const c = state.categories.get(t.category_id);
     const key = c ? c.name : "?";
-    byCat.set(key, (byCat.get(key) || 0) + Number(t.amount_pln || 0));
+    byCat.set(key, (byCat.get(key) || 0) + Number(t.amount_eur || 0));
   }
   const top = [...byCat.entries()].sort((a, b) => b[1] - a[1]);
   drawDonut(top);
@@ -233,7 +234,7 @@ function drawBarTop5(entries) {
     type: "bar",
     data: {
       labels: top5.map((e) => e[0]),
-      datasets: [{ label: "PLN", data: top5.map((e) => Number(e[1].toFixed(2))) }],
+      datasets: [{ label: "EUR", data: top5.map((e) => Number(e[1].toFixed(2))) }],
     },
     options: { indexAxis: "y", plugins: { legend: { display: false } } },
   });
@@ -243,14 +244,14 @@ function drawLineByDay() {
   destroy("line");
   const byDay = new Map();
   for (const t of state.txItems) {
-    byDay.set(t.expense_date, (byDay.get(t.expense_date) || 0) + Number(t.amount_pln || 0));
+    byDay.set(t.expense_date, (byDay.get(t.expense_date) || 0) + Number(t.amount_eur || 0));
   }
   const days = [...byDay.keys()].sort();
   state.charts.line = new Chart(document.getElementById("line"), {
     type: "line",
     data: {
       labels: days,
-      datasets: [{ label: "PLN", data: days.map((d) => Number(byDay.get(d).toFixed(2))) }],
+      datasets: [{ label: "EUR", data: days.map((d) => Number(byDay.get(d).toFixed(2))) }],
     },
     options: { plugins: { legend: { display: false } } },
   });

@@ -5,6 +5,7 @@
 import { adminClient } from "../_shared/supabase.ts";
 import { authenticateInitData, extractInitData } from "../_shared/webapp_auth.ts";
 import { forbidden, handleOptions, json, unauthorized } from "../_shared/api_response.ts";
+import { loadEurRates, plnToEur } from "../_shared/eur_view.ts";
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return handleOptions(req);
@@ -48,6 +49,24 @@ Deno.serve(async (req: Request) => {
     .order("line_index", { ascending: true });
   if (lineRes.error) return json(req, { error: lineRes.error.message }, 500);
 
+  const eurRates = await loadEurRates(sb, [receipt.receipt_date]);
+  const lines = (lineRes.data ?? []) as Array<{
+    id: string;
+    name: string;
+    amount: number;
+    currency: string;
+    amount_pln: number;
+    category_id: string;
+    line_index: number;
+    needs_review: boolean;
+    needs_confirmation: boolean;
+    created_at: string;
+  }>;
+  const items = lines.map((l) => ({
+    ...l,
+    amount_eur: plnToEur(Number(l.amount_pln), receipt.receipt_date, eurRates) ?? 0,
+  }));
+
   return json(req, {
     receipt: {
       id: receipt.id,
@@ -55,8 +74,9 @@ Deno.serve(async (req: Request) => {
       total: Number(receipt.total),
       currency: receipt.currency,
       total_pln: Number(receipt.total_pln),
+      total_eur: plnToEur(Number(receipt.total_pln), receipt.receipt_date, eurRates) ?? 0,
       receipt_date: receipt.receipt_date,
     },
-    items: lineRes.data ?? [],
+    items,
   });
 });
