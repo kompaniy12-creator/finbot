@@ -144,6 +144,15 @@ function renderTransactions() {
       ul.appendChild(li);
       if (expanded) {
         const items = state.expandedReceipts.get(t.id) || [];
+        const warn = state.receiptWarnings && state.receiptWarnings.get(t.id);
+        if (warn) {
+          const wli = document.createElement("li");
+          wli.className = "tx-sub tx-warn";
+          wli.innerHTML =
+            `<div class="name">⚠ Сохранено ${warn.saved} из ${warn.ocr} распознанных позиций. ` +
+            `Удали чек и пришли фото заново, либо проверь руками.</div>`;
+          ul.appendChild(wli);
+        }
         for (const ln of items) {
           const sub = document.createElement("li");
           sub.className = "tx-sub";
@@ -294,6 +303,13 @@ async function toggleReceipt(id) {
   try {
     const r = await api("/api-receipt-items?id=" + encodeURIComponent(id)).then((r) => r.json());
     state.expandedReceipts.set(id, r.items || []);
+    if (r.receipt && r.receipt.verified === false) {
+      state.receiptWarnings = state.receiptWarnings || new Map();
+      state.receiptWarnings.set(id, {
+        ocr: r.receipt.ocr_item_count,
+        saved: r.receipt.saved_item_count,
+      });
+    }
     renderTransactions();
   } catch (e) {
     TG.showAlert("Не удалось загрузить позиции чека.");

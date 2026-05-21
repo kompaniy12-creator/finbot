@@ -67,6 +67,9 @@ Deno.serve(async (req: Request) => {
     amount_eur: plnToEur(Number(l.amount_pln), receipt.receipt_date, eurRates) ?? 0,
   }));
 
+  // OCR-detected item count for the verification badge in the UI.
+  const ocrItems = Array.isArray(receipt.items) ? (receipt.items as unknown[]).length : null;
+
   return json(req, {
     receipt: {
       id: receipt.id,
@@ -76,6 +79,9 @@ Deno.serve(async (req: Request) => {
       total_pln: Number(receipt.total_pln),
       total_eur: plnToEur(Number(receipt.total_pln), receipt.receipt_date, eurRates) ?? 0,
       receipt_date: receipt.receipt_date,
+      ocr_item_count: ocrItems,
+      saved_item_count: items.length,
+      verified: ocrItems !== null ? items.length === ocrItems : null,
     },
     items,
   });

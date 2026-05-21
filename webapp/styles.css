@@ -208,6 +208,16 @@ canvas {
   padding-left: 24px !important;
   opacity: 0.85;
 }
+.tx-warn {
+  background: rgba(255, 152, 0, 0.12);
+  border-left: 3px solid #ff9800;
+  padding-left: 12px !important;
+  border-radius: 4px;
+}
+.tx-warn .name {
+  font-size: 12px;
+  line-height: 1.4;
+}
 
 .tx-list li {
   align-items: center;

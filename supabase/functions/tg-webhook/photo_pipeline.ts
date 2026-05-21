@@ -13,9 +13,15 @@ import { todayWarsawIso } from "../_shared/dates.ts";
 import { categorize } from "../_shared/categorizer.ts";
 import { defaultEmbedFn } from "../_shared/embedder.ts";
 import { buildClaudeFallback } from "../_shared/claude_fallback.ts";
-import { toPln } from "../_shared/currency.ts";
+import { getRate, toPln } from "../_shared/currency.ts";
 import { log } from "../_shared/log.ts";
 import type { ProgressEmitter } from "../_shared/progress.ts";
+import { mapWithConcurrency } from "../_shared/concurrency.ts";
+
+// Bounded parallelism for per-item categorization. Higher = faster but more
+// concurrent Claude-fallback requests. 6 keeps us under common rate limits
+// while shrinking a 38-item receipt from ~60s sequential to ~10s.
+const ITEM_CONCURRENCY = 6;
 
 const SIGNED_URL_TTL_SEC = 300;
 const STORAGE_BUCKET = "receipts";
@@ -46,7 +52,19 @@ export type PhotoOutcome =
     kind: "ok";
     receipt_id: string;
     expense_count: number;
+    expected_count: number;
+    verified: boolean;
     reconciled: boolean;
+    merchant: string | null;
+    total: number;
+    currency: string;
+    items: ReceiptLineSummary[];
+  }
+  | {
+    kind: "partial";
+    receipt_id: string;
+    expense_count: number;
+    expected_count: number;
     merchant: string | null;
     total: number;
     currency: string;
@@ -237,7 +255,8 @@ export async function processPhotoMessage(args: {
   }
   const receiptId = (recIns.data as { id: string }).id;
 
-  if (p) await p.update(`💾 Сохраняю ${receipt.items.length} позиций...`);
+  const expected = receipt.items.length;
+  if (p) await p.update(`💾 Распознаю ${expected} позиций (категории)...`);
 
   // Preload category names for the summary message.
   const catRows = await args.sb.from("categories").select("id, name");
@@ -246,53 +265,98 @@ export async function processPhotoMessage(args: {
     catNameById.set(c.id, c.name);
   }
 
-  // For each item: categorize, currency convert (same date as receipt), insert
+  // Receipt items all share the same date+currency, so one FX rate lookup
+  // beats 38 sequential toPln calls.
+  let rate: number;
+  try {
+    rate = await getRate(args.sb, receipt.currency, receipt.receipt_date);
+  } catch (err) {
+    log("warn", "photo_rate_fallback", { error: (err as Error).message });
+    rate = 1.0; // graceful fallback; needs_review will flag for follow-up
+  }
+  const toPlnLocal = (amount: number) => Math.round(amount * rate * 100) / 100;
+
+  // Bounded parallel categorization (max ITEM_CONCURRENCY at once).
   const embedFn = defaultEmbedFn();
   const fallback = buildClaudeFallback(args.sb, args.member.id);
-  let count = 0;
-  const summary: ReceiptLineSummary[] = [];
-  for (let i = 0; i < receipt.items.length; i++) {
-    const item = receipt.items[i]!;
-    const cat = await categorize(
-      { sb: args.sb, embedFn, fallback },
-      {
-        name: item.name,
-        nameNormalizedEn: item.name_normalized_en,
-        familyMemberId: args.member.id,
-      },
-    );
-    const amountPln = await toPln(args.sb, item.amount, receipt.currency, receipt.receipt_date);
-    const exp = await args.sb.from("expenses").insert({
-      name: item.name,
-      name_normalized: item.name_normalized_en,
-      expense_date: receipt.receipt_date,
-      amount: item.amount,
-      currency: receipt.currency,
-      amount_pln: amountPln,
-      category_id: cat.categoryId,
-      family_member_id: args.member.id,
-      source: "photo",
+  const prepared = await mapWithConcurrency(
+    receipt.items,
+    ITEM_CONCURRENCY,
+    async (item, _i) =>
+      await categorize(
+        { sb: args.sb, embedFn, fallback },
+        {
+          name: item.name,
+          nameNormalizedEn: item.name_normalized_en,
+          familyMemberId: args.member.id,
+        },
+      ),
+  );
+
+  if (p) await p.update(`💾 Сохраняю ${expected} позиций...`);
+
+  // Build all rows in memory, then ONE atomic bulk INSERT.
+  const rows = receipt.items.map((item, i) => ({
+    name: item.name,
+    name_normalized: item.name_normalized_en,
+    expense_date: receipt.receipt_date,
+    amount: item.amount,
+    currency: receipt.currency,
+    amount_pln: toPlnLocal(item.amount),
+    category_id: prepared[i]!.categoryId,
+    family_member_id: args.member.id,
+    source: "photo",
+    receipt_id: receiptId,
+    needs_review: !recon.ok,
+    embedding: prepared[i]!.embedding,
+    telegram_message_id: args.telegramMessageId,
+    line_index: i,
+  }));
+
+  const bulkIns = await args.sb.from("expenses").insert(rows).select("id");
+  if (bulkIns.error) {
+    log("error", "photo_bulk_insert_failed", { error: bulkIns.error.message });
+  }
+  const insertedHint = bulkIns.data?.length ?? 0;
+
+  // Mandatory verification: trust nothing, count what's actually in the DB.
+  const verifyRes = await args.sb.from("expenses")
+    .select("id", { count: "exact", head: true })
+    .eq("receipt_id", receiptId)
+    .eq("archived", false);
+  const verifiedCount = verifyRes.count ?? insertedHint;
+
+  const summary: ReceiptLineSummary[] = receipt.items.map((item, i) => ({
+    name: item.name,
+    amount: item.amount,
+    currency: receipt.currency,
+    category_name: catNameById.get(prepared[i]!.categoryId) ?? "?",
+  }));
+
+  if (verifiedCount < expected) {
+    log("warn", "photo_partial_save", {
       receipt_id: receiptId,
-      needs_review: !recon.ok,
-      embedding: cat.embedding,
-      telegram_message_id: args.telegramMessageId,
-      line_index: i,
+      expected,
+      verified: verifiedCount,
     });
-    if (!exp.error) {
-      count++;
-      summary.push({
-        name: item.name,
-        amount: item.amount,
-        currency: receipt.currency,
-        category_name: catNameById.get(cat.categoryId) ?? "?",
-      });
-    }
+    return {
+      kind: "partial",
+      receipt_id: receiptId,
+      expense_count: verifiedCount,
+      expected_count: expected,
+      merchant: receipt.merchant ?? null,
+      total: receipt.total,
+      currency: receipt.currency,
+      items: summary,
+    };
   }
 
   return {
     kind: "ok",
     receipt_id: receiptId,
-    expense_count: count,
+    expense_count: verifiedCount,
+    expected_count: expected,
+    verified: true,
     reconciled: recon.ok,
     merchant: receipt.merchant ?? null,
     total: receipt.total,

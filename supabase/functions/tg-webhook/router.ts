@@ -223,14 +223,20 @@ export async function dispatch(
     }
 
     const prog = await startProgress(msg.chat.id, "📸 Принимаю фото...");
-    const outcome = await processPhotoMessage({
-      sb: input.sb,
-      member: input.member,
-      fileId: largest.file_id,
-      telegramMessageId: msg.message_id,
-      progress: prog ?? undefined,
-    });
-    const text = formatPhotoReply(outcome);
+    let text: string;
+    try {
+      const outcome = await processPhotoMessage({
+        sb: input.sb,
+        member: input.member,
+        fileId: largest.file_id,
+        telegramMessageId: msg.message_id,
+        progress: prog ?? undefined,
+      });
+      text = formatPhotoReply(outcome);
+    } catch (err) {
+      text = "❌ Не смог обработать чек: " + ((err as Error).message ?? "internal_error") +
+        "\nПопробуй прислать фото ещё раз.";
+    }
     if (prog) {
       await prog.update(text);
       return null;
@@ -275,11 +281,10 @@ function formatPhotoReply(outcome: PhotoOutcome): string {
       } ${outcome.existing_currency}, ${outcome.existing_date}.\n\nЕсли это другая покупка, удали старый чек в Mini App и пришли фото заново.`;
     }
     case "ok": {
-      const header = outcome.merchant
-        ? `✅ Чек: ${outcome.merchant} (${
-          outcome.total.toFixed(2)
-        } ${outcome.currency}, ${outcome.expense_count} поз.)`
-        : `✅ Чек: ${outcome.total.toFixed(2)} ${outcome.currency}, ${outcome.expense_count} поз.`;
+      const merchantStr = outcome.merchant ? `${outcome.merchant} ` : "";
+      const header = `✅ ${merchantStr}(${
+        outcome.total.toFixed(2)
+      } ${outcome.currency}, проверено ${outcome.expense_count}/${outcome.expected_count} поз.)`;
       const lines = outcome.items.map((it) =>
         `- ${it.name} → ${it.category_name}: ${it.amount.toFixed(2)} ${it.currency}`
       );
@@ -288,6 +293,14 @@ function formatPhotoReply(outcome: PhotoOutcome): string {
         : "\n\n⚠ Сумма позиций не совпала с итогом (±5%), пометил для ревью.";
       const hint = "\n\n_Категорию можно поправить в Mini App, если что-то ушло не туда._";
       return `${header}\n\n${lines.join("\n")}${warn}${hint}`;
+    }
+    case "partial": {
+      const merchantStr = outcome.merchant ? `${outcome.merchant} ` : "";
+      const header =
+        `⚠ ${merchantStr}сохранил ${outcome.expense_count} из ${outcome.expected_count} поз. (итог ${
+          outcome.total.toFixed(2)
+        } ${outcome.currency})`;
+      return `${header}\n\nЧасть позиций не сохранилась. Удали чек в Mini App и пришли фото заново, либо проверь руками что записалось.`;
     }
   }
 }
