@@ -34,5 +34,17 @@ window.TG = (function () {
         alert(msg);
       }
     },
+    showConfirm: (msg) =>
+      new Promise((resolve) => {
+        try {
+          if (typeof w.showConfirm === "function") {
+            w.showConfirm(msg, (ok) => resolve(Boolean(ok)));
+          } else {
+            resolve(confirm(msg));
+          }
+        } catch (_) {
+          resolve(confirm(msg));
+        }
+      }),
   };
 })();

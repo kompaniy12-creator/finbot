@@ -96,9 +96,18 @@ function renderTransactions() {
         `<div class="name"><span class="caret">${caret}</span> ${
           escapeHtml(t.title)
         }<div class="meta">${meta}</div></div>` +
-        `<div class="amt">${Number(t.amount).toFixed(2)} ${t.currency}</div>`;
+        `<div class="amt">${Number(t.amount).toFixed(2)} ${t.currency}</div>` +
+        `<button class="tx-del" type="button" title="Удалить" aria-label="Удалить">×</button>`;
       li.style.cursor = "pointer";
-      li.addEventListener("click", () => toggleReceipt(t.id));
+      li.addEventListener("click", (ev) => {
+        if (ev.target && ev.target.classList.contains("tx-del")) return;
+        toggleReceipt(t.id);
+      });
+      const delBtn = li.querySelector(".tx-del");
+      delBtn.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        deleteItem("receipt", t.id, `чек "${t.title}"`);
+      });
       ul.appendChild(li);
       if (expanded) {
         const items = state.expandedReceipts.get(t.id) || [];
@@ -110,7 +119,12 @@ function renderTransactions() {
             `<div class="name">${escapeHtml(ln.name)}<div class="meta">${cat ? cat.name : "?"}${
               ln.needs_review ? " · нужна проверка" : ""
             }</div></div>` +
-            `<div class="amt">${Number(ln.amount).toFixed(2)} ${ln.currency}</div>`;
+            `<div class="amt">${Number(ln.amount).toFixed(2)} ${ln.currency}</div>` +
+            `<button class="tx-del" type="button" title="Удалить" aria-label="Удалить">×</button>`;
+          sub.querySelector(".tx-del").addEventListener("click", (ev) => {
+            ev.stopPropagation();
+            deleteItem("expense", ln.id, `позицию "${ln.name}"`, t.id);
+          });
           ul.appendChild(sub);
         }
       }
@@ -120,9 +134,47 @@ function renderTransactions() {
         (fm ? ` | ${escapeHtml(fm.name)}` : "");
       li.innerHTML =
         `<div class="name">${escapeHtml(t.title)}<div class="meta">${meta}</div></div>` +
-        `<div class="amt">${Number(t.amount).toFixed(2)} ${t.currency}</div>`;
+        `<div class="amt">${Number(t.amount).toFixed(2)} ${t.currency}</div>` +
+        `<button class="tx-del" type="button" title="Удалить" aria-label="Удалить">×</button>`;
+      li.querySelector(".tx-del").addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        deleteItem("expense", t.id, `запись "${t.title}"`);
+      });
       ul.appendChild(li);
     }
+  }
+}
+
+async function deleteItem(kind, id, label, receiptId) {
+  const ok = await TG.showConfirm(`Удалить ${label}?`);
+  if (!ok) return;
+  try {
+    const r = await api("/api-delete-item", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ kind, id }),
+    });
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({}));
+      TG.showAlert("Не удалось удалить: " + (err.error || r.status));
+      return;
+    }
+    if (kind === "receipt") {
+      state.txItems = state.txItems.filter((x) => !(x.kind === "receipt" && x.id === id));
+      state.expandedReceipts.delete(id);
+    } else if (receiptId) {
+      const items = (state.expandedReceipts.get(receiptId) || []).filter((x) => x.id !== id);
+      state.expandedReceipts.set(receiptId, items);
+      const parent = state.txItems.find((x) => x.kind === "receipt" && x.id === receiptId);
+      if (parent) parent.item_count = Math.max(0, parent.item_count - 1);
+    } else {
+      state.txItems = state.txItems.filter((x) => !(x.kind === "expense" && x.id === id));
+    }
+    renderTransactions();
+    loadKpis().catch(() => {});
+    loadCharts();
+  } catch (e) {
+    TG.showAlert("Ошибка сети при удалении.");
   }
 }
 

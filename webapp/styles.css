@@ -181,6 +181,31 @@ canvas {
   opacity: 0.85;
 }
 
+.tx-list li {
+  align-items: center;
+}
+.tx-list .amt {
+  white-space: nowrap;
+  margin-right: 8px;
+}
+.tx-del {
+  background: transparent;
+  color: var(--hint);
+  border: none;
+  font-size: 18px;
+  line-height: 1;
+  padding: 4px 6px;
+  margin-left: 4px;
+  border-radius: 4px;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+.tx-del:hover,
+.tx-del:active {
+  background: var(--secondary-bg);
+  color: var(--text);
+}
+
 .tx-pagination {
   text-align: center;
   margin-top: 12px;
