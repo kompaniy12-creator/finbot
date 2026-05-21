@@ -107,6 +107,12 @@ async function loadTransactions(reset = false) {
   renderTransactions();
 }
 
+function categoryMetaHtml(catId) {
+  const c = state.categories.get(catId);
+  const name = c ? c.name : "?";
+  return `<span class="cat-link" data-cat-id="${catId || ""}">${escapeHtml(name)}</span>`;
+}
+
 function renderTransactions() {
   const ul = $("#tx-list");
   ul.innerHTML = "";
@@ -141,34 +147,108 @@ function renderTransactions() {
         for (const ln of items) {
           const sub = document.createElement("li");
           sub.className = "tx-sub";
-          const cat = state.categories.get(ln.category_id);
           sub.innerHTML =
-            `<div class="name">${escapeHtml(ln.name)}<div class="meta">${cat ? cat.name : "?"}${
-              ln.needs_review ? " · нужна проверка" : ""
-            }</div></div>` +
+            `<div class="name">${escapeHtml(ln.name)}<div class="meta">${
+              categoryMetaHtml(ln.category_id)
+            }${ln.needs_review ? " · нужна проверка" : ""}</div></div>` +
             `<div class="amt">${Number(ln.amount).toFixed(2)} ${ln.currency}</div>` +
             `<button class="tx-del" type="button" title="Удалить" aria-label="Удалить">×</button>`;
           sub.querySelector(".tx-del").addEventListener("click", (ev) => {
             ev.stopPropagation();
             deleteItem("expense", ln.id, `позицию "${ln.name}"`, t.id);
           });
+          const link = sub.querySelector(".cat-link");
+          if (link) {
+            link.addEventListener("click", (ev) => {
+              ev.stopPropagation();
+              openCategoryPicker(ln, t.id);
+            });
+          }
           ul.appendChild(sub);
         }
       }
     } else {
-      const cat = state.categories.get(t.category_id);
-      const meta = `${t.expense_date} | ${cat ? cat.name : "?"}` +
-        (fm ? ` | ${escapeHtml(fm.name)}` : "");
+      const metaPrefix = `${t.expense_date} | `;
+      const metaSuffix = fm ? ` | ${escapeHtml(fm.name)}` : "";
       li.innerHTML =
-        `<div class="name">${escapeHtml(t.title)}<div class="meta">${meta}</div></div>` +
+        `<div class="name">${escapeHtml(t.title)}<div class="meta">${metaPrefix}${
+          categoryMetaHtml(t.category_id)
+        }${metaSuffix}</div></div>` +
         `<div class="amt">${Number(t.amount).toFixed(2)} ${t.currency}</div>` +
         `<button class="tx-del" type="button" title="Удалить" aria-label="Удалить">×</button>`;
       li.querySelector(".tx-del").addEventListener("click", (ev) => {
         ev.stopPropagation();
         deleteItem("expense", t.id, `запись "${t.title}"`);
       });
+      const link = li.querySelector(".cat-link");
+      if (link) {
+        link.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          openCategoryPicker(t, null);
+        });
+      }
       ul.appendChild(li);
     }
+  }
+}
+
+function openCategoryPicker(expense, receiptId) {
+  const modal = $("#cat-modal");
+  const list = $("#cat-modal-list");
+  $("#cat-modal-title").textContent = `Категория для: ${expense.name || expense.title || "запись"}`;
+  list.innerHTML = "";
+  const sorted = [...state.categories.values()].sort((a, b) => {
+    if (a.is_fallback !== b.is_fallback) return a.is_fallback ? 1 : -1;
+    return a.name.localeCompare(b.name, "ru");
+  });
+  for (const c of sorted) {
+    const li = document.createElement("li");
+    if (c.id === expense.category_id) li.className = "active";
+    li.textContent = c.name;
+    li.addEventListener("click", () => recategorize(expense, c, receiptId));
+    list.appendChild(li);
+  }
+  modal.classList.remove("hidden");
+}
+
+function closeCategoryPicker() {
+  $("#cat-modal").classList.add("hidden");
+}
+
+async function recategorize(expense, category, receiptId) {
+  if (expense.category_id === category.id) {
+    closeCategoryPicker();
+    return;
+  }
+  try {
+    const r = await api("/api-recategorize", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ expense_id: expense.id, category_id: category.id }),
+    });
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({}));
+      TG.showAlert("Не удалось изменить категорию: " + (err.error || r.status));
+      return;
+    }
+    expense.category_id = category.id;
+    if (receiptId) {
+      const items = state.expandedReceipts.get(receiptId) || [];
+      const idx = items.findIndex((x) => x.id === expense.id);
+      if (idx >= 0) items[idx] = { ...items[idx], category_id: category.id };
+      state.expandedReceipts.set(receiptId, items);
+    } else {
+      const idx = state.txItems.findIndex(
+        (x) => x.kind === "expense" && x.id === expense.id,
+      );
+      if (idx >= 0) state.txItems[idx] = { ...state.txItems[idx], category_id: category.id };
+    }
+    closeCategoryPicker();
+    renderTransactions();
+    loadKpis().catch(() => {});
+    loadCharts();
+  } catch (_e) {
+    TG.showAlert("Ошибка сети при смене категории.");
   }
 }
 
@@ -305,6 +385,11 @@ async function main() {
 
   await loadCategoriesAndFamily();
   await refresh();
+
+  // Category-picker modal close handlers
+  $("#cat-modal-close").addEventListener("click", closeCategoryPicker);
+  document.querySelector("#cat-modal .modal-backdrop")
+    .addEventListener("click", closeCategoryPicker);
 
   // Period tabs
   const customBox = $("#custom-range");

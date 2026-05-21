@@ -265,10 +265,21 @@ function formatPhotoReply(outcome: PhotoOutcome): string {
       return `Vision не сработал: ${outcome.error}`;
     case "parse_failed":
       return "Не смог распознать чек. Сфотографируй ровнее и при хорошем свете.";
-    case "ok":
-      return outcome.reconciled
-        ? `Записал чек, ${outcome.expense_count} позиций.`
-        : `Записал чек, ${outcome.expense_count} позиций. Внимание: сумма позиций не совпала с итогом (±5%), пометил для ревью.`;
+    case "ok": {
+      const header = outcome.merchant
+        ? `✅ Чек: ${outcome.merchant} (${
+          outcome.total.toFixed(2)
+        } ${outcome.currency}, ${outcome.expense_count} поз.)`
+        : `✅ Чек: ${outcome.total.toFixed(2)} ${outcome.currency}, ${outcome.expense_count} поз.`;
+      const lines = outcome.items.map((it) =>
+        `- ${it.name} → ${it.category_name}: ${it.amount.toFixed(2)} ${it.currency}`
+      );
+      const warn = outcome.reconciled
+        ? ""
+        : "\n\n⚠ Сумма позиций не совпала с итогом (±5%), пометил для ревью.";
+      const hint = "\n\n_Категорию можно поправить в Mini App, если что-то ушло не туда._";
+      return `${header}\n\n${lines.join("\n")}${warn}${hint}`;
+    }
   }
 }
 

@@ -66,6 +66,17 @@
       <footer><small id="version">FinBot v1.0</small></footer>
     </main>
 
+    <div id="cat-modal" class="modal hidden" role="dialog" aria-modal="true">
+      <div class="modal-backdrop"></div>
+      <div class="modal-card">
+        <header class="modal-head">
+          <h3 id="cat-modal-title">Выбрать категорию</h3>
+          <button id="cat-modal-close" type="button" aria-label="Закрыть">×</button>
+        </header>
+        <ul id="cat-modal-list" class="modal-cat-list"></ul>
+      </div>
+    </div>
+
     <script src="./tg-webapp.js"></script>
     <script src="./app.js"></script>
   </body>

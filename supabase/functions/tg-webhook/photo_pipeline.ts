@@ -20,13 +20,29 @@ import type { ProgressEmitter } from "../_shared/progress.ts";
 const SIGNED_URL_TTL_SEC = 300;
 const STORAGE_BUCKET = "receipts";
 
+export interface ReceiptLineSummary {
+  name: string;
+  amount: number;
+  currency: string;
+  category_name: string;
+}
+
 export type PhotoOutcome =
   | { kind: "heic_unsupported" }
   | { kind: "unsupported_mime"; mime: string }
   | { kind: "download_failed" }
   | { kind: "vision_failed"; error: string }
   | { kind: "parse_failed" }
-  | { kind: "ok"; receipt_id: string; expense_count: number; reconciled: boolean };
+  | {
+    kind: "ok";
+    receipt_id: string;
+    expense_count: number;
+    reconciled: boolean;
+    merchant: string | null;
+    total: number;
+    currency: string;
+    items: ReceiptLineSummary[];
+  };
 
 export async function processPhotoMessage(args: {
   sb: SupabaseClient;
@@ -147,10 +163,18 @@ export async function processPhotoMessage(args: {
 
   if (p) await p.update(`💾 Сохраняю ${receipt.items.length} позиций...`);
 
+  // Preload category names for the summary message.
+  const catRows = await args.sb.from("categories").select("id, name");
+  const catNameById = new Map<string, string>();
+  for (const c of (catRows.data ?? []) as Array<{ id: string; name: string }>) {
+    catNameById.set(c.id, c.name);
+  }
+
   // For each item: categorize, currency convert (same date as receipt), insert
   const embedFn = defaultEmbedFn();
   const fallback = buildClaudeFallback(args.sb, args.member.id);
   let count = 0;
+  const summary: ReceiptLineSummary[] = [];
   for (let i = 0; i < receipt.items.length; i++) {
     const item = receipt.items[i]!;
     const cat = await categorize(
@@ -178,10 +202,27 @@ export async function processPhotoMessage(args: {
       telegram_message_id: args.telegramMessageId,
       line_index: i,
     });
-    if (!exp.error) count++;
+    if (!exp.error) {
+      count++;
+      summary.push({
+        name: item.name,
+        amount: item.amount,
+        currency: receipt.currency,
+        category_name: catNameById.get(cat.categoryId) ?? "?",
+      });
+    }
   }
 
-  return { kind: "ok", receipt_id: receiptId, expense_count: count, reconciled: recon.ok };
+  return {
+    kind: "ok",
+    receipt_id: receiptId,
+    expense_count: count,
+    reconciled: recon.ok,
+    merchant: receipt.merchant ?? null,
+    total: receipt.total,
+    currency: receipt.currency,
+    items: summary,
+  };
 }
 
 async function downloadTelegramFile(fileId: string): Promise<Uint8Array | null> {
