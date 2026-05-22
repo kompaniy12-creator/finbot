@@ -478,9 +478,9 @@ function drawDonut(entries) {
           : data.map((_, i) => CHART_PALETTE[i % CHART_PALETTE.length]),
         borderColor: "rgba(255,255,255,.34)",
         borderWidth: 1,
-        borderRadius: 8,
-        hoverOffset: 12,
-        spacing: 2,
+        borderRadius: 0,
+        hoverOffset: 8,
+        spacing: 0,
       }],
     },
     options: {
