@@ -37,7 +37,19 @@ export function startCommand(member: FamilyMember): CommandReply {
 
 export function helpCommand(member: FamilyMember): CommandReply {
   const adminOnly = member.role === "admin"
-    ? "\n\nДля админа:\n/health - статус системы\n/audit <id> - история изменений траты\n/budget - бюджет Anthropic"
+    ? [
+      "",
+      "",
+      "Для админа:",
+      "/health - статус системы",
+      "/audit <id> - история изменений траты",
+      "/budget - бюджет Anthropic",
+      "/members - кто имеет доступ",
+      "/grant <tid> [имя] - дать доступ",
+      "/revoke <tid> - отозвать доступ",
+      "/promote <tid> - сделать админом",
+      "/demote <tid> - снять админа",
+    ].join("\n")
     : "";
   return {
     text: [
@@ -45,11 +57,11 @@ export function helpCommand(member: FamilyMember): CommandReply {
       "",
       "/start - приветствие",
       "/help - эта справка",
-      "/categories - список из 17 категорий",
+      "/categories - список категорий",
       "/dashboard - открыть дашборд",
-      "/history - последние траты (с M7)",
-      "/stats - сводка за месяц (с M7)",
-      "/undo - отменить последнюю (с M7)",
+      "/history - последние траты",
+      "/stats - сводка за месяц",
+      "/undo - отменить последнюю",
       "/recurring - регулярные траты (с M14)",
     ].join("\n") + adminOnly,
   };
@@ -161,6 +173,148 @@ export function unauthorizedReply(): CommandReply {
   return {
     text: "Этот бот доступен только семье. Если ты семья и видишь это, свяжись с админом.",
   };
+}
+
+export async function membersCommand(sb: SupabaseClient): Promise<CommandReply> {
+  const res = await sb
+    .from("family_members")
+    .select("name, telegram_id, role, active, username")
+    .order("active", { ascending: false })
+    .order("role", { ascending: true })
+    .order("name", { ascending: true });
+  if (res.error) return { text: `DB error: ${res.error.message}` };
+  const rows = (res.data ?? []) as Array<{
+    name: string;
+    telegram_id: number;
+    role: string;
+    active: boolean;
+    username: string | null;
+  }>;
+  if (rows.length === 0) return { text: "Список пуст." };
+  const lines = rows.map((r) => {
+    const status = r.active ? "" : " (отключен)";
+    const tag = r.username ? ` @${r.username}` : "";
+    const role = r.role === "admin" ? " ⭐" : "";
+    return `- ${r.name}${tag} [${r.telegram_id}]${role}${status}`;
+  });
+  return {
+    text: [
+      `Участники (${rows.length}):`,
+      "",
+      ...lines,
+      "",
+      "Управление: /grant <telegram_id> [имя], /revoke <telegram_id>, /promote <telegram_id>, /demote <telegram_id>.",
+    ].join("\n"),
+  };
+}
+
+export async function grantCommand(
+  sb: SupabaseClient,
+  args: string,
+): Promise<CommandReply> {
+  const m = args.trim().match(/^(\d{4,})(?:\s+(.+))?$/);
+  if (!m) {
+    return {
+      text: "Использование: /grant <telegram_id> [имя]\nПример: /grant 326628865 Den",
+    };
+  }
+  const tid = Number(m[1]);
+  const name = (m[2] ?? "Member").trim().slice(0, 80) || "Member";
+
+  const existing = await sb
+    .from("family_members")
+    .select("id, name, role, active")
+    .eq("telegram_id", tid)
+    .maybeSingle();
+  if (existing.error) return { text: `DB error: ${existing.error.message}` };
+
+  if (existing.data) {
+    const row = existing.data as { id: string; name: string; role: string; active: boolean };
+    if (row.active) {
+      return { text: `${row.name} (${tid}) уже имеет доступ (${row.role}).` };
+    }
+    const upd = await sb.from("family_members").update({ active: true }).eq("id", row.id);
+    if (upd.error) return { text: `DB error: ${upd.error.message}` };
+    return { text: `✅ Доступ восстановлен: ${row.name} (${tid}).` };
+  }
+
+  const ins = await sb.from("family_members").insert({
+    name,
+    telegram_id: tid,
+    role: "member",
+    active: true,
+  });
+  if (ins.error) return { text: `DB error: ${ins.error.message}` };
+  return { text: `✅ Добавлен: ${name} (${tid}). Он может сразу пользоваться ботом.` };
+}
+
+export async function revokeCommand(
+  sb: SupabaseClient,
+  args: string,
+  actor: FamilyMember,
+): Promise<CommandReply> {
+  const tid = Number(args.trim());
+  if (!tid || !Number.isInteger(tid)) {
+    return { text: "Использование: /revoke <telegram_id>" };
+  }
+  if (tid === actor.telegram_id) {
+    return { text: "Нельзя отозвать доступ у самого себя." };
+  }
+  const row = await sb
+    .from("family_members")
+    .select("id, name, active")
+    .eq("telegram_id", tid)
+    .maybeSingle();
+  if (row.error) return { text: `DB error: ${row.error.message}` };
+  const m = row.data as { id: string; name: string; active: boolean } | null;
+  if (!m) return { text: `Не нашёл участника с telegram_id=${tid}.` };
+  if (!m.active) return { text: `${m.name} уже отключен.` };
+  const upd = await sb.from("family_members").update({ active: false }).eq("id", m.id);
+  if (upd.error) return { text: `DB error: ${upd.error.message}` };
+  return { text: `🚫 Доступ отозван: ${m.name} (${tid}).` };
+}
+
+export async function promoteCommand(
+  sb: SupabaseClient,
+  args: string,
+): Promise<CommandReply> {
+  return await changeRoleCommand(sb, args, "admin");
+}
+
+export async function demoteCommand(
+  sb: SupabaseClient,
+  args: string,
+  actor: FamilyMember,
+): Promise<CommandReply> {
+  const tid = Number(args.trim());
+  if (tid === actor.telegram_id) {
+    return { text: "Нельзя снять с себя роль админа (нужен хотя бы один админ)." };
+  }
+  return await changeRoleCommand(sb, args, "member");
+}
+
+async function changeRoleCommand(
+  sb: SupabaseClient,
+  args: string,
+  newRole: "admin" | "member",
+): Promise<CommandReply> {
+  const tid = Number(args.trim());
+  if (!tid || !Number.isInteger(tid)) {
+    return { text: `Использование: /${newRole === "admin" ? "promote" : "demote"} <telegram_id>` };
+  }
+  const row = await sb
+    .from("family_members")
+    .select("id, name, role")
+    .eq("telegram_id", tid)
+    .maybeSingle();
+  if (row.error) return { text: `DB error: ${row.error.message}` };
+  const m = row.data as { id: string; name: string; role: string } | null;
+  if (!m) return { text: `Не нашёл участника с telegram_id=${tid}.` };
+  if (m.role === newRole) return { text: `${m.name} уже ${newRole}.` };
+  const upd = await sb.from("family_members").update({ role: newRole }).eq("id", m.id);
+  if (upd.error) return { text: `DB error: ${upd.error.message}` };
+  const verb = newRole === "admin" ? "повышен до админа" : "понижен до участника";
+  return { text: `✅ ${m.name} ${verb}.` };
 }
 
 export function unsupportedReply(): CommandReply {

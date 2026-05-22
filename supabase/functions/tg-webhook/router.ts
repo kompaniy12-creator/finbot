@@ -9,9 +9,14 @@ import {
   categoriesCommand,
   type CommandReply,
   dashboardCommand,
+  demoteCommand,
+  grantCommand,
   healthCommand,
   helpCommand,
   historyCommand,
+  membersCommand,
+  promoteCommand,
+  revokeCommand,
   startCommand,
   statsCommand,
   unauthorizedReply,
@@ -43,7 +48,16 @@ export function parseCommand(
   return { cmd, args: rest };
 }
 
-const ADMIN_COMMANDS = new Set(["health", "audit", "budget"]);
+const ADMIN_COMMANDS = new Set([
+  "health",
+  "audit",
+  "budget",
+  "members",
+  "grant",
+  "revoke",
+  "promote",
+  "demote",
+]);
 
 export async function routeCommand(
   ctx: RouteContext,
@@ -79,6 +93,16 @@ export async function routeCommand(
       return await statsCommand(ctx.sb, ctx.member);
     case "undo":
       return await undoCommand(ctx.sb, ctx.member);
+    case "members":
+      return await membersCommand(ctx.sb);
+    case "grant":
+      return await grantCommand(ctx.sb, args);
+    case "revoke":
+      return await revokeCommand(ctx.sb, args, ctx.member);
+    case "promote":
+      return await promoteCommand(ctx.sb, args);
+    case "demote":
+      return await demoteCommand(ctx.sb, args, ctx.member);
     case "recurring":
     case "budget":
       return {

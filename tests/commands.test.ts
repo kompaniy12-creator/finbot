@@ -4,8 +4,11 @@ import {
   auditCommand,
   categoriesCommand,
   dashboardCommand,
+  demoteCommand,
+  grantCommand,
   healthCommand,
   helpCommand,
+  revokeCommand,
   startCommand,
   unauthorizedReply,
   unsupportedReply,
@@ -235,4 +238,41 @@ Deno.test("refuseUnauthorized: returns rejection text with chatId", () => {
 Deno.test("unsupportedReply and unauthorizedReply both return strings", () => {
   assertStringIncludes(unsupportedReply().text, "Пока умею");
   assertStringIncludes(unauthorizedReply().text, "семье");
+});
+
+Deno.test("helpCommand: lists member-management commands for admin", () => {
+  const t = helpCommand(ADMIN).text;
+  assertStringIncludes(t, "/grant");
+  assertStringIncludes(t, "/revoke");
+  assertStringIncludes(t, "/members");
+});
+
+Deno.test("grantCommand: refuses missing telegram_id", async () => {
+  const sb = mockSb({});
+  const r = await grantCommand(sb, "");
+  assertStringIncludes(r.text, "Использование");
+});
+
+Deno.test("grantCommand: refuses non-numeric id", async () => {
+  const sb = mockSb({});
+  const r = await grantCommand(sb, "abc Den");
+  assertStringIncludes(r.text, "Использование");
+});
+
+Deno.test("revokeCommand: refuses self-revoke", async () => {
+  const sb = mockSb({});
+  const r = await revokeCommand(sb, String(ADMIN.telegram_id), ADMIN);
+  assertStringIncludes(r.text, "самого себя");
+});
+
+Deno.test("revokeCommand: refuses missing id", async () => {
+  const sb = mockSb({});
+  const r = await revokeCommand(sb, "", ADMIN);
+  assertStringIncludes(r.text, "Использование");
+});
+
+Deno.test("demoteCommand: refuses self-demote", async () => {
+  const sb = mockSb({});
+  const r = await demoteCommand(sb, String(ADMIN.telegram_id), ADMIN);
+  assertStringIncludes(r.text, "хотя бы один админ");
 });

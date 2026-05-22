@@ -128,10 +128,19 @@ Deno.serve(async (req: Request) => {
     log("warn", "webhook_unauthorized_telegram_user", { telegram_id: fromId });
     const out = refuseUnauthorized(update);
     if (out) await sendReply(out.chatId, out.reply);
+    const firstName = msg?.from?.first_name ?? "?";
+    const userName = msg?.from?.username ?? null;
+    const tag = userName ? ` @${userName}` : "";
+    const safeName = firstName.replace(/[^\p{L}\p{N}\s_.-]/gu, "").slice(0, 40) || "Member";
     await notifyAdminText(
-      `Unauthorized access attempt: telegram_id=${fromId}, name="${
-        msg?.from?.first_name ?? "?"
-      }", username=@${msg?.from?.username ?? "?"}`,
+      [
+        `🔔 Запрос доступа: ${firstName}${tag} [${fromId}]`,
+        "",
+        `Чтобы дать доступ, отправь:`,
+        `/grant ${fromId} ${safeName}`,
+        "",
+        `Чтобы отказать - игнорируй (доступ закрыт по умолчанию).`,
+      ].join("\n"),
     );
     return new Response("ok", { status: 200 });
   }
