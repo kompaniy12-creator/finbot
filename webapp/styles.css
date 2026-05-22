@@ -6,6 +6,9 @@
   --button: var(--tg-theme-button-color, #2481cc);
   --button-text: var(--tg-theme-button-text-color, #ffffff);
   --secondary-bg: var(--tg-theme-secondary-bg-color, #efeff3);
+  --card-bg: color-mix(in srgb, var(--secondary-bg) 70%, var(--bg));
+  --line: color-mix(in srgb, var(--hint) 18%, transparent);
+  --shadow: 0 12px 30px rgba(20, 34, 67, 0.08);
 }
 
 * {
@@ -121,7 +124,7 @@ header h1 {
 .chart-row {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 12px;
+  gap: 14px;
   margin-bottom: 16px;
 }
 @media (min-width: 600px) {
@@ -131,19 +134,76 @@ header h1 {
 }
 
 .chart-card {
-  background: var(--secondary-bg);
-  padding: 12px;
-  border-radius: 8px;
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(
+      circle at top left,
+      color-mix(in srgb, var(--button) 18%, transparent),
+      transparent 38%
+    ),
+    linear-gradient(180deg, color-mix(in srgb, var(--card-bg) 96%, #ffffff), var(--card-bg));
+  border: 1px solid var(--line);
+  padding: 14px 14px 12px;
+  border-radius: 16px;
   margin-bottom: 12px;
+  box-shadow: var(--shadow);
+  animation: card-enter 420ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
-.chart-card h3 {
-  margin: 0 0 8px;
-  font-size: 13px;
+.chart-card::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.16), transparent 44%);
+}
+.chart-head {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.chart-head h3 {
+  margin: 0;
+  font-size: 14px;
+  color: var(--text);
+}
+.chart-head span {
+  font-size: 11px;
   color: var(--hint);
+}
+.chart-card-donut {
+  animation-delay: 20ms;
+}
+.chart-card-line {
+  animation-delay: 80ms;
+}
+.chart-card-wide {
+  animation-delay: 140ms;
 }
 canvas {
   width: 100% !important;
-  max-height: 220px;
+  height: 230px !important;
+  max-height: 260px;
+  position: relative;
+  z-index: 1;
+}
+.chart-card-donut canvas {
+  height: 236px !important;
+}
+
+@keyframes card-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 .transactions {

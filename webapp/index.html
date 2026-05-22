@@ -40,11 +40,29 @@
       </section>
 
       <section class="chart-row">
-        <div class="chart-card"><h3>По категориям</h3><canvas id="donut"></canvas></div>
-        <div class="chart-card"><h3>По дням</h3><canvas id="line"></canvas></div>
+        <div class="chart-card chart-card-donut">
+          <div class="chart-head">
+            <h3>По категориям</h3>
+            <span>доля расходов</span>
+          </div>
+          <canvas id="donut"></canvas>
+        </div>
+        <div class="chart-card chart-card-line">
+          <div class="chart-head">
+            <h3>По дням</h3>
+            <span>динамика периода</span>
+          </div>
+          <canvas id="line"></canvas>
+        </div>
       </section>
 
-      <section class="chart-card"><h3>Топ-5</h3><canvas id="bar"></canvas></section>
+      <section class="chart-card chart-card-wide">
+        <div class="chart-head">
+          <h3>Топ-5</h3>
+          <span>главные категории</span>
+        </div>
+        <canvas id="bar"></canvas>
+      </section>
 
       <section class="categories">
         <h3>Все категории</h3>

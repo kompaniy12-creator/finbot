@@ -323,6 +323,108 @@ function escapeHtml(s) {
   );
 }
 
+const CHART_PALETTE = [
+  "#3b82f6",
+  "#22c55e",
+  "#f97316",
+  "#a855f7",
+  "#06b6d4",
+  "#ef4444",
+  "#eab308",
+  "#14b8a6",
+  "#ec4899",
+  "#64748b",
+];
+
+const emptyChartPlugin = {
+  id: "emptyChart",
+  afterDraw(chart, _args, options) {
+    if (!options?.enabled) return;
+    const { ctx, chartArea } = chart;
+    if (!chartArea) return;
+    ctx.save();
+    ctx.fillStyle = cssVar("--hint", "#999999");
+    ctx.font = "500 13px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(
+      "Пока нет данных",
+      (chartArea.left + chartArea.right) / 2,
+      (chartArea.top + chartArea.bottom) / 2,
+    );
+    ctx.restore();
+  },
+};
+
+Chart.register(emptyChartPlugin);
+
+function cssVar(name, fallback) {
+  const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  return value || fallback;
+}
+
+function money(v) {
+  return Number(v || 0).toLocaleString("ru-RU", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }) + " EUR";
+}
+
+function chartTextColor() {
+  return cssVar("--text", "#111827");
+}
+
+function chartHintColor(alpha = 1) {
+  const hint = cssVar("--hint", "#8a8a8a");
+  if (hint.startsWith("#")) return hint;
+  return alpha === 1 ? hint : `rgba(128, 128, 128, ${alpha})`;
+}
+
+function commonChartOptions(empty) {
+  return {
+    responsive: true,
+    maintainAspectRatio: false,
+    animation: {
+      duration: 850,
+      easing: "easeOutQuart",
+      delay(ctx) {
+        return ctx.type === "data" ? ctx.dataIndex * 34 : 0;
+      },
+    },
+    interaction: { mode: "nearest", intersect: false },
+    plugins: {
+      emptyChart: { enabled: empty },
+      tooltip: {
+        backgroundColor: cssVar("--bg", "#ffffff"),
+        titleColor: chartTextColor(),
+        bodyColor: chartTextColor(),
+        borderColor: cssVar("--line", "rgba(120,120,120,.22)"),
+        borderWidth: 1,
+        cornerRadius: 12,
+        padding: 10,
+        displayColors: true,
+        boxPadding: 4,
+        callbacks: {
+          label(ctx) {
+            const label = ctx.dataset.label ? ctx.dataset.label + ": " : "";
+            return label + money(ctx.parsed.y ?? ctx.parsed.x ?? ctx.parsed);
+          },
+        },
+      },
+    },
+  };
+}
+
+function lineGradient(ctx) {
+  const { chart, chartArea } = ctx;
+  if (!chartArea) return "rgba(59,130,246,0.16)";
+  const gradient = chart.ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+  gradient.addColorStop(0, "rgba(59,130,246,0.34)");
+  gradient.addColorStop(0.62, "rgba(34,197,94,0.12)");
+  gradient.addColorStop(1, "rgba(59,130,246,0)");
+  return gradient;
+}
+
 async function loadCharts() {
   // Donut by category: aggregate from /api-transactions (we already have first page).
   // All chart values are in EUR (per-row, converted at expense_date rate).
@@ -340,26 +442,95 @@ async function loadCharts() {
 
 function drawDonut(entries) {
   destroy("donut");
+  const data = entries.filter((e) => Number(e[1]) > 0);
+  const empty = data.length === 0;
   state.charts.donut = new Chart(document.getElementById("donut"), {
     type: "doughnut",
     data: {
-      labels: entries.map((e) => e[0]),
-      datasets: [{ data: entries.map((e) => e[1].toFixed(2)) }],
+      labels: empty ? ["Нет данных"] : data.map((e) => e[0]),
+      datasets: [{
+        data: empty ? [1] : data.map((e) => Number(e[1].toFixed(2))),
+        backgroundColor: empty
+          ? ["rgba(120,120,120,.16)"]
+          : data.map((_, i) => CHART_PALETTE[i % CHART_PALETTE.length]),
+        borderColor: cssVar("--card-bg", "#ffffff"),
+        borderWidth: 3,
+        borderRadius: 8,
+        hoverOffset: 14,
+        spacing: 3,
+      }],
     },
-    options: { plugins: { legend: { position: "bottom", labels: { boxWidth: 10 } } } },
+    options: {
+      ...commonChartOptions(empty),
+      cutout: "68%",
+      plugins: {
+        ...commonChartOptions(empty).plugins,
+        legend: {
+          position: "bottom",
+          labels: {
+            boxWidth: 9,
+            boxHeight: 9,
+            usePointStyle: true,
+            color: chartTextColor(),
+            padding: 12,
+            font: { size: 11, weight: "500" },
+          },
+        },
+        tooltip: {
+          ...commonChartOptions(empty).plugins.tooltip,
+          callbacks: {
+            label(ctx) {
+              if (empty) return "Нет расходов";
+              const total = data.reduce((sum, e) => sum + Number(e[1]), 0);
+              const value = Number(ctx.parsed || 0);
+              const pct = total > 0 ? Math.round((value / total) * 100) : 0;
+              return `${ctx.label}: ${money(value)} (${pct}%)`;
+            },
+          },
+        },
+      },
+    },
   });
 }
 
 function drawBarTop5(entries) {
   destroy("bar");
-  const top5 = entries.slice(0, 5);
+  const top5 = entries.filter((e) => Number(e[1]) > 0).slice(0, 5);
+  const empty = top5.length === 0;
   state.charts.bar = new Chart(document.getElementById("bar"), {
     type: "bar",
     data: {
-      labels: top5.map((e) => e[0]),
-      datasets: [{ label: "EUR", data: top5.map((e) => Number(e[1].toFixed(2))) }],
+      labels: empty ? ["Нет данных"] : top5.map((e) => e[0]),
+      datasets: [{
+        label: "Расходы",
+        data: empty ? [0] : top5.map((e) => Number(e[1].toFixed(2))),
+        backgroundColor(ctx) {
+          return CHART_PALETTE[ctx.dataIndex % CHART_PALETTE.length];
+        },
+        borderRadius: 10,
+        borderSkipped: false,
+        barThickness: 16,
+      }],
     },
-    options: { indexAxis: "y", plugins: { legend: { display: false } } },
+    options: {
+      ...commonChartOptions(empty),
+      indexAxis: "y",
+      scales: {
+        x: {
+          beginAtZero: true,
+          grid: { color: "rgba(128,128,128,.12)", drawBorder: false },
+          ticks: { color: chartHintColor(), callback: (v) => `${v}€` },
+        },
+        y: {
+          grid: { display: false, drawBorder: false },
+          ticks: { color: chartTextColor(), font: { size: 12, weight: "500" } },
+        },
+      },
+      plugins: {
+        ...commonChartOptions(empty).plugins,
+        legend: { display: false },
+      },
+    },
   });
 }
 
@@ -370,13 +541,45 @@ function drawLineByDay() {
     byDay.set(t.expense_date, (byDay.get(t.expense_date) || 0) + Number(t.amount_eur || 0));
   }
   const days = [...byDay.keys()].sort();
+  const values = days.map((d) => Number(byDay.get(d).toFixed(2)));
+  const empty = days.length === 0;
   state.charts.line = new Chart(document.getElementById("line"), {
     type: "line",
     data: {
-      labels: days,
-      datasets: [{ label: "EUR", data: days.map((d) => Number(byDay.get(d).toFixed(2))) }],
+      labels: empty ? [""] : days.map((d) => d.slice(5)),
+      datasets: [{
+        label: "Расходы",
+        data: empty ? [0] : values,
+        fill: true,
+        backgroundColor: lineGradient,
+        borderColor: "#3b82f6",
+        borderWidth: 3,
+        tension: 0.42,
+        pointRadius: empty ? 0 : 3.5,
+        pointHoverRadius: 6,
+        pointBackgroundColor: "#ffffff",
+        pointBorderColor: "#3b82f6",
+        pointBorderWidth: 2,
+      }],
     },
-    options: { plugins: { legend: { display: false } } },
+    options: {
+      ...commonChartOptions(empty),
+      scales: {
+        x: {
+          grid: { display: false, drawBorder: false },
+          ticks: { color: chartHintColor(), maxRotation: 0, autoSkipPadding: 18 },
+        },
+        y: {
+          beginAtZero: true,
+          grid: { color: "rgba(128,128,128,.12)", drawBorder: false },
+          ticks: { color: chartHintColor(), callback: (v) => `${v}€` },
+        },
+      },
+      plugins: {
+        ...commonChartOptions(empty).plugins,
+        legend: { display: false },
+      },
+    },
   });
 }
 
