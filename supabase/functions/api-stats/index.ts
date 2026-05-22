@@ -51,6 +51,7 @@ Deno.serve(async (req: Request) => {
   const byCatPln = new Map<string, number>();
   const byCatEur = new Map<string, number>();
   const byCatCount = new Map<string, number>();
+  const byDayEur = new Map<string, number>();
   for (const r of rows) {
     const pln = Number(r.amount_pln);
     const eur = plnToEur(pln, r.expense_date, eurRates) ?? 0;
@@ -59,6 +60,7 @@ Deno.serve(async (req: Request) => {
     byCatPln.set(r.category_id, (byCatPln.get(r.category_id) ?? 0) + pln);
     byCatEur.set(r.category_id, (byCatEur.get(r.category_id) ?? 0) + eur);
     byCatCount.set(r.category_id, (byCatCount.get(r.category_id) ?? 0) + 1);
+    byDayEur.set(r.expense_date, (byDayEur.get(r.expense_date) ?? 0) + eur);
   }
   const count = rows.length;
 
@@ -90,5 +92,11 @@ Deno.serve(async (req: Request) => {
     top_category_total: topEntry?.total_eur ?? 0,
     top_category_total_pln: topEntry?.total_pln ?? 0,
     by_category: breakdown,
+    by_day: [...byDayEur.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([date, total]) => ({
+        date,
+        total_eur: Math.round(total * 100) / 100,
+      })),
   });
 });

@@ -16,6 +16,7 @@ const state = {
   categories: new Map(),
   family: new Map(),
   byCategory: [], // breakdown from api-stats: all 24 cats with totals incl. zeros
+  byDay: [], // full-period daily totals from api-stats
   charts: { donut: null, line: null, bar: null },
 };
 
@@ -74,6 +75,7 @@ async function loadKpis() {
     $("#kpi-top").textContent = "-";
   }
   state.byCategory = Array.isArray(r.by_category) ? r.by_category : [];
+  state.byDay = Array.isArray(r.by_day) ? r.by_day : [];
   renderCategories();
 }
 
@@ -356,7 +358,30 @@ const emptyChartPlugin = {
   },
 };
 
-Chart.register(emptyChartPlugin);
+const doughnutCenterPlugin = {
+  id: "doughnutCenter",
+  afterDraw(chart, _args, options) {
+    if (!options?.enabled) return;
+    const meta = chart.getDatasetMeta(0);
+    const arc = meta?.data?.[0];
+    if (!arc) return;
+    const { ctx } = chart;
+    const total = options.total || 0;
+    const label = options.label || "всего";
+    ctx.save();
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = chartTextColor();
+    ctx.font = "700 24px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
+    ctx.fillText(money(total).replace(" EUR", "€"), arc.x, arc.y - 8);
+    ctx.fillStyle = cssVar("--hint", "#999999");
+    ctx.font = "600 11px -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif";
+    ctx.fillText(label, arc.x, arc.y + 16);
+    ctx.restore();
+  },
+};
+
+Chart.register(emptyChartPlugin, doughnutCenterPlugin);
 
 function cssVar(name, fallback) {
   const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
@@ -426,15 +451,12 @@ function lineGradient(ctx) {
 }
 
 async function loadCharts() {
-  // Donut by category: aggregate from /api-transactions (we already have first page).
-  // All chart values are in EUR (per-row, converted at expense_date rate).
-  const byCat = new Map();
-  for (const t of state.txItems) {
-    const c = state.categories.get(t.category_id);
-    const key = c ? c.name : "?";
-    byCat.set(key, (byCat.get(key) || 0) + Number(t.amount_eur || 0));
-  }
-  const top = [...byCat.entries()].sort((a, b) => b[1] - a[1]);
+  // Full-period category totals come from /api-stats, not the paginated
+  // transaction feed, so large receipts and unloaded pages are still counted.
+  const top = state.byCategory
+    .filter((c) => Number(c.total_eur) > 0)
+    .map((c) => [c.name, Number(c.total_eur)])
+    .sort((a, b) => b[1] - a[1]);
   drawDonut(top);
   drawLineByDay();
   drawBarTop5(top);
@@ -444,6 +466,7 @@ function drawDonut(entries) {
   destroy("donut");
   const data = entries.filter((e) => Number(e[1]) > 0);
   const empty = data.length === 0;
+  const total = data.reduce((sum, e) => sum + Number(e[1]), 0);
   state.charts.donut = new Chart(document.getElementById("donut"), {
     type: "doughnut",
     data: {
@@ -465,6 +488,7 @@ function drawDonut(entries) {
       cutout: "68%",
       plugins: {
         ...commonChartOptions(empty).plugins,
+        doughnutCenter: { enabled: !empty, total, label: "по всем категориям" },
         legend: {
           position: "bottom",
           labels: {
@@ -481,7 +505,6 @@ function drawDonut(entries) {
           callbacks: {
             label(ctx) {
               if (empty) return "Нет расходов";
-              const total = data.reduce((sum, e) => sum + Number(e[1]), 0);
               const value = Number(ctx.parsed || 0);
               const pct = total > 0 ? Math.round((value / total) * 100) : 0;
               return `${ctx.label}: ${money(value)} (${pct}%)`;
@@ -536,12 +559,8 @@ function drawBarTop5(entries) {
 
 function drawLineByDay() {
   destroy("line");
-  const byDay = new Map();
-  for (const t of state.txItems) {
-    byDay.set(t.expense_date, (byDay.get(t.expense_date) || 0) + Number(t.amount_eur || 0));
-  }
-  const days = [...byDay.keys()].sort();
-  const values = days.map((d) => Number(byDay.get(d).toFixed(2)));
+  const days = state.byDay.map((d) => d.date);
+  const values = state.byDay.map((d) => Number(Number(d.total_eur || 0).toFixed(2)));
   const empty = days.length === 0;
   state.charts.line = new Chart(document.getElementById("line"), {
     type: "line",
