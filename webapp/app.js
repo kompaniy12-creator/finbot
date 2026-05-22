@@ -476,11 +476,11 @@ function drawDonut(entries) {
         backgroundColor: empty
           ? ["rgba(120,120,120,.16)"]
           : data.map((_, i) => CHART_PALETTE[i % CHART_PALETTE.length]),
-        borderColor: cssVar("--card-bg", "#ffffff"),
-        borderWidth: 3,
+        borderColor: "rgba(255,255,255,.34)",
+        borderWidth: 1,
         borderRadius: 8,
-        hoverOffset: 14,
-        spacing: 3,
+        hoverOffset: 12,
+        spacing: 2,
       }],
     },
     options: {
