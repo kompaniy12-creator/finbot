@@ -67,6 +67,27 @@ async function sendReply(chatId: number, reply: CommandReply): Promise<void> {
   await tgRequest("sendMessage", body);
 }
 
+async function editReply(
+  chatId: number,
+  messageId: number,
+  reply: CommandReply,
+): Promise<void> {
+  const body: Record<string, unknown> = {
+    chat_id: chatId,
+    message_id: messageId,
+    text: reply.text,
+    parse_mode: "HTML",
+    disable_web_page_preview: true,
+  };
+  if (reply.reply_markup) {
+    body.reply_markup = reply.reply_markup;
+  } else {
+    // Strip the buttons explicitly so the bubble no longer shows them.
+    body.reply_markup = { inline_keyboard: [] };
+  }
+  await tgRequest("editMessageText", body);
+}
+
 async function notifyAdminText(text: string): Promise<void> {
   const { TELEGRAM_ADMIN_TELEGRAM_ID } = getEnv();
   await tgRequest("sendMessage", {
@@ -167,8 +188,13 @@ Deno.serve(async (req: Request) => {
         member,
         data: cq.data ?? "",
         chatId: cq.message?.chat.id ?? cq.from.id,
+        messageId: cq.message?.message_id,
       });
-      await sendReply(out.chatId, out.reply);
+      if (out.edit_message_id) {
+        await editReply(out.chatId, out.edit_message_id, out.reply);
+      } else {
+        await sendReply(out.chatId, out.reply);
+      }
       // Acknowledge the callback so the spinning button stops.
       await tgRequest("answerCallbackQuery", {
         callback_query_id: cq.id,
