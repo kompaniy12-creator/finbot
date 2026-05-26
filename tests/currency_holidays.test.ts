@@ -20,6 +20,9 @@ function mockSb(initial: ExRow[] = []) {
     from(_t: string) {
       const builder = {
         _filters: [] as Array<[string, unknown]>,
+        _lte: null as [string, string] | null,
+        _order: null as [string, boolean] | null,
+        _limit: 0,
         select(_c: string) {
           return builder;
         },
@@ -27,14 +30,39 @@ function mockSb(initial: ExRow[] = []) {
           builder._filters.push([c, v]);
           return builder;
         },
+        lte(c: string, v: string) {
+          builder._lte = [c, v];
+          return builder;
+        },
+        order(c: string, opts: { ascending: boolean }) {
+          builder._order = [c, opts.ascending];
+          return builder;
+        },
+        limit(n: number) {
+          builder._limit = n;
+          return builder;
+        },
         maybeSingle() {
-          const r = rows.find((row) =>
+          let filtered = rows.filter((row) =>
             builder._filters.every(([c, v]) => {
               const key = c as keyof ExRow;
               return row[key] === v;
             })
           );
-          return Promise.resolve({ data: r ?? null, error: null });
+          if (builder._lte) {
+            const [c, v] = builder._lte;
+            filtered = filtered.filter((row) => (row[c as keyof ExRow] as string) <= v);
+          }
+          if (builder._order) {
+            const [c, asc] = builder._order;
+            filtered = filtered.slice().sort((a, b) => {
+              const av = String(a[c as keyof ExRow] ?? "");
+              const bv = String(b[c as keyof ExRow] ?? "");
+              return asc ? av.localeCompare(bv) : bv.localeCompare(av);
+            });
+          }
+          const limited = builder._limit ? filtered.slice(0, builder._limit) : filtered;
+          return Promise.resolve({ data: limited[0] ?? null, error: null });
         },
         insert(payload: ExRow) {
           rows.push(payload);

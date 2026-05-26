@@ -174,8 +174,21 @@ export function formatReply(result: PipelineResult): string {
     return `- ${e.amount} ${e.currency} ${e.name} -> ${e.category_name}${conf}`;
   });
   const head = result.expenses.length === 1 ? "Записал:" : `Записал ${result.expenses.length}:`;
-  const total = result.expenses.reduce((acc, e) => acc + e.amount_pln, 0);
-  const totalLine = `\nВсего: ${total.toFixed(2)} PLN`;
+
+  // Show the total in the SOURCE currency when all items share one (so "3*400 лек"
+  // sums to "1200 ALL", not "1200 PLN"). When the message mixes currencies, fall
+  // back to the PLN normalization.
+  const currencies = new Set(result.expenses.map((e) => e.currency));
+  let totalLine: string;
+  if (currencies.size === 1) {
+    const cur = result.expenses[0]!.currency;
+    const sourceTotal = result.expenses.reduce((acc, e) => acc + Number(e.amount), 0);
+    totalLine = `\nВсего: ${sourceTotal.toFixed(2)} ${cur}`;
+  } else {
+    const totalPln = result.expenses.reduce((acc, e) => acc + e.amount_pln, 0);
+    totalLine = `\nВсего: ${totalPln.toFixed(2)} PLN (смешанные валюты)`;
+  }
+
   const warns = result.warnings.length ? "\n\nWarn: " + result.warnings.join("; ") : "";
   return [head, ...lines, totalLine].join("\n") + warns;
 }

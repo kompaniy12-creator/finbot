@@ -40,8 +40,48 @@ export async function getRate(
   if (cached.data) return Number((cached.data as { rate_pln: number }).rate_pln);
 
   // 2. Fetch from upstream with holiday fallback.
-  const fetched = await fetchAndStore(sb, currency, dateIso);
-  return fetched;
+  try {
+    return await fetchAndStore(sb, currency, dateIso);
+  } catch (err) {
+    // 3. Last resort: nearest-earlier rate already stored in the DB. Better
+    //    than throwing (which forced callers to silently use rate=1.0 and
+    //    inflated amount_pln by ~22x for ALL spending).
+    const fallback = await sb
+      .from("exchange_rates")
+      .select("rate_date, rate_pln")
+      .eq("currency", currency)
+      .lte("rate_date", dateIso)
+      .order("rate_date", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (fallback.data) {
+      const row = fallback.data as { rate_date: string; rate_pln: number };
+      log("warn", "currency_using_earlier_rate", {
+        currency,
+        requested: dateIso,
+        used: row.rate_date,
+      });
+      return Number(row.rate_pln);
+    }
+    // 4. Nothing earlier in DB; try the earliest available (extrapolate).
+    const earliest = await sb
+      .from("exchange_rates")
+      .select("rate_date, rate_pln")
+      .eq("currency", currency)
+      .order("rate_date", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+    if (earliest.data) {
+      const row = earliest.data as { rate_date: string; rate_pln: number };
+      log("warn", "currency_using_later_rate", {
+        currency,
+        requested: dateIso,
+        used: row.rate_date,
+      });
+      return Number(row.rate_pln);
+    }
+    throw err;
+  }
 }
 
 async function fetchAndStore(

@@ -213,9 +213,19 @@ export async function processPhotoMessage(args: {
     });
   }
 
-  // total->PLN using the same FX rate as line items (computed below from getRate).
-  const receiptRate = await getRate(args.sb, receipt.currency, receipt.receipt_date)
-    .catch(() => 1.0);
+  // total->PLN using the same FX rate as line items. getRate now has a
+  // nearest-earlier-rate fallback so it doesn't throw on missing ALL/USD rates.
+  let receiptRate: number;
+  try {
+    receiptRate = await getRate(args.sb, receipt.currency, receipt.receipt_date);
+  } catch (err) {
+    log("error", "photo_rate_unavailable", {
+      currency: receipt.currency,
+      date: receipt.receipt_date,
+      error: (err as Error).message,
+    });
+    return { kind: "vision_failed", error: `no FX rate for ${receipt.currency}` };
+  }
   const totalPln = Math.round(receipt.total * receiptRate * 100) / 100;
 
   // Layer 2: content-fingerprint duplicate check.

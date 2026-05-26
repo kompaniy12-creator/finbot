@@ -37,7 +37,7 @@ export const ParseExpenseTool: Anthropic.Messages.Tool = {
               type: "string",
               enum: ["PLN", "EUR", "ALL", "USD"],
               description:
-                "Currency code. Default PLN if user did not specify and is based in Poland.",
+                "Currency code. If the message contains лек / lek / leku / leke / L → ALL. If zł / zl / pln → PLN. If € / eur → EUR. If $ → USD. Default PLN ONLY when no currency word is present AND the amount looks plausibly Polish.",
             },
             expense_date: {
               type: "string",
@@ -60,16 +60,23 @@ const STATIC_PART =
   `You are FinBot's expense parser. Extract structured expense data from a user's short message (text or voice transcript).
 
 Family context:
-- Based in Poznań, Poland.
+- Based in Poznań, Poland, but frequently travels in Albania.
 - Default currency: PLN.
-- Languages used: Russian, Ukrainian, Polish, English (mixed often).
+- Languages used: Russian, Ukrainian, Polish, English, Albanian (mixed often).
+
+Currency detection (CRITICAL - users often write currency as a word, recognise these aliases):
+- ALL (Albanian lek): "лек", "лека", "леке", "леков", "леку", "leк", "lek", "leku", "leke", "lekë", "lekësh", "L". When you see ANY of these next to a number, currency MUST be ALL, never PLN.
+- PLN (Polish zloty): "zł", "zl", "pln", "злот", "злотых", "złoty".
+- EUR (euro): "€", "eur", "евро".
+- USD (dollar): "$", "usd", "долл", "доллар".
+- Albanian receipts often have values like 670, 1200, 5000+ (the lek is much weaker than zloty). If a number looks unusually large for the implied category in Poland (e.g. "вода 4000" or "электричество 9565") and the context suggests Albania, default to ALL rather than PLN.
+- Only default to PLN when there is no currency word at all AND the amount is plausibly Polish.
 
 Rules:
 - Always call the record_expenses tool. Do not respond with plain text.
 - Multiple items in one message: emit multiple array entries.
 - If the user mentions "плюс", "и", "ещё", treat as separate items.
 - If a quantity is implied ("3 кофе по 10 zł"), record as 3 separate items of 10 zł each.
-- If currency is unspecified, default to PLN.
 - For dates: "вчера" = today-1, "позавчера" = today-2, "в субботу" = last Saturday (not next), "01.03" = March 1 of current year (or previous year if that future date is > 30 days ahead).
 - name_normalized_en should be 2-4 English words optimized for semantic search by category. Lowercase. No punctuation. Examples:
   - "молоко 2.5% литр" -> "milk dairy"
