@@ -206,8 +206,23 @@ export function formatReply(result: PipelineResult): string {
     totalLine = `\nВсего: ${totalPln.toFixed(2)} PLN (смешанные валюты)`;
   }
 
+  // Heads-up if any row was dated outside the current Warsaw month (the
+  // dashboard's default "Месяц" filter would hide it).
+  const today = todayWarsawIso();
+  const currentMonth = today.slice(0, 7);
+  const outOfMonth = [
+    ...new Set(
+      result.expenses
+        .map((e) => e.expense_date.slice(0, 7))
+        .filter((m) => m !== currentMonth),
+    ),
+  ];
+  const dateHint = outOfMonth.length > 0
+    ? `\n\n_Учтено за ${outOfMonth.join(", ")}. В дашборде переключи на «Период» чтобы увидеть._`
+    : "";
+
   const warns = result.warnings.length ? "\n\nWarn: " + result.warnings.join("; ") : "";
-  return [head, ...lines, totalLine].join("\n") + warns;
+  return [head, ...lines, totalLine].join("\n") + dateHint + warns;
 }
 
 /**

@@ -131,38 +131,60 @@ async function doConfirm(
   action: "yes" | "no",
   editMessageId?: number,
 ): Promise<CallbackOutput> {
+  // The high-amount/uncertain keyboard carries only ONE expense_id, but a user
+  // message can produce multiple sibling rows. Apply the action to every
+  // non-archived sibling in the same telegram_message_id batch so the user's
+  // single tap reflects what they expect ("Да = подтвердить весь Записал").
+  const seed = await sb.from("expenses")
+    .select("telegram_message_id, family_member_id")
+    .eq("id", expenseId).maybeSingle();
+  const sib = seed.data as { telegram_message_id: number; family_member_id: string } | null;
+
   const patch = action === "yes"
     ? { needs_confirmation: false }
     : { archived: true, needs_confirmation: false };
-  // Cancel may need to archive every sibling row from the same telegram_message_id
-  // (the "3*400" high-amount flow inserts N rows but the button carries only one
-  // expense_id; without this the other N-1 stayed visible).
-  if (action === "no") {
-    const tgId = await sb.from("expenses")
-      .select("telegram_message_id, family_member_id")
-      .eq("id", expenseId).maybeSingle();
-    const sib = tgId.data as { telegram_message_id: number; family_member_id: string } | null;
-    if (sib?.telegram_message_id) {
-      await sb.from("expenses").update(patch)
-        .eq("telegram_message_id", sib.telegram_message_id)
-        .eq("family_member_id", sib.family_member_id)
-        .eq("archived", false);
-    } else {
-      await sb.from("expenses").update(patch).eq("id", expenseId);
-    }
+
+  // Collect the affected IDs BEFORE applying the update, so we can render the
+  // post-action summary regardless of whether the row was just archived.
+  let affected: Array<{ id: string }> = [];
+  if (sib?.telegram_message_id) {
+    const q = await sb.from("expenses")
+      .select("id")
+      .eq("telegram_message_id", sib.telegram_message_id)
+      .eq("family_member_id", sib.family_member_id)
+      .eq("archived", false);
+    affected = (q.data ?? []) as Array<{ id: string }>;
+  }
+  if (affected.length === 0) affected = [{ id: expenseId }];
+
+  if (sib?.telegram_message_id) {
+    const upd = await sb.from("expenses").update(patch)
+      .eq("telegram_message_id", sib.telegram_message_id)
+      .eq("family_member_id", sib.family_member_id)
+      .eq("archived", false);
+    if (upd.error) return { chatId, reply: { text: `Ошибка: ${upd.error.message}` } };
   } else {
     const upd = await sb.from("expenses").update(patch).eq("id", expenseId);
     if (upd.error) return { chatId, reply: { text: `Ошибка: ${upd.error.message}` } };
   }
 
-  const detail = await loadExpenseDetails(sb, expenseId);
-  const summary = detail ? expenseSummary(detail) : "";
-  const text = action === "yes" ? `✅ Подтверждено: ${summary}` : `❌ Отменено: ${summary}`;
+  // Build a multi-line summary so the user sees EVERY row the action covered.
+  const details = await Promise.all(affected.map((a) => loadExpenseDetails(sb, a.id)));
+  const valid = details.filter((d): d is NonNullable<typeof d> => d !== null);
+  const icon = action === "yes" ? "✅" : "❌";
+  const head = action === "yes" ? "Подтверждено" : "Отменено";
+  let text: string;
+  if (valid.length === 1) {
+    text = `${icon} ${head}: ${expenseSummary(valid[0]!)}`;
+  } else {
+    const lines = valid.map((e) => `- ${expenseSummary(e)}`);
+    text = `${icon} ${head} ${valid.length}:\n${lines.join("\n")}`;
+  }
   return {
     chatId,
     reply: { text },
     edit_message_id: editMessageId,
-    answer_text: action === "yes" ? "Подтверждено" : "Отменено",
+    answer_text: head,
   };
 }
 
