@@ -72,7 +72,10 @@
       </section>
 
       <section class="categories">
-        <h3>Все категории</h3>
+        <header class="categories-head">
+          <h3>Все категории</h3>
+          <button id="cat-add-btn" type="button" style="display: none">+ Добавить</button>
+        </header>
         <ul id="cat-list" class="cat-list"></ul>
       </section>
 
@@ -99,6 +102,38 @@
           <button id="cat-modal-close" type="button" aria-label="Закрыть">×</button>
         </header>
         <ul id="cat-modal-list" class="modal-cat-list"></ul>
+      </div>
+    </div>
+
+    <div id="cat-form-modal" class="modal hidden" role="dialog" aria-modal="true">
+      <div class="modal-backdrop"></div>
+      <div class="modal-card">
+        <header class="modal-head">
+          <h3 id="cat-form-title">Новая категория</h3>
+          <button id="cat-form-close" type="button" aria-label="Закрыть">×</button>
+        </header>
+        <div class="cat-form">
+          <input type="hidden" id="cat-form-id" />
+          <label>Название
+            <input type="text" id="cat-form-name" maxlength="80" placeholder="Например: Подписки" />
+          </label>
+          <label>Описание (по-английски, для авто-классификации)
+            <textarea
+              id="cat-form-desc"
+              maxlength="500"
+              rows="3"
+              placeholder="Streaming services, software subscriptions, memberships"
+            ></textarea>
+          </label>
+          <label class="cat-form-checkbox">
+            <input type="checkbox" id="cat-form-fallback" />
+            <span>Fallback-категория (попадают неясные траты)</span>
+          </label>
+          <div class="cat-form-actions">
+            <button id="cat-form-cancel" type="button">Отмена</button>
+            <button id="cat-form-save" type="button" class="primary">Сохранить</button>
+          </div>
+        </div>
       </div>
     </div>
 

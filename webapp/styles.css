@@ -383,10 +383,112 @@ canvas {
 .categories {
   margin: 16px 0;
 }
+.categories-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 0 8px;
+}
+.categories-head h3 {
+  margin: 0;
+  font-size: 13px;
+  color: var(--hint);
+}
+.categories-head button {
+  background: var(--button);
+  color: var(--button-text);
+  border: none;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+}
 .categories h3 {
   margin: 0 0 8px;
   font-size: 13px;
   color: var(--hint);
+}
+.cat-edit,
+.cat-row .cat-del {
+  background: transparent;
+  border: none;
+  color: var(--hint);
+  cursor: pointer;
+  padding: 4px 6px;
+  font-size: 14px;
+  margin-left: 4px;
+  flex: 0 0 auto;
+}
+.cat-row .cat-del {
+  font-size: 18px;
+  line-height: 1;
+}
+.cat-edit:hover,
+.cat-row .cat-del:hover {
+  background: var(--secondary-bg);
+  color: var(--text);
+}
+.cat-row .cat-del[disabled] {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.cat-form {
+  padding: 12px 16px 16px;
+}
+.cat-form label {
+  display: block;
+  font-size: 12px;
+  color: var(--hint);
+  margin-bottom: 10px;
+}
+.cat-form input[type="text"],
+.cat-form textarea {
+  width: 100%;
+  margin-top: 4px;
+  padding: 8px 10px;
+  border: 1px solid var(--hint);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+.cat-form textarea {
+  resize: vertical;
+}
+.cat-form-checkbox {
+  display: flex !important;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+.cat-form-checkbox input[type="checkbox"] {
+  margin: 0;
+}
+.cat-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+.cat-form-actions button {
+  background: var(--secondary-bg);
+  color: var(--text);
+  border: none;
+  padding: 8px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+}
+.cat-form-actions button.primary {
+  background: var(--button);
+  color: var(--button-text);
+}
+.cat-form-actions button[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 .cat-list {
   list-style: none;

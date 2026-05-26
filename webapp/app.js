@@ -21,10 +21,15 @@ const state = {
   expandedReceipts: new Map(), // receipt_id -> [line items], lazy-loaded
   categories: new Map(),
   family: new Map(),
+  me: null, // { id, role, name, ... } from /api-me
   byCategory: [], // breakdown from api-stats: all 24 cats with totals incl. zeros
   byDay: [], // full-period daily totals from api-stats
   charts: { donut: null, line: null, bar: null },
 };
+
+function isAdmin() {
+  return state.me && state.me.role === "admin";
+}
 
 function periodQuery() {
   if (state.period === "custom" && state.from && state.to) {
@@ -64,12 +69,16 @@ async function api(path, opts = {}) {
 }
 
 async function loadCategoriesAndFamily() {
-  const [c, f] = await Promise.all([
+  const [c, f, m] = await Promise.all([
     api("/api-categories").then((r) => r.json()),
     api("/api-family").then((r) => r.json()),
+    api("/api-me").then((r) => r.json()).catch(() => ({ me: null })),
   ]);
+  state.categories = new Map();
   for (const cat of c.items || []) state.categories.set(cat.id, cat);
+  state.family = new Map();
   for (const fm of f.items || []) state.family.set(fm.id, fm);
+  state.me = m.me ?? null;
 }
 
 async function loadKpis() {
@@ -105,13 +114,127 @@ function renderCategories() {
   const ul = $("#cat-list");
   if (!ul) return;
   ul.innerHTML = "";
+  const admin = isAdmin();
   for (const c of state.byCategory) {
     const li = document.createElement("li");
     li.className = "cat-row" + (c.total_eur > 0 ? "" : " cat-empty");
     const meta = c.count > 0 ? `${c.count} ${c.count === 1 ? "запись" : "записей"}` : "пусто";
+    const adminBtns = admin
+      ? `<button class="cat-edit" type="button" data-id="${c.id}" title="Изменить">✏️</button>` +
+        (c.is_fallback
+          ? `<button class="cat-del" type="button" disabled title="Fallback нельзя удалить">×</button>`
+          : `<button class="cat-del" type="button" data-id="${c.id}" data-name="${
+            escapeHtml(c.name)
+          }" data-count="${c.count}" title="Удалить">×</button>`)
+      : "";
     li.innerHTML = `<div class="name">${escapeHtml(c.name)}<div class="meta">${meta}</div></div>` +
-      `<div class="amt">${Number(c.total_eur).toFixed(2)} EUR</div>`;
+      `<div class="amt">${Number(c.total_eur).toFixed(2)} EUR</div>` +
+      adminBtns;
     ul.appendChild(li);
+  }
+  // Wire admin buttons
+  if (admin) {
+    ul.querySelectorAll(".cat-edit").forEach((b) => {
+      b.addEventListener("click", () => openCategoryForm(b.dataset.id));
+    });
+    ul.querySelectorAll(".cat-del[data-id]").forEach((b) => {
+      b.addEventListener(
+        "click",
+        () => deleteCategory(b.dataset.id, b.dataset.name, Number(b.dataset.count || "0")),
+      );
+    });
+  }
+  // Add button visibility
+  const addBtn = $("#cat-add-btn");
+  if (addBtn) addBtn.style.display = admin ? "" : "none";
+}
+
+function openCategoryForm(catId) {
+  const m = $("#cat-form-modal");
+  const cat = catId ? state.byCategory.find((c) => c.id === catId) : null;
+  // We need name + description; byCategory doesn't carry description, fetch
+  // from state.categories which holds the raw /api-categories items.
+  const raw = catId ? state.categories.get(catId) : null;
+  $("#cat-form-title").textContent = catId ? "Изменить категорию" : "Новая категория";
+  $("#cat-form-id").value = catId || "";
+  $("#cat-form-name").value = (raw && raw.name) || (cat && cat.name) || "";
+  $("#cat-form-desc").value = (raw && raw.description) || "";
+  $("#cat-form-fallback").checked = Boolean(raw && raw.is_fallback);
+  $("#cat-form-save").disabled = false;
+  m.classList.remove("hidden");
+  setTimeout(() => $("#cat-form-name").focus(), 50);
+}
+
+function closeCategoryForm() {
+  $("#cat-form-modal").classList.add("hidden");
+}
+
+async function submitCategoryForm() {
+  const id = $("#cat-form-id").value || null;
+  const name = $("#cat-form-name").value.trim();
+  const description = $("#cat-form-desc").value.trim();
+  const isFallback = $("#cat-form-fallback").checked;
+  if (!name) {
+    TG.showAlert("Имя категории обязательно.");
+    return;
+  }
+  if (!description) {
+    TG.showAlert("Описание категории обязательно (используется для авто-классификации).");
+    return;
+  }
+  $("#cat-form-save").disabled = true;
+  try {
+    const path = id ? "/api-category-mutate?id=" + encodeURIComponent(id) : "/api-category-mutate";
+    const r = await api(path, {
+      method: id ? "PATCH" : "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, description, is_fallback: isFallback }),
+    });
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({}));
+      const msg = {
+        name_taken: "Категория с таким именем уже есть.",
+        need_a_fallback: "Должна остаться хотя бы одна fallback-категория.",
+        forbidden: "Только админ может менять категории.",
+      }[err.error] || ("Ошибка: " + (err.error || r.status));
+      TG.showAlert(msg);
+      return;
+    }
+    closeCategoryForm();
+    await loadCategoriesAndFamily();
+    await refresh();
+  } catch (_e) {
+    TG.showAlert("Ошибка сети.");
+  } finally {
+    $("#cat-form-save").disabled = false;
+  }
+}
+
+async function deleteCategory(id, name, count) {
+  const note = count > 0
+    ? `В категории "${name}" уже ${count} ${
+      count === 1 ? "запись" : "записей"
+    }. Они будут перенесены в «Дополнительные расходы». Удалить?`
+    : `Удалить категорию "${name}"?`;
+  const ok = await TG.showConfirm(note);
+  if (!ok) return;
+  try {
+    const r = await api("/api-category-mutate?id=" + encodeURIComponent(id), {
+      method: "DELETE",
+    });
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({}));
+      const msg = {
+        cannot_delete_fallback: "Fallback-категорию нельзя удалить.",
+        forbidden: "Только админ может удалять категории.",
+      }[err.error] || ("Ошибка: " + (err.error || r.status));
+      TG.showAlert(msg);
+      return;
+    }
+    await loadCategoriesAndFamily();
+    await refresh();
+  } catch (_e) {
+    TG.showAlert("Ошибка сети.");
   }
 }
 
@@ -650,6 +773,15 @@ async function main() {
   $("#cat-modal-close").addEventListener("click", closeCategoryPicker);
   document.querySelector("#cat-modal .modal-backdrop")
     .addEventListener("click", closeCategoryPicker);
+
+  // Category-add/edit form modal
+  const addBtn = $("#cat-add-btn");
+  if (addBtn) addBtn.addEventListener("click", () => openCategoryForm(null));
+  $("#cat-form-close").addEventListener("click", closeCategoryForm);
+  $("#cat-form-cancel").addEventListener("click", closeCategoryForm);
+  document.querySelector("#cat-form-modal .modal-backdrop")
+    .addEventListener("click", closeCategoryForm);
+  $("#cat-form-save").addEventListener("click", submitCategoryForm);
 
   // Period tabs
   const customBox = $("#custom-range");
