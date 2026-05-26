@@ -60,7 +60,6 @@ Rules:
 - For each item, category_id MUST be one of the UUIDs from the provided "Available categories" list. Pick the closest semantic match. Pet food + pet care + vet items go to the pets category. Alcohol (wine, beer, spirits) goes to the alcohol category. Cosmetics + grooming + beauty go to the self-care category. Cleaning supplies, household chemicals go to the home-care category. If genuinely unsure or the item is miscellaneous, use the category marked (fallback).
 - If receipt is blurry/unreadable in parts: still emit what you can, set 'note' field describing what's missing.
 - Date format on Polish receipts is usually DD-MM-YYYY or YYYY-MM-DD. Convert to ISO YYYY-MM-DD.
-- Receipt date should be very close to today's date (typically within the last few days). If the printed year is partly cut off or ambiguous (e.g. "25/05/26" could be 2025 or 2026), assume it is THIS year - the year given as "today" in the system prompt. Never emit a date more than 60 days in the past or more than 1 day in the future; if unsure, use today's date.
 - Currency: Polish receipts use 'zł' suffix or 'PLN'. Default PLN if unclear.`;
 
 export interface VisionCategoryHint {
