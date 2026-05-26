@@ -210,6 +210,26 @@ export async function processPhotoMessage(args: {
   }
   const receipt = parsed.data;
 
+  // Sanity-clamp the receipt date. Vision occasionally misreads the printed
+  // year (e.g. "26" interpreted as 2025 instead of 2026) and a single-character
+  // OCR error hides the whole receipt from the default Месяц view. Receipts
+  // older than 60 days OR dated in the future are almost always a parse error;
+  // clamp to today's payment date so the row lands in the current view.
+  {
+    const visionDate = receipt.receipt_date;
+    const t = new Date(todayIso + "T00:00:00Z").getTime();
+    const r = new Date(visionDate + "T00:00:00Z").getTime();
+    const diffDays = (t - r) / 86_400_000;
+    if (diffDays > 60 || diffDays < -1) {
+      log("warn", "photo_date_clamped", {
+        vision_date: visionDate,
+        today: todayIso,
+        diff_days: diffDays,
+      });
+      receipt.receipt_date = todayIso;
+    }
+  }
+
   // Reconcile +/- 5%
   const recon = reconcileTotal(receipt.items, receipt.total);
   if (!recon.ok) {
