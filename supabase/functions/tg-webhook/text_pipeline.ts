@@ -30,6 +30,8 @@ export interface ProcessedExpense {
   expense_date: string;
   category_name: string;
   needs_confirmation: boolean;
+  confidence: "high" | "medium" | "low";
+  high_amount: boolean;
 }
 
 export interface PipelineResult {
@@ -124,7 +126,10 @@ async function processSingleItem(
       return item.currency === "PLN" ? item.amount : item.amount; // best-effort
     });
 
-  const needsConfirmation = amountPln > HIGH_AMOUNT_PLN;
+  // Ask for confirmation if EITHER the amount is high OR the categorizer
+  // wasn't confident. Asking on every unsure item is the user's training loop:
+  // each correction feeds the kNN for next time.
+  const needsConfirmation = amountPln > HIGH_AMOUNT_PLN || cat.confidence !== "high";
 
   const ins = await sb.from("expenses").insert({
     name: item.name,
@@ -138,6 +143,7 @@ async function processSingleItem(
     source: "text",
     description: item.description ?? null,
     needs_confirmation: needsConfirmation,
+    confidence: cat.confidence === "high" ? 1.0 : cat.confidence === "medium" ? 0.85 : 0.5,
     embedding: cat.embedding,
     telegram_message_id: telegramMessageId,
     line_index: lineIndex,
@@ -162,6 +168,8 @@ async function processSingleItem(
     expense_date: item.expense_date,
     category_name: categoryName,
     needs_confirmation: needsConfirmation,
+    confidence: cat.confidence,
+    high_amount: amountPln > HIGH_AMOUNT_PLN,
   };
 }
 
@@ -170,8 +178,17 @@ export function formatReply(result: PipelineResult): string {
     return "Не понял, что записать. Попробуй: «кофе 12 zł».";
   }
   const lines = result.expenses.map((e) => {
-    const conf = e.needs_confirmation ? " (подтвердить)" : "";
-    return `- ${e.amount} ${e.currency} ${e.name} -> ${e.category_name}${conf}`;
+    let tag = "";
+    if (e.needs_confirmation) {
+      if (e.high_amount && e.confidence !== "high") {
+        tag = " (крупная сумма + не уверен в категории)";
+      } else if (e.high_amount) {
+        tag = " (крупная сумма)";
+      } else {
+        tag = " (категория не точно)";
+      }
+    }
+    return `- ${e.amount} ${e.currency} ${e.name} -> ${e.category_name}${tag}`;
   });
   const head = result.expenses.length === 1 ? "Записал:" : `Записал ${result.expenses.length}:`;
 

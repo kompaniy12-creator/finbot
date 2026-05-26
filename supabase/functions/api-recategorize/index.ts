@@ -9,6 +9,7 @@ import { adminClient } from "../_shared/supabase.ts";
 import { authenticateInitData, extractInitData } from "../_shared/webapp_auth.ts";
 import { forbidden, handleOptions, json, unauthorized } from "../_shared/api_response.ts";
 import { log } from "../_shared/log.ts";
+import { retrainCategory } from "../_shared/retrain.ts";
 
 const BodySchema = z.object({
   expense_id: z.string().regex(/^[0-9a-f-]{36}$/i),
@@ -70,5 +71,14 @@ Deno.serve(async (req: Request) => {
     to: cat.id,
     actor: me.telegram_id,
   });
+
+  // Immediate retrain: the new target category gains a corrected row, and the
+  // old category may need its centroid recomputed too (its sample set shrank).
+  // Best-effort; failures don't block the user response.
+  await Promise.all([
+    retrainCategory(sb, cat.id),
+    retrainCategory(sb, exp.category_id),
+  ]).catch((err) => log("warn", "recategorize_retrain_failed", { error: String(err) }));
+
   return json(req, { ok: true, category_id: cat.id, category_name: cat.name });
 });

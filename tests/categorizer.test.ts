@@ -157,10 +157,10 @@ Deno.test("categorizer: Claude returns new category -> inserted", async () => {
   assertEquals(inserted[0]!.name, "Pets");
 });
 
-Deno.test("categorizer: kNN exactly AT threshold does NOT count as hit (must be >)", async () => {
+Deno.test("categorizer: kNN exactly AT lower threshold does NOT count as hit (must be >)", async () => {
   const { sb } = makeSb({
     rpcMatches: [
-      { id: "e1", name: "x", category_id: "cat-x", similarity: 0.85 },
+      { id: "e1", name: "x", category_id: "cat-x", similarity: 0.70 },
     ],
     categories: [{ id: "cat-fallback", name: "Other", description: "x", is_fallback: true }],
   });
@@ -175,6 +175,65 @@ Deno.test("categorizer: kNN exactly AT threshold does NOT count as hit (must be 
     familyMemberId: "fm-1",
   });
   assertEquals(out.method, "claude", "AT threshold should defer to fallback");
+});
+
+Deno.test("categorizer: medium-confidence band (kNN hit between 0.70 and 0.92)", async () => {
+  const { sb } = makeSb({
+    rpcMatches: [
+      { id: "e1", name: "x", category_id: "cat-x", similarity: 0.85 },
+    ],
+  });
+  const deps: CategorizeDeps = {
+    sb,
+    embedFn: stubEmbed,
+    fallback: stubFallback({ kind: "existing", categoryId: "cat-x" }),
+  };
+  const out = await categorize(deps, {
+    name: "x",
+    nameNormalizedEn: "x",
+    familyMemberId: "fm-1",
+  });
+  assertEquals(out.method, "knn");
+  assertEquals(out.confidence, "medium", "0.85 sits between 0.70 and 0.92 -> medium");
+});
+
+Deno.test("categorizer: high-confidence band (kNN hit above 0.92)", async () => {
+  const { sb } = makeSb({
+    rpcMatches: [
+      { id: "e1", name: "x", category_id: "cat-x", similarity: 0.95 },
+    ],
+  });
+  const deps: CategorizeDeps = {
+    sb,
+    embedFn: stubEmbed,
+    fallback: stubFallback({ kind: "existing", categoryId: "cat-x" }),
+  };
+  const out = await categorize(deps, {
+    name: "x",
+    nameNormalizedEn: "x",
+    familyMemberId: "fm-1",
+  });
+  assertEquals(out.method, "knn");
+  assertEquals(out.confidence, "high");
+});
+
+Deno.test("categorizer: low-confidence band (Claude fallback)", async () => {
+  const { sb } = makeSb({
+    rpcMatches: [],
+    categories: [{ id: "cat-fallback", name: "Other", description: "x", is_fallback: true }],
+  });
+  const deps: CategorizeDeps = {
+    sb,
+    embedFn: stubEmbed,
+    fallback: stubFallback({ kind: "existing", categoryId: "cat-fallback" }),
+  };
+  const out = await categorize(deps, {
+    name: "x",
+    nameNormalizedEn: "x",
+    familyMemberId: "fm-1",
+  });
+  assertEquals(out.method, "claude");
+  assertEquals(out.confidence, "low");
 });
 
 Deno.test("categorizer: returns embedding for caller storage", async () => {

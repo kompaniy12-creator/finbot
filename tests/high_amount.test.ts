@@ -11,6 +11,8 @@ const baseExpense = {
   currency: "PLN",
   expense_date: "2026-05-19",
   category_name: "cat",
+  confidence: "high" as const,
+  high_amount: false,
 };
 
 Deno.test("highAmountKeyboard: returns null when nothing needs confirmation", () => {

@@ -11,7 +11,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { EmbedFn } from "./embedder.ts";
 import { log } from "./log.ts";
 
-export const KNN_THRESHOLD = 0.85;
+export const KNN_THRESHOLD = 0.70; // below this we go to Claude fallback
+export const KNN_CONFIDENT = 0.92; // above this we trust the kNN hit silently
 export const KNN_TOP_K = 5;
 export const FALLBACK_TOP_CATEGORIES = 30;
 export const FALLBACK_SIMILAR_EXAMPLES = 5;
@@ -23,11 +24,13 @@ export interface CategorizeInput {
 }
 
 export type CategorizeMethod = "knn" | "claude" | "new";
+export type CategorizeConfidence = "high" | "medium" | "low";
 
 export interface CategorizeOutput {
   categoryId: string;
   method: CategorizeMethod;
   similarity?: number;
+  confidence: CategorizeConfidence;
   embedding: number[];
 }
 
@@ -84,14 +87,16 @@ export async function categorize(
   const matches = (rpc.data ?? []) as SimilarExpenseRow[];
 
   if (matches.length > 0 && matches[0]!.similarity > KNN_THRESHOLD) {
+    const sim = matches[0]!.similarity;
     log("info", "categorizer_knn_hit", {
-      similarity: matches[0]!.similarity,
+      similarity: sim,
       category_id: matches[0]!.category_id,
     });
     return {
       categoryId: matches[0]!.category_id,
       method: "knn",
-      similarity: matches[0]!.similarity,
+      similarity: sim,
+      confidence: sim >= KNN_CONFIDENT ? "high" : "medium",
       embedding,
     };
   }
@@ -119,6 +124,7 @@ export async function categorize(
     return {
       categoryId: decision.categoryId,
       method: "claude",
+      confidence: "low",
       embedding,
     };
   }
@@ -141,6 +147,7 @@ export async function categorize(
     return {
       categoryId: other?.id ?? "",
       method: "new",
+      confidence: "low",
       embedding,
     };
   }
@@ -149,6 +156,7 @@ export async function categorize(
   return {
     categoryId: (ins.data as { id: string }).id,
     method: "new",
+    confidence: "low",
     embedding,
   };
 }

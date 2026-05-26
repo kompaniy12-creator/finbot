@@ -13,6 +13,13 @@ import { todayWarsawIso } from "../_shared/dates.ts";
 import { getRate } from "../_shared/currency.ts";
 import { log } from "../_shared/log.ts";
 import type { ProgressEmitter } from "../_shared/progress.ts";
+import { defaultEmbedFn } from "../_shared/embedder.ts";
+import { mapWithConcurrency } from "../_shared/concurrency.ts";
+
+// Parallel embedding for photo items so they also feed the kNN learning loop.
+// gte-small in Supabase.ai is fast (~50-200ms per call), so 6 concurrent
+// embeddings on a 38-item receipt finish in ~1-2s.
+const EMBED_CONCURRENCY = 6;
 
 const SIGNED_URL_TTL_SEC = 300;
 const STORAGE_BUCKET = "receipts";
@@ -285,12 +292,33 @@ export async function processPhotoMessage(args: {
   // Same currency+date as the receipt total, so reuse the rate we already loaded.
   const toPlnLocal = (amount: number) => Math.round(amount * receiptRate * 100) / 100;
 
+  // Embed every item name in parallel so the row contributes to future kNN
+  // matching (a "молоко" in a receipt should help auto-classify a "молоко"
+  // typed by the user later).
+  const embedFn = defaultEmbedFn();
+  const embeddings = await mapWithConcurrency(
+    receipt.items,
+    EMBED_CONCURRENCY,
+    async (item) => {
+      try {
+        return await embedFn(item.name_normalized_en);
+      } catch (err) {
+        log("warn", "photo_embed_failed", {
+          name: item.name_normalized_en,
+          error: (err as Error).message,
+        });
+        return null;
+      }
+    },
+  );
+
   // Build all rows in memory, then ONE atomic bulk INSERT.
   // Vision already assigned category_id to each item; validate against the
   // category list and fall back to the "miscellaneous" category if Vision
   // hallucinated an ID that isn't in the DB.
   const rows = receipt.items.map((item, i) => {
     const validCat = catById.has(item.category_id) ? item.category_id : fallbackCatId;
+    const hallucinated = !catById.has(item.category_id);
     return {
       name: item.name,
       name_normalized: item.name_normalized_en,
@@ -302,7 +330,8 @@ export async function processPhotoMessage(args: {
       family_member_id: args.member.id,
       source: "photo",
       receipt_id: receiptId,
-      needs_review: !recon.ok,
+      needs_review: !recon.ok || hallucinated,
+      embedding: embeddings[i] ?? null,
       telegram_message_id: args.telegramMessageId,
       line_index: i,
     };

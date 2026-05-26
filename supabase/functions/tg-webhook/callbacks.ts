@@ -8,6 +8,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { FamilyMember } from "../_shared/types.ts";
 import type { CommandReply } from "./commands.ts";
+import { retrainCategory } from "../_shared/retrain.ts";
+import { log } from "../_shared/log.ts";
 
 const UNDO_WINDOW_MIN = Number(Deno.env.get("UNDO_WINDOW_MINUTES") ?? "10");
 const CAT_MENU_PAGE = 5;
@@ -255,12 +257,23 @@ async function doCatSet(
   categoryId: string,
   editMessageId?: number,
 ): Promise<CallbackOutput> {
+  // Capture old category so we can retrain it too.
+  const before = await sb.from("expenses").select("category_id").eq("id", expenseId).maybeSingle();
+  const oldCat = (before.data as { category_id: string } | null)?.category_id ?? null;
+
   const upd = await sb.from("expenses").update({
     category_id: categoryId,
     corrected_by_user: true,
     needs_confirmation: false,
   }).eq("id", expenseId);
   if (upd.error) return { chatId, reply: { text: `Ошибка: ${upd.error.message}` } };
+
+  // Immediate centroid update so the next "молоко" already gets the new one.
+  await Promise.all([
+    retrainCategory(sb, categoryId),
+    oldCat ? retrainCategory(sb, oldCat) : Promise.resolve(0),
+  ]).catch((err) => log("warn", "catset_retrain_failed", { error: String(err) }));
+
   const detail = await loadExpenseDetails(sb, expenseId);
   const summary = detail ? expenseSummary(detail) : "";
   return {
