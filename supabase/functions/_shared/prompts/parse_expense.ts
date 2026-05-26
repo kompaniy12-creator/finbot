@@ -43,7 +43,7 @@ export const ParseExpenseTool: Anthropic.Messages.Tool = {
               type: "string",
               pattern: "^\\d{4}-\\d{2}-\\d{2}$",
               description:
-                "Date in ISO format (YYYY-MM-DD), in Europe/Warsaw timezone. Use today if not specified, parse 'вчера', 'позавчера', 'в субботу', dd.mm, etc. relative to today.",
+                "Date the user actually paid (Europe/Warsaw, ISO YYYY-MM-DD). Default to today. Phrases like 'за март', '03/2026', 'за апрель 2026' describe what was paid for, NOT when - keep them in the name and leave expense_date as today. Only explicit payment-time words override today: 'вчера' = today-1, 'позавчера' = today-2, 'в субботу' = last Saturday, '12.05.2026' = that exact date.",
             },
             description: {
               type: "string",
@@ -77,7 +77,16 @@ Rules:
 - Multiple items in one message: emit multiple array entries.
 - If the user mentions "плюс", "и", "ещё", treat as separate items.
 - If a quantity is implied ("3 кофе по 10 zł"), record as 3 separate items of 10 zł each.
-- For dates: "вчера" = today-1, "позавчера" = today-2, "в субботу" = last Saturday (not next), "01.03" = March 1 of current year (or previous year if that future date is > 30 days ahead).
+
+Dates (CRITICAL):
+- expense_date is the date the user PAID, not the period the payment covers.
+- "за <месяц>", "за <месяц> <год>", "03/2026", "04/2026", "за март", "электричество за апрель", "коммуналка за февраль", "оплата за квартал" are DESCRIPTIONS of what was paid for - they describe the billing period. KEEP that text inside the item name, and set expense_date = today.
+- Explicit payment-date markers DO override today: "вчера" = today-1, "позавчера" = today-2, "в субботу" = last Saturday (not next), "01.03" = March 1 of current year (or previous year if that future date is > 30 days ahead), "12.05.2026" = that exact date.
+- Examples:
+  - "Электричество за март 9565 лек" today → expense_date = TODAY (the payment date), name = "электричество за март"
+  - "9565 лек за электричество за март" today → expense_date = TODAY
+  - "Вчера электричество за март 9565 лек" → expense_date = today-1
+  - "12.05.2026 электричество за март 9565 лек" → expense_date = 2026-05-12
 - name_normalized_en should be 2-4 English words optimized for semantic search by category. Lowercase. No punctuation. Examples:
   - "молоко 2.5% литр" -> "milk dairy"
   - "espresso в кафе" -> "coffee cafe drink"
