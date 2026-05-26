@@ -49,11 +49,12 @@ Deno.serve(async (req: Request) => {
   // Build SQL via Management API isn't available from Edge; use supabase-js with
   // two queries + merge in JS. This keeps the endpoint stateless.
 
+  // Family-wide feed: every member sees every member's transactions.
+  void me;
   // 1. Receipts (one row per receipt) with line counts.
   let rq = sb.from("receipts").select(
     "id, merchant, total, currency, total_pln, receipt_date, family_member_id, created_at",
   ).eq("archived", false);
-  if (me.role !== "admin") rq = rq.eq("family_member_id", me.id);
   if (search) rq = rq.ilike("merchant", `%${search}%`);
   if (win) rq = rq.gte("receipt_date", win.start).lte("receipt_date", win.end);
   rq = rq.order("created_at", { ascending: false }).limit(200);
@@ -87,7 +88,6 @@ Deno.serve(async (req: Request) => {
   let eq = sb.from("expenses").select(
     "id, name, amount, currency, amount_pln, expense_date, category_id, family_member_id, source, needs_review, needs_confirmation, created_at",
   ).eq("archived", false).is("receipt_id", null);
-  if (me.role !== "admin") eq = eq.eq("family_member_id", me.id);
   if (search) eq = eq.ilike("name", `%${search}%`);
   if (win) eq = eq.gte("expense_date", win.start).lte("expense_date", win.end);
   eq = eq.order("created_at", { ascending: false }).limit(200);

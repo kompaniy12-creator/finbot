@@ -24,14 +24,15 @@ Deno.serve(async (req: Request) => {
   const today = todayWarsawIso();
   const startIso = period === "all" ? "1900-01-01" : today.slice(0, 7) + "-01";
 
-  let q = sb.from("expenses")
+  // Family-wide export: every member can export the full family CSV.
+  void me;
+  const q = sb.from("expenses")
     .select(
       "expense_date, name, amount, currency, amount_pln, category_id, family_member_id, source, needs_review, needs_confirmation",
     )
     .eq("archived", false)
     .gte("expense_date", startIso)
     .order("expense_date", { ascending: true });
-  if (me.role !== "admin") q = q.eq("family_member_id", me.id);
   const res = await q;
   if (res.error) {
     return text(req, "error\n" + res.error.message, 500, "text/csv");

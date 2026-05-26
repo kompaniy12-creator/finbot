@@ -4,7 +4,7 @@
 
 import { adminClient } from "../_shared/supabase.ts";
 import { authenticateInitData, extractInitData } from "../_shared/webapp_auth.ts";
-import { forbidden, handleOptions, json, unauthorized } from "../_shared/api_response.ts";
+import { handleOptions, json, unauthorized } from "../_shared/api_response.ts";
 import { loadEurRates, plnToEur } from "../_shared/eur_view.ts";
 
 Deno.serve(async (req: Request) => {
@@ -36,9 +36,8 @@ Deno.serve(async (req: Request) => {
     items: unknown;
   } | null;
   if (!receipt) return json(req, { error: "not_found" }, 404);
-  if (me.role !== "admin" && receipt.family_member_id !== me.id) {
-    return forbidden(req);
-  }
+  // Family-wide visibility: anyone in the family can open any receipt.
+  void me;
 
   const lineRes = await sb.from("expenses")
     .select(

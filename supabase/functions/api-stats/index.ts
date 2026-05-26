@@ -20,16 +20,16 @@ Deno.serve(async (req: Request) => {
   const today = todayWarsawIso();
   const win = resolveDateWindow(url, today);
 
+  // Family-wide visibility: every authenticated family member sees the joint
+  // picture (totals, categories, transactions). Per-member edit/delete still
+  // requires ownership or admin, but viewing is shared.
+  void me;
   const [expRes, catRes] = await Promise.all([
-    (async () => {
-      let q = sb.from("expenses")
-        .select("amount, currency, amount_pln, category_id, expense_date")
-        .eq("archived", false)
-        .gte("expense_date", win.start)
-        .lte("expense_date", win.end);
-      if (me.role !== "admin") q = q.eq("family_member_id", me.id);
-      return await q;
-    })(),
+    sb.from("expenses")
+      .select("amount, currency, amount_pln, category_id, expense_date")
+      .eq("archived", false)
+      .gte("expense_date", win.start)
+      .lte("expense_date", win.end),
     sb.from("categories").select("id, name, is_fallback"),
   ]);
   const rows = (expRes.data ?? []) as Array<{
