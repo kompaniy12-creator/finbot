@@ -5,10 +5,16 @@ const SUPABASE_URL = "https://bltbuptzsswaislqagwe.supabase.co";
 const API_BASE = SUPABASE_URL + "/functions/v1";
 const TX_PAGE = 50;
 
+function todayMonth() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
 const state = {
   period: "month",
   from: null, // YYYY-MM-DD when period === "custom"
   to: null,
+  month: todayMonth(), // YYYY-MM, used when period === "month"
   txOffset: 0,
   txSearch: "",
   txItems: [], // mixed feed: kind=receipt|expense
@@ -23,6 +29,9 @@ const state = {
 function periodQuery() {
   if (state.period === "custom" && state.from && state.to) {
     return `from=${encodeURIComponent(state.from)}&to=${encodeURIComponent(state.to)}`;
+  }
+  if (state.period === "month" && state.month) {
+    return "month=" + encodeURIComponent(state.month);
   }
   return "period=" + encodeURIComponent(state.period);
 }
@@ -646,10 +655,49 @@ async function main() {
   const customBox = $("#custom-range");
   const fromInput = $("#range-from");
   const toInput = $("#range-to");
+  const monthBox = $("#month-picker");
+  const monthSelect = $("#month-select");
   // Default the date inputs to current month so the user only has to tap.
   const todayIso = new Date().toISOString().slice(0, 10);
   toInput.value = todayIso;
   fromInput.value = todayIso.slice(0, 7) + "-01";
+
+  // Populate month picker with last 12 months. Newest first; current first.
+  const RU_MONTHS = [
+    "январь",
+    "февраль",
+    "март",
+    "апрель",
+    "май",
+    "июнь",
+    "июль",
+    "август",
+    "сентябрь",
+    "октябрь",
+    "ноябрь",
+    "декабрь",
+  ];
+  monthSelect.innerHTML = "";
+  const now = new Date();
+  for (let i = 0; i < 12; i++) {
+    const d = new Date(Date.UTC(now.getFullYear(), now.getMonth() - i, 1));
+    const y = d.getUTCFullYear();
+    const m = d.getUTCMonth();
+    const ym = `${y}-${String(m + 1).padStart(2, "0")}`;
+    const o = document.createElement("option");
+    o.value = ym;
+    o.textContent = `${RU_MONTHS[m]} ${y}`;
+    if (ym === state.month) o.selected = true;
+    monthSelect.appendChild(o);
+  }
+  // Initially "Месяц" is the active default tab, so show the picker.
+  monthBox.classList.remove("hidden");
+
+  monthSelect.addEventListener("change", () => {
+    state.month = monthSelect.value;
+    state.period = "month";
+    refresh();
+  });
 
   document.querySelectorAll(".period-tabs button").forEach((btn) => {
     btn.addEventListener("click", () => {
@@ -658,10 +706,18 @@ async function main() {
       const p = btn.dataset.period;
       if (p === "custom") {
         customBox.classList.remove("hidden");
-        // Don't refresh until user hits OK.
+        monthBox.classList.add("hidden");
         return;
       }
       customBox.classList.add("hidden");
+      if (p === "month") {
+        // Snap month picker back to current month and show it.
+        state.month = todayMonth();
+        monthSelect.value = state.month;
+        monthBox.classList.remove("hidden");
+      } else {
+        monthBox.classList.add("hidden");
+      }
       state.period = p;
       state.from = null;
       state.to = null;

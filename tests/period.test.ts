@@ -7,9 +7,30 @@ function url(q: string): URL {
   return new URL(`https://x?${q}`);
 }
 
-Deno.test("resolveDateWindow: default = month", () => {
+Deno.test("resolveDateWindow: default = current calendar month-to-date", () => {
   const w = resolveDateWindow(url(""), TODAY);
-  assertEquals(w, { start: "2026-05-01", end: TODAY, period: "month" });
+  assertEquals(w, { start: "2026-05-01", end: TODAY, period: "month", month: "2026-05" });
+});
+
+Deno.test("resolveDateWindow: month=YYYY-MM for past month = full calendar month", () => {
+  const w = resolveDateWindow(url("month=2026-03"), TODAY);
+  assertEquals(w, { start: "2026-03-01", end: "2026-03-31", period: "month", month: "2026-03" });
+});
+
+Deno.test("resolveDateWindow: month=YYYY-MM for current month clips to today", () => {
+  const w = resolveDateWindow(url("month=2026-05"), TODAY);
+  assertEquals(w, { start: "2026-05-01", end: TODAY, period: "month", month: "2026-05" });
+});
+
+Deno.test("resolveDateWindow: month=YYYY-MM handles February non-leap correctly", () => {
+  const w = resolveDateWindow(url("month=2025-02"), TODAY);
+  assertEquals(w.end, "2025-02-28");
+});
+
+Deno.test("resolveDateWindow: bad month format falls back to default", () => {
+  const w = resolveDateWindow(url("month=2026"), TODAY);
+  assertEquals(w.period, "month");
+  assertEquals(w.start, "2026-05-01");
 });
 
 Deno.test("resolveDateWindow: period=day", () => {

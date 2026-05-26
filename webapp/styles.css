@@ -104,6 +104,23 @@ header h1 {
   cursor: pointer;
 }
 
+.month-picker {
+  margin: 0 0 12px;
+}
+.month-picker select {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--hint);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+  appearance: auto;
+}
+.month-picker.hidden {
+  display: none;
+}
+
 .kpis {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
