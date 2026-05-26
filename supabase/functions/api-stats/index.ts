@@ -23,7 +23,7 @@ Deno.serve(async (req: Request) => {
   const [expRes, catRes] = await Promise.all([
     (async () => {
       let q = sb.from("expenses")
-        .select("amount_pln, category_id, expense_date")
+        .select("amount, currency, amount_pln, category_id, expense_date")
         .eq("archived", false)
         .gte("expense_date", win.start)
         .lte("expense_date", win.end);
@@ -33,6 +33,8 @@ Deno.serve(async (req: Request) => {
     sb.from("categories").select("id, name, is_fallback"),
   ]);
   const rows = (expRes.data ?? []) as Array<{
+    amount: number;
+    currency: string;
     amount_pln: number;
     category_id: string;
     expense_date: string;
@@ -52,6 +54,7 @@ Deno.serve(async (req: Request) => {
   const byCatEur = new Map<string, number>();
   const byCatCount = new Map<string, number>();
   const byDayEur = new Map<string, number>();
+  const byCurrency = new Map<string, number>(); // source-currency totals
   for (const r of rows) {
     const pln = Number(r.amount_pln);
     const eur = plnToEur(pln, r.expense_date, eurRates) ?? 0;
@@ -61,6 +64,7 @@ Deno.serve(async (req: Request) => {
     byCatEur.set(r.category_id, (byCatEur.get(r.category_id) ?? 0) + eur);
     byCatCount.set(r.category_id, (byCatCount.get(r.category_id) ?? 0) + 1);
     byDayEur.set(r.expense_date, (byDayEur.get(r.expense_date) ?? 0) + eur);
+    byCurrency.set(r.currency, (byCurrency.get(r.currency) ?? 0) + Number(r.amount));
   }
   const count = rows.length;
 
@@ -92,6 +96,21 @@ Deno.serve(async (req: Request) => {
     top_category_total: topEntry?.total_eur ?? 0,
     top_category_total_pln: topEntry?.total_pln ?? 0,
     by_category: breakdown,
+    by_currency: [...byCurrency.entries()]
+      .map(([currency, total]) => ({
+        currency,
+        total: Math.round(total * 100) / 100,
+      }))
+      // Stable order: PLN, EUR, USD, ALL, then anything else alphabetically.
+      .sort((a, b) => {
+        const order = ["PLN", "EUR", "USD", "ALL"];
+        const ia = order.indexOf(a.currency);
+        const ib = order.indexOf(b.currency);
+        if (ia >= 0 && ib >= 0) return ia - ib;
+        if (ia >= 0) return -1;
+        if (ib >= 0) return 1;
+        return a.currency.localeCompare(b.currency);
+      }),
     by_day: [...byDayEur.entries()]
       .sort((a, b) => a[0].localeCompare(b[0]))
       .map(([date, total]) => ({

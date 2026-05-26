@@ -74,6 +74,19 @@ async function loadKpis() {
   } else {
     $("#kpi-top").textContent = "-";
   }
+  // Per-source-currency breakdown under "Всего".
+  const byCurUl = $("#kpi-by-currency");
+  if (byCurUl) {
+    byCurUl.innerHTML = "";
+    const list = Array.isArray(r.by_currency) ? r.by_currency : [];
+    for (const c of list) {
+      if (!c || Number(c.total) <= 0) continue;
+      const li = document.createElement("li");
+      li.innerHTML = `<span class="ccy">${escapeHtml(c.currency)}</span>` +
+        `<span class="amt">${Number(c.total).toFixed(2)}</span>`;
+      byCurUl.appendChild(li);
+    }
+  }
   state.byCategory = Array.isArray(r.by_category) ? r.by_category : [];
   state.byDay = Array.isArray(r.by_day) ? r.by_day : [];
   renderCategories();
