@@ -20,17 +20,30 @@ Deno.serve(async (req: Request) => {
   const today = todayWarsawIso();
   const win = resolveDateWindow(url, today);
 
+  // Previous-period window for delta comparison: same length, ending the day
+  // before the current window starts.
+  const winStartMs = new Date(win.start + "T00:00:00Z").getTime();
+  const winEndMs = new Date(win.end + "T00:00:00Z").getTime();
+  const lenMs = winEndMs - winStartMs + 86_400_000; // inclusive day count
+  const prevEndIso = new Date(winStartMs - 86_400_000).toISOString().slice(0, 10);
+  const prevStartIso = new Date(winStartMs - lenMs).toISOString().slice(0, 10);
+
   // Family-wide visibility: every authenticated family member sees the joint
   // picture (totals, categories, transactions). Per-member edit/delete still
   // requires ownership or admin, but viewing is shared.
   void me;
-  const [expRes, catRes] = await Promise.all([
+  const [expRes, catRes, prevRes] = await Promise.all([
     sb.from("expenses")
       .select("amount, currency, amount_pln, category_id, expense_date")
       .eq("archived", false)
       .gte("expense_date", win.start)
       .lte("expense_date", win.end),
     sb.from("categories").select("id, name, is_fallback"),
+    sb.from("expenses")
+      .select("amount_pln, expense_date")
+      .eq("archived", false)
+      .gte("expense_date", prevStartIso)
+      .lte("expense_date", prevEndIso),
   ]);
   const rows = (expRes.data ?? []) as Array<{
     amount: number;
@@ -45,8 +58,19 @@ Deno.serve(async (req: Request) => {
     is_fallback: boolean;
   }>;
 
-  const dates = rows.map((r) => r.expense_date);
+  const prevRows = (prevRes.data ?? []) as Array<{
+    amount_pln: number;
+    expense_date: string;
+  }>;
+
+  const dates = [...rows.map((r) => r.expense_date), ...prevRows.map((r) => r.expense_date)];
   const eurRates = await loadEurRates(sb, dates);
+
+  let prevTotalEur = 0;
+  for (const r of prevRows) {
+    prevTotalEur += plnToEur(Number(r.amount_pln), r.expense_date, eurRates) ?? 0;
+  }
+  const prevCount = prevRows.length;
 
   let totalPln = 0;
   let totalEur = 0;
@@ -85,6 +109,15 @@ Deno.serve(async (req: Request) => {
 
   const topEntry = breakdown.find((b) => b.total_eur > 0) ?? null;
 
+  // Delta vs previous-period: percent shift in EUR + absolute count diff.
+  // null when there is no comparable previous data.
+  const prevEurRounded = Math.round(prevTotalEur * 100) / 100;
+  const deltaEur = Math.round((totalEur - prevTotalEur) * 100) / 100;
+  const deltaCount = count - prevCount;
+  const deltaEurPct = prevEurRounded > 0
+    ? Math.round(((totalEur - prevTotalEur) / prevTotalEur) * 1000) / 10
+    : null;
+
   return json(req, {
     period: win.period,
     period_start: win.start,
@@ -95,6 +128,13 @@ Deno.serve(async (req: Request) => {
     top_category_id: topEntry?.id ?? null,
     top_category_total: topEntry?.total_eur ?? 0,
     top_category_total_pln: topEntry?.total_pln ?? 0,
+    prev_period_start: prevStartIso,
+    prev_period_end: prevEndIso,
+    prev_total_eur: prevEurRounded,
+    prev_count: prevCount,
+    delta_eur: deltaEur,
+    delta_count: deltaCount,
+    delta_eur_pct: deltaEurPct,
     by_category: breakdown,
     by_currency: [...byCurrency.entries()]
       .map(([currency, total]) => ({

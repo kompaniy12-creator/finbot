@@ -31,6 +31,23 @@ function isAdmin() {
   return state.me && state.me.role === "admin";
 }
 
+function renderDelta(el, { pct, abs, unit, higherIsWorse }) {
+  if (!el) return;
+  if (pct === null || pct === undefined || !isFinite(pct)) {
+    // No comparable previous period (or first record ever).
+    el.textContent = abs && abs > 0 ? `+${abs.toFixed(0)} ${unit}` : "";
+    el.className = "kpi-delta";
+    return;
+  }
+  const rounded = Math.round(pct * 10) / 10;
+  const sign = rounded > 0 ? "+" : "";
+  const tone = rounded === 0
+    ? "neutral"
+    : (rounded > 0 ? (higherIsWorse ? "bad" : "good") : (higherIsWorse ? "good" : "bad"));
+  el.textContent = `${sign}${rounded.toFixed(1)}% vs прошлый период`;
+  el.className = `kpi-delta tone-${tone}`;
+}
+
 function periodQuery() {
   if (state.period === "custom" && state.from && state.to) {
     return `from=${encodeURIComponent(state.from)}&to=${encodeURIComponent(state.to)}`;
@@ -85,6 +102,18 @@ async function loadKpis() {
   const r = await api("/api-stats?" + periodQuery()).then((r) => r.json());
   $("#kpi-total").textContent = (r.total_eur || 0).toFixed(2) + " EUR";
   $("#kpi-count").textContent = r.count || 0;
+  renderDelta($("#kpi-total-delta"), {
+    pct: r.delta_eur_pct,
+    abs: r.delta_eur,
+    unit: "EUR",
+    higherIsWorse: true,
+  });
+  renderDelta($("#kpi-count-delta"), {
+    pct: r.prev_count > 0 ? ((r.count - r.prev_count) / r.prev_count) * 100 : null,
+    abs: r.delta_count,
+    unit: "",
+    higherIsWorse: false,
+  });
   if (r.top_category_id) {
     const c = state.categories.get(r.top_category_id);
     $("#kpi-top").textContent = (c ? c.name : "?") + " (" + (r.top_category_total || 0).toFixed(0) +
