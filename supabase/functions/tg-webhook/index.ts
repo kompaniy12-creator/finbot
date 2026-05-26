@@ -48,9 +48,21 @@ async function tgRequest(
       body: JSON.stringify(body),
     },
   );
+  const text = await resp.text();
+  // Telegram returns HTTP 200 with {ok:false, description:"..."} for many
+  // application-level errors (callback_data too long, message_not_modified,
+  // entity parse, etc). Treat those as failures too so silent edits surface.
   if (!resp.ok) {
-    const text = await resp.text();
-    log("error", "tg_request_failed", { method, status: resp.status, body: text });
+    log("error", "tg_request_http_failed", { method, status: resp.status, body: text });
+    return;
+  }
+  try {
+    const parsed = JSON.parse(text) as { ok?: boolean; description?: string };
+    if (parsed.ok === false) {
+      log("error", "tg_request_api_failed", { method, description: parsed.description });
+    }
+  } catch (_e) {
+    /* non-JSON 200 - ignore */
   }
 }
 

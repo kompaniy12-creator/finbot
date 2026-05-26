@@ -1,9 +1,14 @@
 // Inline-keyboard callback handlers for tg-webhook.
-// Callback data uses a colon-separated tag format:
+// Callback data uses a colon-separated tag format. Telegram caps callback_data
+// at 64 bytes per button, so the category id is shortened to its first 8 hex
+// chars (resolved server-side from the 24-row categories table).
 //   undo:<expense_id>
-//   catmenu:<expense_id>           - show top 5 categories
-//   catall:<expense_id>:<page>     - paginate over all categories
-//   catset:<expense_id>:<cat_id>   - change category + mark corrected_by_user
+//   catmenu:<expense_id>            - show top categories
+//   catall:<expense_id>:<page>      - paginate over all categories
+//   catset:<expense_id>:<cat_prefix8> - change category + mark corrected_by_user
+//
+// Byte-budget sanity check:
+//   "catset:" (7) + uuid (36) + ":" (1) + 8 = 52 bytes <= 64. OK.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { FamilyMember } from "../_shared/types.ts";
@@ -224,6 +229,8 @@ async function doUndo(
   };
 }
 
+const CAT_ID_PREFIX_LEN = 8;
+
 async function doCatMenu(
   sb: SupabaseClient,
   chatId: number,
@@ -245,7 +252,7 @@ async function doCatMenu(
   const hasMore = list.length > CAT_MENU_PAGE;
   const buttons: Array<Array<{ text: string; callback_data: string }>> = visible.map((c) => [{
     text: c.is_fallback ? `${c.name} (fallback)` : c.name,
-    callback_data: `catset:${expenseId}:${c.id}`,
+    callback_data: `catset:${expenseId}:${c.id.slice(0, CAT_ID_PREFIX_LEN)}`,
   }]);
   if (hasMore) {
     buttons.push([{
@@ -276,9 +283,23 @@ async function doCatSet(
   sb: SupabaseClient,
   chatId: number,
   expenseId: string,
-  categoryId: string,
+  catRef: string,
   editMessageId?: number,
 ): Promise<CallbackOutput> {
+  // catRef may be a full UUID (legacy) or an 8-char prefix (new short form).
+  // Resolve to the full id by scanning the small categories table.
+  let categoryId: string | null = null;
+  if (catRef.length === 36) {
+    categoryId = catRef;
+  } else {
+    const all = await sb.from("categories").select("id");
+    const match = ((all.data ?? []) as Array<{ id: string }>).find((c) => c.id.startsWith(catRef));
+    categoryId = match?.id ?? null;
+  }
+  if (!categoryId) {
+    return { chatId, reply: { text: "Категория не найдена. Попробуй ещё раз." } };
+  }
+
   // Capture old category so we can retrain it too.
   const before = await sb.from("expenses").select("category_id").eq("id", expenseId).maybeSingle();
   const oldCat = (before.data as { category_id: string } | null)?.category_id ?? null;
