@@ -119,6 +119,17 @@ async function loadKpis() {
     unit: "",
     higherIsWorse: false,
   });
+  // Month-end forecast (only meaningful for month-to-date view).
+  const fcEl = $("#kpi-forecast");
+  if (fcEl) {
+    if (r.forecast_total_eur != null && r.forecast_days_remaining > 0) {
+      fcEl.textContent = `Прогноз на конец месяца: ~${
+        Number(r.forecast_total_eur).toFixed(0)
+      } EUR (осталось ${r.forecast_days_remaining} д.)`;
+    } else {
+      fcEl.textContent = "";
+    }
+  }
   if (r.top_category_id) {
     const c = state.categories.get(r.top_category_id);
     $("#kpi-top").textContent = (c ? c.name : "?") + " (" + (r.top_category_total || 0).toFixed(0) +

@@ -53,6 +53,7 @@ export function helpCommand(member: FamilyMember): CommandReply {
       "/revoke TID - отозвать доступ",
       "/promote TID - сделать админом",
       "/demote TID - снять админа",
+      "/subscriptions - найти подписки и добавить в регулярные",
     ].join("\n")
     : "";
   return {
@@ -410,6 +411,121 @@ export function unsupportedReply(): CommandReply {
   return {
     text:
       "Пока умею только команды (/start, /help). Парсинг трат включается с M7. Возвращайся позже!",
+  };
+}
+
+// Detect "subscription"-like spending patterns: same (family_member, name,
+// currency, amount) repeated 3+ times in the last 120 days with roughly
+// monthly cadence. Filter out anything already in recurring_expenses.
+// Output a list with inline buttons to convert each into a recurring row.
+export async function subscriptionsCommand(
+  sb: SupabaseClient,
+  actor: FamilyMember,
+): Promise<CommandReply> {
+  if (actor.role !== "admin") return { text: "Только админ." };
+
+  const sinceDate = new Date(Date.now() - 120 * 86_400_000).toISOString().slice(0, 10);
+  const res = await sb.from("expenses")
+    .select("id, name, amount, currency, category_id, family_member_id, expense_date")
+    .eq("archived", false)
+    .gte("expense_date", sinceDate)
+    .order("expense_date", { ascending: false });
+  if (res.error) return { text: `DB error: ${res.error.message}` };
+  const rows = (res.data ?? []) as Array<{
+    id: string;
+    name: string;
+    amount: number;
+    currency: string;
+    category_id: string;
+    family_member_id: string;
+    expense_date: string;
+  }>;
+
+  // Group by (family_member_id, lowercased name, currency, amount).
+  interface Group {
+    key: string;
+    family_member_id: string;
+    name: string;
+    amount: number;
+    currency: string;
+    category_id: string;
+    rows: typeof rows;
+  }
+  const groups = new Map<string, Group>();
+  for (const r of rows) {
+    const key = `${r.family_member_id}|${r.name.toLowerCase().trim()}|${r.currency}|${r.amount}`;
+    if (!groups.has(key)) {
+      groups.set(key, {
+        key,
+        family_member_id: r.family_member_id,
+        name: r.name,
+        amount: Number(r.amount),
+        currency: r.currency,
+        category_id: r.category_id,
+        rows: [],
+      });
+    }
+    groups.get(key)!.rows.push(r);
+  }
+
+  // Candidate filter: 3+ occurrences AND cadence ~monthly (avg gap 20-40 days).
+  const candidates: Group[] = [];
+  for (const g of groups.values()) {
+    if (g.rows.length < 3) continue;
+    const dates = g.rows.map((r) => r.expense_date).sort();
+    const firstMs = new Date(dates[0]! + "T00:00:00Z").getTime();
+    const lastMs = new Date(dates[dates.length - 1]! + "T00:00:00Z").getTime();
+    const spanDays = (lastMs - firstMs) / 86_400_000;
+    const avgGap = spanDays / (g.rows.length - 1);
+    if (avgGap < 20 || avgGap > 40) continue;
+    candidates.push(g);
+  }
+
+  // Exclude ones already in recurring_expenses.
+  const rec = await sb.from("recurring_expenses")
+    .select("name, currency, amount, family_member_id");
+  const recSet = new Set(
+    ((rec.data ?? []) as Array<{
+      name: string;
+      currency: string;
+      amount: number;
+      family_member_id: string;
+    }>).map((r) =>
+      `${r.family_member_id}|${r.name.toLowerCase().trim()}|${r.currency}|${Number(r.amount)}`
+    ),
+  );
+  const fresh = candidates.filter((c) => !recSet.has(c.key));
+
+  if (fresh.length === 0) {
+    return {
+      text:
+        "Подписок не нашёл. Чтобы попасть в детектор, нужна повторяющаяся трата с тем же именем, валютой и суммой 3+ раз за последние 4 месяца.",
+    };
+  }
+
+  // Build text + inline buttons (one button per candidate).
+  fresh.sort((a, b) => b.rows.length - a.rows.length);
+  const visible = fresh.slice(0, 10); // Telegram caps inline_keyboard, keep it sane
+  const lines = visible.map((c, i) => {
+    const lastDate = c.rows.map((r) => r.expense_date).sort().slice(-1)[0];
+    return `${
+      i + 1
+    }. ${c.name} ${c.amount} ${c.currency} - ${c.rows.length} повторов, последний ${lastDate}`;
+  });
+  const buttons: Array<Array<{ text: string; callback_data: string }>> = visible.map((c) => [{
+    text: `✅ ${c.name} ${c.amount} ${c.currency}`,
+    callback_data: `subadd:${c.rows[0]!.id}`,
+  }]);
+
+  return {
+    text: [
+      `Похоже на подписки (${visible.length}):`,
+      "",
+      ...lines,
+      "",
+      "Тап на кнопку = добавить в регулярные траты.",
+    ].join("\n"),
+    reply_markup: { inline_keyboard: buttons } as CommandReply["reply_markup"],
   };
 }
 

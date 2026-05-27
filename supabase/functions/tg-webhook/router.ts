@@ -20,6 +20,7 @@ import {
   revokeCommand,
   startCommand,
   statsCommand,
+  subscriptionsCommand,
   unauthorizedReply,
   undoCommand,
 } from "./commands.ts";
@@ -58,6 +59,7 @@ const ADMIN_COMMANDS = new Set([
   "revoke",
   "promote",
   "demote",
+  "subscriptions",
 ]);
 
 export async function routeCommand(
@@ -106,6 +108,8 @@ export async function routeCommand(
       return await promoteCommand(ctx.sb, args, ctx.member);
     case "demote":
       return await demoteCommand(ctx.sb, args, ctx.member);
+    case "subscriptions":
+      return await subscriptionsCommand(ctx.sb, ctx.member);
     case "recurring":
     case "budget":
       return {

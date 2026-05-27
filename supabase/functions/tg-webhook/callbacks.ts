@@ -12,6 +12,7 @@
 //   mact:<member_uuid>              - reactivate (active=true)
 //   mpromo:<member_uuid>            - promote to admin
 //   mdemo:<member_uuid>             - demote to member
+//   subadd:<expense_uuid>           - add a detected subscription to recurring_expenses
 //
 // Byte-budget sanity check:
 //   "catset:" (7) + uuid (36) + ":" (1) + 8 = 52 bytes <= 64. OK.
@@ -128,6 +129,14 @@ export async function handleCallback(args: {
         args.member,
         args.chatId,
         "demote",
+        cb.parts[0]!,
+        args.messageId,
+      );
+    case "subadd":
+      return await doSubAdd(
+        args.sb,
+        args.member,
+        args.chatId,
         cb.parts[0]!,
         args.messageId,
       );
@@ -652,5 +661,112 @@ async function doMemberAction(
       promote: "Повышен",
       demote: "Понижен",
     }[action],
+  };
+}
+
+// --- Subscription detector: add a detected pattern to recurring_expenses --
+
+async function doSubAdd(
+  sb: SupabaseClient,
+  actor: FamilyMember,
+  chatId: number,
+  expenseId: string,
+  editMessageId?: number,
+): Promise<CallbackOutput> {
+  if (actor.role !== "admin") {
+    return { chatId, reply: { text: "Только админ." } };
+  }
+  if (!/^[0-9a-f-]{36}$/i.test(expenseId)) {
+    return { chatId, reply: { text: "Неверный id." } };
+  }
+
+  const ex = await sb.from("expenses")
+    .select("id, name, amount, currency, category_id, family_member_id")
+    .eq("id", expenseId).maybeSingle();
+  if (!ex.data) return { chatId, reply: { text: "Запись не найдена." } };
+  const e = ex.data as {
+    id: string;
+    name: string;
+    amount: number;
+    currency: string;
+    category_id: string;
+    family_member_id: string;
+  };
+
+  // Find all matching expenses to pick the most-common day-of-month for the
+  // recurring schedule.
+  const matches = await sb.from("expenses")
+    .select("expense_date")
+    .eq("archived", false)
+    .eq("family_member_id", e.family_member_id)
+    .eq("currency", e.currency)
+    .eq("amount", e.amount)
+    .ilike("name", e.name);
+  const dayCounts = new Map<number, number>();
+  for (const r of ((matches.data ?? []) as Array<{ expense_date: string }>)) {
+    const d = Number(r.expense_date.slice(8, 10));
+    dayCounts.set(d, (dayCounts.get(d) ?? 0) + 1);
+  }
+  let dayOfMonth = new Date().getUTCDate();
+  let best = 0;
+  for (const [d, c] of dayCounts.entries()) {
+    if (c > best) {
+      best = c;
+      dayOfMonth = d;
+    }
+  }
+
+  // Skip if already a recurring entry for the same (member, name, currency, amount).
+  const dup = await sb.from("recurring_expenses")
+    .select("id")
+    .eq("family_member_id", e.family_member_id)
+    .eq("currency", e.currency)
+    .eq("amount", e.amount)
+    .ilike("name", e.name)
+    .maybeSingle();
+  if (dup.data) {
+    return {
+      chatId,
+      reply: { text: `Уже в регулярных: ${e.name} ${e.amount} ${e.currency}.` },
+      edit_message_id: editMessageId,
+      answer_text: "Уже добавлено",
+    };
+  }
+
+  const ins = await sb.from("recurring_expenses").insert({
+    name: e.name,
+    amount: e.amount,
+    currency: e.currency,
+    category_id: e.category_id,
+    family_member_id: e.family_member_id,
+    day_of_month: dayOfMonth,
+    active: true,
+  }).select("id").maybeSingle();
+  if (ins.error) {
+    log("error", "subadd_insert_failed", { error: ins.error.message });
+    return { chatId, reply: { text: `Ошибка: ${ins.error.message}` } };
+  }
+
+  await recordAudit(sb, {
+    actorTelegramId: actor.telegram_id,
+    actorFamilyMemberId: actor.id,
+    action: "recurring_added",
+    targetId: (ins.data as { id: string } | null)?.id ?? null,
+    targetName: e.name,
+    details: {
+      amount: e.amount,
+      currency: e.currency,
+      day_of_month: dayOfMonth,
+      source_expense_id: e.id,
+    },
+  });
+
+  return {
+    chatId,
+    reply: {
+      text: `✅ Добавил в регулярные: ${e.name} ${e.amount} ${e.currency}, ${dayOfMonth}-го числа.`,
+    },
+    edit_message_id: editMessageId,
+    answer_text: "Добавлено",
   };
 }

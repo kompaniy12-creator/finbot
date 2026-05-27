@@ -148,6 +148,15 @@ header h1 {
   color: var(--hint);
   min-height: 14px;
 }
+.kpi-forecast {
+  font-size: 11px;
+  margin-top: 2px;
+  color: var(--neon-cyan);
+  font-weight: 500;
+}
+.kpi-forecast:empty {
+  display: none;
+}
 .kpi-delta.tone-good {
   color: #20c997;
 }

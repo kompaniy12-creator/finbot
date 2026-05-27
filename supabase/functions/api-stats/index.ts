@@ -118,6 +118,23 @@ Deno.serve(async (req: Request) => {
     ? Math.round(((totalEur - prevTotalEur) / prevTotalEur) * 1000) / 10
     : null;
 
+  // Month-end forecast: linear extrapolation of the current pace to the
+  // end of the active CALENDAR month. Only meaningful when the active
+  // window is a month-to-date view, so we gate it.
+  let forecastTotalEur: number | null = null;
+  let forecastDaysRemaining: number | null = null;
+  if (win.period === "month" && win.end === today) {
+    const monthYm = today.slice(0, 7);
+    const [yy, mm] = monthYm.split("-").map(Number);
+    const daysInMonth = new Date(Date.UTC(yy!, mm!, 0)).getUTCDate();
+    const dayOfMonth = Number(today.slice(8, 10));
+    if (dayOfMonth > 0) {
+      const avgPerDay = totalEur / dayOfMonth;
+      forecastTotalEur = Math.round(avgPerDay * daysInMonth * 100) / 100;
+      forecastDaysRemaining = daysInMonth - dayOfMonth;
+    }
+  }
+
   return json(req, {
     period: win.period,
     period_start: win.start,
@@ -135,6 +152,8 @@ Deno.serve(async (req: Request) => {
     delta_eur: deltaEur,
     delta_count: deltaCount,
     delta_eur_pct: deltaEurPct,
+    forecast_total_eur: forecastTotalEur,
+    forecast_days_remaining: forecastDaysRemaining,
     by_category: breakdown,
     by_currency: [...byCurrency.entries()]
       .map(([currency, total]) => ({
