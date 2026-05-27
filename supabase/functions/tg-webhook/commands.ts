@@ -37,19 +37,21 @@ export function startCommand(member: FamilyMember): CommandReply {
 }
 
 export function helpCommand(member: FamilyMember): CommandReply {
+  // Avoid '<' and '>' in this text - sendMessage uses parse_mode=HTML and any
+  // unknown tag like <tid> causes Telegram to reject the entire message.
   const adminOnly = member.role === "admin"
     ? [
       "",
       "",
       "Для админа:",
       "/health - статус системы",
-      "/audit <id> - история изменений траты",
+      "/audit ID - история изменений траты",
       "/budget - бюджет Anthropic",
       "/members - кто имеет доступ",
-      "/grant <tid> [имя] - дать доступ",
-      "/revoke <tid> - отозвать доступ",
-      "/promote <tid> - сделать админом",
-      "/demote <tid> - снять админа",
+      "/grant TID [имя] - дать доступ",
+      "/revoke TID - отозвать доступ",
+      "/promote TID - сделать админом",
+      "/demote TID - снять админа",
     ].join("\n")
     : "";
   return {
@@ -137,7 +139,7 @@ export async function auditCommand(
   expenseId: string,
 ): Promise<CommandReply> {
   if (!/^[0-9a-f-]{36}$/i.test(expenseId)) {
-    return { text: "Использование: /audit <uuid>" };
+    return { text: "Использование: /audit UUID" };
   }
   const { data, error } = await sb
     .from("expense_audit")
@@ -226,8 +228,11 @@ export async function membersCommand(
     }
   }
 
+  // NOTE: keep the footer free of '<' and '>' characters - sendMessage is
+  // called with parse_mode=HTML, so /grant &lt;telegram_id&gt; entity parsing
+  // would fail and Telegram silently drops the whole message.
   const footer = isAdmin
-    ? "Жми на кнопку под именем чтобы изменить. Также работают команды: /grant <telegram_id> [имя], /revoke, /promote, /demote."
+    ? "Жми на кнопку под именем чтобы изменить. Также работают команды: /grant TID [имя], /revoke TID, /promote TID, /demote TID."
     : "Управление: только админ может менять состав.";
 
   const reply: CommandReply = {
@@ -247,7 +252,7 @@ export async function grantCommand(
   const m = args.trim().match(/^(\d{4,})(?:\s+(.+))?$/);
   if (!m) {
     return {
-      text: "Использование: /grant <telegram_id> [имя]\nПример: /grant 326628865 Den",
+      text: "Использование: /grant TID [имя]\nПример: /grant 326628865 Den",
     };
   }
   const tid = Number(m[1]);
@@ -304,7 +309,7 @@ export async function revokeCommand(
 ): Promise<CommandReply> {
   const tid = Number(args.trim());
   if (!tid || !Number.isInteger(tid)) {
-    return { text: "Использование: /revoke <telegram_id>" };
+    return { text: "Использование: /revoke TID" };
   }
   if (tid === actor.telegram_id) {
     return { text: "Нельзя отозвать доступ у самого себя." };
@@ -359,7 +364,7 @@ async function changeRoleCommand(
 ): Promise<CommandReply> {
   const tid = Number(args.trim());
   if (!tid || !Number.isInteger(tid)) {
-    return { text: `Использование: /${newRole === "admin" ? "promote" : "demote"} <telegram_id>` };
+    return { text: `Использование: /${newRole === "admin" ? "promote" : "demote"} TID` };
   }
   const row = await sb
     .from("family_members")
