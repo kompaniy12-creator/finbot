@@ -13,6 +13,7 @@ import { adminClient } from "../_shared/supabase.ts";
 import { authenticateInitData, extractInitData } from "../_shared/webapp_auth.ts";
 import { forbidden, handleOptions, json, unauthorized } from "../_shared/api_response.ts";
 import { log } from "../_shared/log.ts";
+import { recordAudit } from "../_shared/audit.ts";
 
 // deno-lint-ignore no-explicit-any
 declare const Supabase: any;
@@ -78,7 +79,16 @@ Deno.serve(async (req: Request) => {
       return json(req, { error: ins.error?.message ?? "insert_failed" }, 500);
     }
 
-    log("info", "category_created", { id: (ins.data as { id: string }).id, name: body.name });
+    const newCat = ins.data as { id: string; name: string; is_fallback: boolean };
+    log("info", "category_created", { id: newCat.id, name: body.name });
+    await recordAudit(sb, {
+      actorTelegramId: me.telegram_id,
+      actorFamilyMemberId: me.id,
+      action: "category_created",
+      targetId: newCat.id,
+      targetName: newCat.name,
+      details: { is_fallback: newCat.is_fallback },
+    });
     return json(req, { ok: true, category: ins.data });
   }
 
@@ -141,6 +151,14 @@ Deno.serve(async (req: Request) => {
     if (upd.error) return json(req, { error: upd.error.message }, 500);
 
     log("info", "category_updated", { id, fields: Object.keys(patch) });
+    await recordAudit(sb, {
+      actorTelegramId: me.telegram_id,
+      actorFamilyMemberId: me.id,
+      action: "category_updated",
+      targetId: id,
+      targetName: cur.name,
+      details: { fields: Object.keys(patch), new_name: body.name ?? null },
+    });
     return json(req, { ok: true, category: upd.data });
   }
 
@@ -175,6 +193,14 @@ Deno.serve(async (req: Request) => {
     if (del.error) return json(req, { error: del.error.message }, 500);
 
     log("info", "category_deleted", { id, name: tgt.name, moved_to: fallbackId });
+    await recordAudit(sb, {
+      actorTelegramId: me.telegram_id,
+      actorFamilyMemberId: me.id,
+      action: "category_deleted",
+      targetId: id,
+      targetName: tgt.name,
+      details: { moved_to_fallback: fallbackId },
+    });
     return json(req, { ok: true, deleted_id: id, moved_to_fallback: fallbackId });
   }
 

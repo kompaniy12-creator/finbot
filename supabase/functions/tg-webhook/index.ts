@@ -14,6 +14,8 @@ import { log } from "../_shared/log.ts";
 import { authorize } from "../_shared/auth.ts";
 import { dedupe, markDone, markError } from "../_shared/idempotency.ts";
 import { checkSecret } from "../_shared/webhook_secret.ts";
+import { isTelegramIp } from "../_shared/telegram_ip.ts";
+import { checkAndBump, type RateLimitKind } from "../_shared/rate_limit.ts";
 import { TelegramUpdateSchema } from "../_shared/types.ts";
 import { type CommandReply, type ReplyKeyboardButton } from "./commands.ts";
 import { dispatch, parseCommand, refuseUnauthorized } from "./router.ts";
@@ -22,6 +24,10 @@ import { handleCallback } from "./callbacks.ts";
 const envSchema = z.object({
   TELEGRAM_BOT_TOKEN: z.string().min(40),
   TELEGRAM_ADMIN_TELEGRAM_ID: z.string().regex(/^\d+$/),
+  // Optional during transition: if unset, we fall back to legacy URL-param
+  // check (which uses the bot token). Once webhook is re-registered with the
+  // secret_token, this becomes the only accepted path.
+  TELEGRAM_WEBHOOK_SECRET: z.string().min(16).optional(),
 });
 
 let envCached: z.infer<typeof envSchema> | null = null;
@@ -31,6 +37,7 @@ function getEnv() {
   envCached = envSchema.parse({
     TELEGRAM_BOT_TOKEN: Deno.env.get("TELEGRAM_BOT_TOKEN"),
     TELEGRAM_ADMIN_TELEGRAM_ID: Deno.env.get("TELEGRAM_ADMIN_TELEGRAM_ID"),
+    TELEGRAM_WEBHOOK_SECRET: Deno.env.get("TELEGRAM_WEBHOOK_SECRET"),
   });
   return envCached;
 }
@@ -125,10 +132,20 @@ Deno.serve(async (req: Request) => {
     return new Response("server misconfigured", { status: 500 });
   }
 
-  if (!checkSecret(req, env.TELEGRAM_BOT_TOKEN)) {
-    log("warn", "webhook_unauthorized", {
-      ip: req.headers.get("x-forwarded-for") ?? "unknown",
-    });
+  // P5: detect non-Telegram IPs and log them (defense-in-depth on top of the
+  // webhook secret). Currently log-only so a mis-read XFF header doesn't
+  // silently break delivery; once we've watched prod traffic for a day we
+  // flip to a hard reject.
+  const clientIp = (req.headers.get("x-forwarded-for") ?? "").split(",")[0]?.trim() ||
+    req.headers.get("x-real-ip") || "";
+  if (clientIp && !isTelegramIp(clientIp)) {
+    log("warn", "webhook_non_telegram_ip", { ip: clientIp });
+  }
+
+  // P1: webhook secret. Prefer Telegram's secret_token header; accept the
+  // legacy URL ?secret=<bot_token> until the webhook is re-registered.
+  if (!checkSecret(req, env.TELEGRAM_WEBHOOK_SECRET ?? "", env.TELEGRAM_BOT_TOKEN)) {
+    log("warn", "webhook_unauthorized", { ip: clientIp || "unknown" });
     return new Response("unauthorized", { status: 401 });
   }
 
@@ -155,6 +172,20 @@ Deno.serve(async (req: Request) => {
   }
 
   const sb = adminClient();
+
+  // P2: cheap webhook-wide rate limit BEFORE we authorize - even unauthorized
+  // hits go in the bucket so a spam attack from a known telegram_id can't
+  // hammer authorize().
+  const webhookGate = await checkAndBump(sb, fromId, "webhook");
+  if (!webhookGate.allowed) {
+    log("warn", "rate_limit_hit", {
+      telegram_id: fromId,
+      kind: "webhook",
+      count: webhookGate.count,
+      limit: webhookGate.limit,
+    });
+    return new Response("rate_limited", { status: 429 });
+  }
 
   const member = await authorize(fromId, sb);
   if (!member) {
@@ -187,6 +218,36 @@ Deno.serve(async (req: Request) => {
         telegram_message_id: msg.message_id,
         member: member.id,
       });
+      return new Response("ok", { status: 200 });
+    }
+  }
+
+  // P2: per-kind rate limit. Photo/voice are the expensive ones (Claude Vision
+  // and Whisper). Apply BEFORE handing off to the pipeline.
+  const kindForLimit: RateLimitKind | null = update.callback_query
+    ? "callback"
+    : msg?.photo
+    ? "photo"
+    : msg?.voice
+    ? "voice"
+    : msg?.text
+    ? "text"
+    : null;
+  if (kindForLimit) {
+    const r = await checkAndBump(sb, fromId, kindForLimit);
+    if (!r.allowed) {
+      log("warn", "rate_limit_hit", {
+        telegram_id: fromId,
+        kind: kindForLimit,
+        count: r.count,
+        limit: r.limit,
+      });
+      if (msg?.chat?.id) {
+        await sendReply(msg.chat.id, {
+          text: `Достигнут дневной лимит на ${kindForLimit} (${r.limit}/день). ` +
+            `Попробуй завтра или попроси админа поднять порог.`,
+        });
+      }
       return new Response("ok", { status: 200 });
     }
   }

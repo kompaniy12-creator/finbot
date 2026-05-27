@@ -12,7 +12,10 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { FamilyMember } from "./types.ts";
 import { log } from "./log.ts";
 
-const TTL_SECONDS = 24 * 60 * 60;
+// 1-hour TTL on initData. Telegram's auth_date is unix-seconds; we refuse
+// anything older. Was 24h; tightened so a stolen/leaked initData URL is
+// only useful for at most an hour before the user must reopen the Mini App.
+const TTL_SECONDS = 60 * 60;
 
 async function hmacSha256(key: Uint8Array, data: string): Promise<Uint8Array> {
   // Copy to a fresh ArrayBuffer so the type narrows to ArrayBuffer (not SharedArrayBuffer).

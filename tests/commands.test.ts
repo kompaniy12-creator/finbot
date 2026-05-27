@@ -249,13 +249,13 @@ Deno.test("helpCommand: lists member-management commands for admin", () => {
 
 Deno.test("grantCommand: refuses missing telegram_id", async () => {
   const sb = mockSb({});
-  const r = await grantCommand(sb, "");
+  const r = await grantCommand(sb, "", ADMIN);
   assertStringIncludes(r.text, "Использование");
 });
 
 Deno.test("grantCommand: refuses non-numeric id", async () => {
   const sb = mockSb({});
-  const r = await grantCommand(sb, "abc Den");
+  const r = await grantCommand(sb, "abc Den", ADMIN);
   assertStringIncludes(r.text, "Использование");
 });
 

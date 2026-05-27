@@ -5,6 +5,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { FamilyMember } from "../_shared/types.ts";
+import { recordAudit } from "../_shared/audit.ts";
 
 const WEBAPP_URL_FALLBACK = "https://kompaniy12-creator.github.io/finbot/";
 
@@ -211,6 +212,7 @@ export async function membersCommand(sb: SupabaseClient): Promise<CommandReply> 
 export async function grantCommand(
   sb: SupabaseClient,
   args: string,
+  actor: FamilyMember,
 ): Promise<CommandReply> {
   const m = args.trim().match(/^(\d{4,})(?:\s+(.+))?$/);
   if (!m) {
@@ -235,6 +237,14 @@ export async function grantCommand(
     }
     const upd = await sb.from("family_members").update({ active: true }).eq("id", row.id);
     if (upd.error) return { text: `DB error: ${upd.error.message}` };
+    await recordAudit(sb, {
+      actorTelegramId: actor.telegram_id,
+      actorFamilyMemberId: actor.id,
+      action: "member_reactivated",
+      targetId: row.id,
+      targetName: row.name,
+      details: { telegram_id: tid, role: row.role },
+    });
     return { text: `✅ Доступ восстановлен: ${row.name} (${tid}).` };
   }
 
@@ -243,8 +253,17 @@ export async function grantCommand(
     telegram_id: tid,
     role: "member",
     active: true,
-  });
+  }).select("id").maybeSingle();
   if (ins.error) return { text: `DB error: ${ins.error.message}` };
+  const newId = (ins.data as { id: string } | null)?.id ?? null;
+  await recordAudit(sb, {
+    actorTelegramId: actor.telegram_id,
+    actorFamilyMemberId: actor.id,
+    action: "member_granted",
+    targetId: newId,
+    targetName: name,
+    details: { telegram_id: tid, role: "member" },
+  });
   return { text: `✅ Добавлен: ${name} (${tid}). Он может сразу пользоваться ботом.` };
 }
 
@@ -271,14 +290,23 @@ export async function revokeCommand(
   if (!m.active) return { text: `${m.name} уже отключен.` };
   const upd = await sb.from("family_members").update({ active: false }).eq("id", m.id);
   if (upd.error) return { text: `DB error: ${upd.error.message}` };
+  await recordAudit(sb, {
+    actorTelegramId: actor.telegram_id,
+    actorFamilyMemberId: actor.id,
+    action: "member_revoked",
+    targetId: m.id,
+    targetName: m.name,
+    details: { telegram_id: tid },
+  });
   return { text: `🚫 Доступ отозван: ${m.name} (${tid}).` };
 }
 
 export async function promoteCommand(
   sb: SupabaseClient,
   args: string,
+  actor: FamilyMember,
 ): Promise<CommandReply> {
-  return await changeRoleCommand(sb, args, "admin");
+  return await changeRoleCommand(sb, args, "admin", actor);
 }
 
 export async function demoteCommand(
@@ -290,13 +318,14 @@ export async function demoteCommand(
   if (tid === actor.telegram_id) {
     return { text: "Нельзя снять с себя роль админа (нужен хотя бы один админ)." };
   }
-  return await changeRoleCommand(sb, args, "member");
+  return await changeRoleCommand(sb, args, "member", actor);
 }
 
 async function changeRoleCommand(
   sb: SupabaseClient,
   args: string,
   newRole: "admin" | "member",
+  actor: FamilyMember,
 ): Promise<CommandReply> {
   const tid = Number(args.trim());
   if (!tid || !Number.isInteger(tid)) {
@@ -313,6 +342,14 @@ async function changeRoleCommand(
   if (m.role === newRole) return { text: `${m.name} уже ${newRole}.` };
   const upd = await sb.from("family_members").update({ role: newRole }).eq("id", m.id);
   if (upd.error) return { text: `DB error: ${upd.error.message}` };
+  await recordAudit(sb, {
+    actorTelegramId: actor.telegram_id,
+    actorFamilyMemberId: actor.id,
+    action: newRole === "admin" ? "member_promoted" : "member_demoted",
+    targetId: m.id,
+    targetName: m.name,
+    details: { telegram_id: tid, from_role: m.role, to_role: newRole },
+  });
   const verb = newRole === "admin" ? "повышен до админа" : "понижен до участника";
   return { text: `✅ ${m.name} ${verb}.` };
 }

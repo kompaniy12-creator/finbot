@@ -96,11 +96,11 @@ export async function routeCommand(
     case "members":
       return await membersCommand(ctx.sb);
     case "grant":
-      return await grantCommand(ctx.sb, args);
+      return await grantCommand(ctx.sb, args, ctx.member);
     case "revoke":
       return await revokeCommand(ctx.sb, args, ctx.member);
     case "promote":
-      return await promoteCommand(ctx.sb, args);
+      return await promoteCommand(ctx.sb, args, ctx.member);
     case "demote":
       return await demoteCommand(ctx.sb, args, ctx.member);
     case "recurring":
