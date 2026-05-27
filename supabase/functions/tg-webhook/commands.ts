@@ -6,6 +6,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { FamilyMember } from "../_shared/types.ts";
 import { recordAudit } from "../_shared/audit.ts";
+import { notifyUser } from "../_shared/notify.ts";
 
 const WEBAPP_URL_FALLBACK = "https://kompaniy12-creator.github.io/finbot/";
 
@@ -280,6 +281,10 @@ export async function grantCommand(
       targetName: row.name,
       details: { telegram_id: tid, role: row.role },
     });
+    await notifyUser(
+      tid,
+      `✅ Доступ к FinBot восстановлен. ${row.name}, можешь снова пользоваться ботом.`,
+    );
     return { text: `✅ Доступ восстановлен: ${row.name} (${tid}).` };
   }
 
@@ -299,6 +304,10 @@ export async function grantCommand(
     targetName: name,
     details: { telegram_id: tid, role: "member" },
   });
+  await notifyUser(
+    tid,
+    `✅ Доступ к FinBot предоставлен. Привет, ${name}! Напиши /start чтобы начать.`,
+  );
   return { text: `✅ Добавлен: ${name} (${tid}). Он может сразу пользоваться ботом.` };
 }
 
@@ -333,6 +342,7 @@ export async function revokeCommand(
     targetName: m.name,
     details: { telegram_id: tid },
   });
+  await notifyUser(tid, "🚫 Ваш доступ к FinBot отозван администратором.");
   return { text: `🚫 Доступ отозван: ${m.name} (${tid}).` };
 }
 
@@ -385,6 +395,12 @@ async function changeRoleCommand(
     targetName: m.name,
     details: { telegram_id: tid, from_role: m.role, to_role: newRole },
   });
+  await notifyUser(
+    tid,
+    newRole === "admin"
+      ? "⭐ Тебе выдана роль администратора FinBot."
+      : "ℹ Роль администратора снята. Доступ к боту сохранён.",
+  );
   const verb = newRole === "admin" ? "повышен до админа" : "понижен до участника";
   return { text: `✅ ${m.name} ${verb}.` };
 }

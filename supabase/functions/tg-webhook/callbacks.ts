@@ -22,6 +22,7 @@ import { type CommandReply, membersCommand } from "./commands.ts";
 import { retrainCategory } from "../_shared/retrain.ts";
 import { log } from "../_shared/log.ts";
 import { recordAudit } from "../_shared/audit.ts";
+import { notifyUser } from "../_shared/notify.ts";
 
 const UNDO_WINDOW_MIN = Number(Deno.env.get("UNDO_WINDOW_MINUTES") ?? "10");
 const CAT_MENU_PAGE = 5;
@@ -456,20 +457,11 @@ async function doAccessGrant(
     details: { telegram_id: targetTid, username: pending?.username ?? null },
   });
 
-  // Best-effort: greet the new member directly so they know they can start.
-  try {
-    const token = Deno.env.get("TELEGRAM_BOT_TOKEN");
-    if (token) {
-      await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          chat_id: targetTid,
-          text: `Привет, ${safeName}! Тебе выдан доступ к FinBot. Напиши /start чтобы начать.`,
-        }),
-      });
-    }
-  } catch (_e) { /* ignore */ }
+  // Greet the new member so they know access has been granted.
+  await notifyUser(
+    targetTid,
+    `✅ Доступ к FinBot предоставлен. Привет, ${safeName}! Напиши /start чтобы начать.`,
+  );
 
   return {
     chatId,
@@ -637,6 +629,15 @@ async function doMemberAction(
     targetName: m.name,
     details: auditDetails,
   });
+
+  // Notify the affected user directly so they know what happened to them.
+  const dm: Record<MemberAction, string> = {
+    revoke: "🚫 Ваш доступ к FinBot отозван администратором.",
+    activate: `✅ Доступ к FinBot восстановлен. ${m.name}, можешь снова пользоваться ботом.`,
+    promote: "⭐ Тебе выдана роль администратора FinBot.",
+    demote: "ℹ Роль администратора снята. Доступ к боту сохранён.",
+  };
+  await notifyUser(m.telegram_id, dm[action]);
 
   // Re-render the /members list IN PLACE so admin sees the updated state and
   // can chain actions without re-typing /members.
