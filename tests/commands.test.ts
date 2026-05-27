@@ -232,12 +232,12 @@ Deno.test("refuseUnauthorized: returns rejection text with chatId", () => {
     },
   });
   assertEquals(out?.chatId, 555);
-  assertStringIncludes(out!.reply.text, "@mr_kompanii");
+  assertStringIncludes(out!.reply.text, "@the_kompanii");
 });
 
 Deno.test("unsupportedReply and unauthorizedReply both return strings", () => {
   assertStringIncludes(unsupportedReply().text, "Пока умею");
-  assertStringIncludes(unauthorizedReply().text, "@mr_kompanii");
+  assertStringIncludes(unauthorizedReply().text, "@the_kompanii");
 });
 
 Deno.test("helpCommand: lists member-management commands for admin", () => {
