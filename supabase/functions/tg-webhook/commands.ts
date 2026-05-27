@@ -172,7 +172,7 @@ export async function auditCommand(
 
 export function unauthorizedReply(): CommandReply {
   return {
-    text: "Этот бот доступен только семье. Если ты семья и видишь это, свяжись с админом.",
+    text: "Этот бот: личная собственность @mr_kompanii . Свяжитесь с ним для получения доступа.",
   };
 }
 
