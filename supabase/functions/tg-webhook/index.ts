@@ -116,6 +116,19 @@ async function notifyAdminText(text: string): Promise<void> {
   });
 }
 
+async function notifyAdminWithButtons(
+  text: string,
+  buttons: Array<Array<{ text: string; callback_data: string }>>,
+): Promise<void> {
+  const { TELEGRAM_ADMIN_TELEGRAM_ID } = getEnv();
+  await tgRequest("sendMessage", {
+    chat_id: Number(TELEGRAM_ADMIN_TELEGRAM_ID),
+    text,
+    parse_mode: "HTML",
+    reply_markup: { inline_keyboard: buttons },
+  });
+}
+
 // Exported for testing.
 export { type ReplyKeyboardButton, sendReply };
 
@@ -194,18 +207,34 @@ Deno.serve(async (req: Request) => {
     if (out) await sendReply(out.chatId, out.reply);
     const firstName = msg?.from?.first_name ?? "?";
     const userName = msg?.from?.username ?? null;
-    const tag = userName ? ` @${userName}` : "";
-    const safeName = firstName.replace(/[^\p{L}\p{N}\s_.-]/gu, "").slice(0, 40) || "Member";
-    await notifyAdminText(
-      [
-        `🔔 Запрос доступа: ${firstName}${tag} [${fromId}]`,
-        "",
-        `Чтобы дать доступ, отправь:`,
-        `/grant ${fromId} ${safeName}`,
-        "",
-        `Чтобы отказать - игнорируй (доступ закрыт по умолчанию).`,
-      ].join("\n"),
-    );
+
+    // Upsert pending request; only re-notify admin if quiet for > 1 hour
+    // (avoid spamming the admin if the rejected user keeps trying).
+    const existing = await sb.from("pending_access")
+      .select("last_notified_at").eq("telegram_id", fromId).maybeSingle();
+    const last = (existing.data as { last_notified_at: string } | null)?.last_notified_at;
+    const lastMs = last ? new Date(last).getTime() : 0;
+    const QUIET_MS = 60 * 60 * 1000;
+    const shouldNotify = !existing.data || Date.now() - lastMs > QUIET_MS;
+
+    await sb.from("pending_access").upsert({
+      telegram_id: fromId,
+      first_name: firstName,
+      username: userName,
+      ...(shouldNotify ? { last_notified_at: new Date().toISOString() } : {}),
+    }, { onConflict: "telegram_id" });
+
+    if (shouldNotify) {
+      const tag = userName ? ` @${userName}` : "";
+      const text = [
+        `🔔 Запрос доступа: <b>${firstName}</b>${tag}`,
+        `Telegram ID: <code>${fromId}</code>`,
+      ].join("\n");
+      await notifyAdminWithButtons(text, [[
+        { text: "✅ Дать доступ", callback_data: `access_grant:${fromId}` },
+        { text: "🚫 Отклонить", callback_data: `access_deny:${fromId}` },
+      ]]);
+    }
     return new Response("ok", { status: 200 });
   }
 

@@ -6,6 +6,8 @@
 //   catmenu:<expense_id>            - show top categories
 //   catall:<expense_id>:<page>      - paginate over all categories
 //   catset:<expense_id>:<cat_prefix8> - change category + mark corrected_by_user
+//   access_grant:<telegram_id>      - admin approves a pending access request
+//   access_deny:<telegram_id>       - admin rejects a pending access request
 //
 // Byte-budget sanity check:
 //   "catset:" (7) + uuid (36) + ":" (1) + 8 = 52 bytes <= 64. OK.
@@ -15,6 +17,7 @@ import type { FamilyMember } from "../_shared/types.ts";
 import type { CommandReply } from "./commands.ts";
 import { retrainCategory } from "../_shared/retrain.ts";
 import { log } from "../_shared/log.ts";
+import { recordAudit } from "../_shared/audit.ts";
 
 const UNDO_WINDOW_MIN = Number(Deno.env.get("UNDO_WINDOW_MINUTES") ?? "10");
 const CAT_MENU_PAGE = 5;
@@ -71,6 +74,22 @@ export async function handleCallback(args: {
       return await doConfirm(args.sb, args.chatId, cb.parts[0]!, "no", args.messageId);
     case "conf_edit":
       return await doCatMenu(args.sb, args.chatId, cb.parts[0]!, 0, args.messageId);
+    case "access_grant":
+      return await doAccessGrant(
+        args.sb,
+        args.member,
+        args.chatId,
+        Number(cb.parts[0]!),
+        args.messageId,
+      );
+    case "access_deny":
+      return await doAccessDeny(
+        args.sb,
+        args.member,
+        args.chatId,
+        Number(cb.parts[0]!),
+        args.messageId,
+      );
     default:
       return { chatId: args.chatId, reply: { text: `Неизвестный callback: ${cb.kind}` } };
   }
@@ -324,5 +343,136 @@ async function doCatSet(
     reply: { text: `✅ Записал: ${summary}` },
     edit_message_id: editMessageId,
     answer_text: "Категория обновлена",
+  };
+}
+
+// --- Pending-access handlers (admin-only) ---------------------------------
+
+async function doAccessGrant(
+  sb: SupabaseClient,
+  actor: FamilyMember,
+  chatId: number,
+  targetTid: number,
+  editMessageId?: number,
+): Promise<CallbackOutput> {
+  if (actor.role !== "admin") {
+    return { chatId, reply: { text: "Только админ может выдавать доступ." } };
+  }
+  if (!Number.isFinite(targetTid) || targetTid <= 0) {
+    return { chatId, reply: { text: "Неверный telegram_id." } };
+  }
+
+  const pendingRes = await sb.from("pending_access")
+    .select("first_name, username, requested_at").eq("telegram_id", targetTid).maybeSingle();
+  const pending = pendingRes.data as
+    | { first_name: string | null; username: string | null; requested_at: string }
+    | null;
+
+  // Idempotency: if the user is already a family member just edit the bubble.
+  const existingMem = await sb.from("family_members")
+    .select("id, name, active").eq("telegram_id", targetTid).maybeSingle();
+  if (existingMem.data) {
+    const m = existingMem.data as { id: string; name: string; active: boolean };
+    if (!m.active) {
+      await sb.from("family_members").update({ active: true }).eq("id", m.id);
+    }
+    await sb.from("pending_access").delete().eq("telegram_id", targetTid);
+    return {
+      chatId,
+      reply: {
+        text: `✅ ${m.name} (${targetTid}) уже в семье, доступ восстановлен.`,
+      },
+      edit_message_id: editMessageId,
+      answer_text: "Готово",
+    };
+  }
+
+  const safeName = (pending?.first_name ?? "").replace(/[^\p{L}\p{N}\s_.-]/gu, "").slice(0, 80)
+    .trim() || "Member";
+  const ins = await sb.from("family_members").insert({
+    name: safeName,
+    telegram_id: targetTid,
+    username: pending?.username ?? null,
+    role: "member",
+    active: true,
+  }).select("id").maybeSingle();
+  if (ins.error) {
+    log("error", "access_grant_insert_failed", {
+      target: targetTid,
+      error: ins.error.message,
+    });
+    return { chatId, reply: { text: `Ошибка: ${ins.error.message}` } };
+  }
+  const newId = (ins.data as { id: string } | null)?.id ?? null;
+
+  await sb.from("pending_access").delete().eq("telegram_id", targetTid);
+
+  await recordAudit(sb, {
+    actorTelegramId: actor.telegram_id,
+    actorFamilyMemberId: actor.id,
+    action: "access_granted",
+    targetId: newId,
+    targetName: safeName,
+    details: { telegram_id: targetTid, username: pending?.username ?? null },
+  });
+
+  // Best-effort: greet the new member directly so they know they can start.
+  try {
+    const token = Deno.env.get("TELEGRAM_BOT_TOKEN");
+    if (token) {
+      await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: targetTid,
+          text: `Привет, ${safeName}! Тебе выдан доступ к FinBot. Напиши /start чтобы начать.`,
+        }),
+      });
+    }
+  } catch (_e) { /* ignore */ }
+
+  return {
+    chatId,
+    reply: {
+      text: `✅ Доступ выдан: <b>${safeName}</b> (${targetTid})`,
+    },
+    edit_message_id: editMessageId,
+    answer_text: "Доступ выдан",
+  };
+}
+
+async function doAccessDeny(
+  sb: SupabaseClient,
+  actor: FamilyMember,
+  chatId: number,
+  targetTid: number,
+  editMessageId?: number,
+): Promise<CallbackOutput> {
+  if (actor.role !== "admin") {
+    return { chatId, reply: { text: "Только админ может отклонять запросы." } };
+  }
+  const pendingRes = await sb.from("pending_access")
+    .select("first_name, username").eq("telegram_id", targetTid).maybeSingle();
+  const pending = pendingRes.data as
+    | { first_name: string | null; username: string | null }
+    | null;
+  const name = pending?.first_name ?? `id=${targetTid}`;
+
+  await sb.from("pending_access").delete().eq("telegram_id", targetTid);
+
+  await recordAudit(sb, {
+    actorTelegramId: actor.telegram_id,
+    actorFamilyMemberId: actor.id,
+    action: "access_denied",
+    targetId: null,
+    targetName: name,
+    details: { telegram_id: targetTid, username: pending?.username ?? null },
+  });
+
+  return {
+    chatId,
+    reply: { text: `🚫 Запрос отклонён: <b>${name}</b> (${targetTid})` },
+    edit_message_id: editMessageId,
+    answer_text: "Отклонено",
   };
 }
