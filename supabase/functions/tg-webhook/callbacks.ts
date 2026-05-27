@@ -8,13 +8,17 @@
 //   catset:<expense_id>:<cat_prefix8> - change category + mark corrected_by_user
 //   access_grant:<telegram_id>      - admin approves a pending access request
 //   access_deny:<telegram_id>       - admin rejects a pending access request
+//   mrev:<member_uuid>              - revoke (active=false)
+//   mact:<member_uuid>              - reactivate (active=true)
+//   mpromo:<member_uuid>            - promote to admin
+//   mdemo:<member_uuid>             - demote to member
 //
 // Byte-budget sanity check:
 //   "catset:" (7) + uuid (36) + ":" (1) + 8 = 52 bytes <= 64. OK.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { FamilyMember } from "../_shared/types.ts";
-import type { CommandReply } from "./commands.ts";
+import { type CommandReply, membersCommand } from "./commands.ts";
 import { retrainCategory } from "../_shared/retrain.ts";
 import { log } from "../_shared/log.ts";
 import { recordAudit } from "../_shared/audit.ts";
@@ -88,6 +92,42 @@ export async function handleCallback(args: {
         args.member,
         args.chatId,
         Number(cb.parts[0]!),
+        args.messageId,
+      );
+    case "mrev":
+      return await doMemberAction(
+        args.sb,
+        args.member,
+        args.chatId,
+        "revoke",
+        cb.parts[0]!,
+        args.messageId,
+      );
+    case "mact":
+      return await doMemberAction(
+        args.sb,
+        args.member,
+        args.chatId,
+        "activate",
+        cb.parts[0]!,
+        args.messageId,
+      );
+    case "mpromo":
+      return await doMemberAction(
+        args.sb,
+        args.member,
+        args.chatId,
+        "promote",
+        cb.parts[0]!,
+        args.messageId,
+      );
+    case "mdemo":
+      return await doMemberAction(
+        args.sb,
+        args.member,
+        args.chatId,
+        "demote",
+        cb.parts[0]!,
         args.messageId,
       );
     default:
@@ -474,5 +514,142 @@ async function doAccessDeny(
     reply: { text: `🚫 Запрос отклонён: <b>${name}</b> (${targetTid})` },
     edit_message_id: editMessageId,
     answer_text: "Отклонено",
+  };
+}
+
+// --- Member-management actions (admin only, edit /members in place) -------
+
+type MemberAction = "revoke" | "activate" | "promote" | "demote";
+
+async function doMemberAction(
+  sb: SupabaseClient,
+  actor: FamilyMember,
+  chatId: number,
+  action: MemberAction,
+  memberId: string,
+  editMessageId?: number,
+): Promise<CallbackOutput> {
+  if (actor.role !== "admin") {
+    return { chatId, reply: { text: "Только админ может менять состав." } };
+  }
+  if (!/^[0-9a-f-]{36}$/i.test(memberId)) {
+    return { chatId, reply: { text: "Неверный member id." } };
+  }
+
+  const row = await sb.from("family_members")
+    .select("id, name, telegram_id, role, active, username")
+    .eq("id", memberId).maybeSingle();
+  if (!row.data) return { chatId, reply: { text: "Участник не найден." } };
+  const m = row.data as {
+    id: string;
+    name: string;
+    telegram_id: number;
+    role: string;
+    active: boolean;
+    username: string | null;
+  };
+
+  // Self-protection guards.
+  if (m.telegram_id === actor.telegram_id && (action === "revoke" || action === "demote")) {
+    return {
+      chatId,
+      reply: {
+        text: action === "revoke"
+          ? "Нельзя отозвать доступ у самого себя."
+          : "Нельзя снять админа с самого себя (нужен хотя бы один админ).",
+      },
+      answer_text: "Запрещено",
+    };
+  }
+
+  // Apply the change.
+  let patch: Record<string, unknown> = {};
+  let auditAction = "";
+  let auditDetails: Record<string, unknown> = {
+    telegram_id: m.telegram_id,
+    username: m.username,
+  };
+  switch (action) {
+    case "revoke":
+      if (!m.active) {
+        return {
+          chatId,
+          reply: { text: `${m.name} уже отключен.` },
+          answer_text: "Уже отключен",
+        };
+      }
+      patch = { active: false };
+      auditAction = "member_revoked";
+      break;
+    case "activate":
+      if (m.active) {
+        return {
+          chatId,
+          reply: { text: `${m.name} уже активен.` },
+          answer_text: "Уже активен",
+        };
+      }
+      patch = { active: true };
+      auditAction = "member_reactivated";
+      auditDetails.role = m.role;
+      break;
+    case "promote":
+      if (m.role === "admin") {
+        return {
+          chatId,
+          reply: { text: `${m.name} уже админ.` },
+          answer_text: "Уже админ",
+        };
+      }
+      patch = { role: "admin" };
+      auditAction = "member_promoted";
+      auditDetails = { ...auditDetails, from_role: m.role, to_role: "admin" };
+      break;
+    case "demote":
+      if (m.role === "member") {
+        return {
+          chatId,
+          reply: { text: `${m.name} уже не админ.` },
+          answer_text: "Уже member",
+        };
+      }
+      patch = { role: "member" };
+      auditAction = "member_demoted";
+      auditDetails = { ...auditDetails, from_role: m.role, to_role: "member" };
+      break;
+  }
+
+  const upd = await sb.from("family_members").update(patch).eq("id", memberId);
+  if (upd.error) {
+    log("error", "member_action_failed", {
+      action,
+      member: memberId,
+      error: upd.error.message,
+    });
+    return { chatId, reply: { text: `Ошибка: ${upd.error.message}` } };
+  }
+
+  await recordAudit(sb, {
+    actorTelegramId: actor.telegram_id,
+    actorFamilyMemberId: actor.id,
+    action: auditAction,
+    targetId: m.id,
+    targetName: m.name,
+    details: auditDetails,
+  });
+
+  // Re-render the /members list IN PLACE so admin sees the updated state and
+  // can chain actions without re-typing /members.
+  const refreshed = await membersCommand(sb, actor);
+  return {
+    chatId,
+    reply: refreshed,
+    edit_message_id: editMessageId,
+    answer_text: {
+      revoke: "Доступ отозван",
+      activate: "Восстановлен",
+      promote: "Повышен",
+      demote: "Понижен",
+    }[action],
   };
 }

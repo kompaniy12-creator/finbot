@@ -94,7 +94,7 @@ export async function routeCommand(
     case "undo":
       return await undoCommand(ctx.sb, ctx.member);
     case "members":
-      return await membersCommand(ctx.sb);
+      return await membersCommand(ctx.sb, ctx.member);
     case "grant":
       return await grantCommand(ctx.sb, args, ctx.member);
     case "revoke":

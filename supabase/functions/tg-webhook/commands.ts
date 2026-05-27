@@ -176,15 +176,19 @@ export function unauthorizedReply(): CommandReply {
   };
 }
 
-export async function membersCommand(sb: SupabaseClient): Promise<CommandReply> {
+export async function membersCommand(
+  sb: SupabaseClient,
+  actor?: FamilyMember,
+): Promise<CommandReply> {
   const res = await sb
     .from("family_members")
-    .select("name, telegram_id, role, active, username")
+    .select("id, name, telegram_id, role, active, username")
     .order("active", { ascending: false })
     .order("role", { ascending: true })
     .order("name", { ascending: true });
   if (res.error) return { text: `DB error: ${res.error.message}` };
   const rows = (res.data ?? []) as Array<{
+    id: string;
     name: string;
     telegram_id: number;
     role: string;
@@ -198,15 +202,41 @@ export async function membersCommand(sb: SupabaseClient): Promise<CommandReply> 
     const role = r.role === "admin" ? " ⭐" : "";
     return `- ${r.name}${tag} [${r.telegram_id}]${role}${status}`;
   });
-  return {
-    text: [
-      `Участники (${rows.length}):`,
-      "",
-      ...lines,
-      "",
-      "Управление: /grant <telegram_id> [имя], /revoke <telegram_id>, /promote <telegram_id>, /demote <telegram_id>.",
-    ].join("\n"),
+
+  // Build inline action buttons (admin only). For each member that is NOT the
+  // actor: revoke + promote-or-demote when active; reactivate when inactive.
+  // Self gets no buttons so admin can't lock themselves out.
+  const inlineRows: Array<Array<{ text: string; callback_data: string }>> = [];
+  const isAdmin = actor?.role === "admin";
+  if (isAdmin) {
+    for (const r of rows) {
+      if (r.telegram_id === actor.telegram_id) continue;
+      const row: Array<{ text: string; callback_data: string }> = [];
+      if (r.active) {
+        row.push({ text: `🚫 Отозвать ${r.name}`, callback_data: `mrev:${r.id}` });
+        if (r.role === "admin") {
+          row.push({ text: `⬇ Снять админа`, callback_data: `mdemo:${r.id}` });
+        } else {
+          row.push({ text: `⭐ В админы`, callback_data: `mpromo:${r.id}` });
+        }
+      } else {
+        row.push({ text: `✅ Восстановить ${r.name}`, callback_data: `mact:${r.id}` });
+      }
+      inlineRows.push(row);
+    }
+  }
+
+  const footer = isAdmin
+    ? "Жми на кнопку под именем чтобы изменить. Также работают команды: /grant <telegram_id> [имя], /revoke, /promote, /demote."
+    : "Управление: только админ может менять состав.";
+
+  const reply: CommandReply = {
+    text: [`Участники (${rows.length}):`, "", ...lines, "", footer].join("\n"),
   };
+  if (inlineRows.length > 0) {
+    reply.reply_markup = { inline_keyboard: inlineRows } as CommandReply["reply_markup"];
+  }
+  return reply;
 }
 
 export async function grantCommand(
