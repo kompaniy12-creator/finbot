@@ -76,6 +76,14 @@
         <canvas id="bar"></canvas>
       </section>
 
+      <section class="chart-card chart-card-wide heatmap-card">
+        <div class="chart-head">
+          <h3>Активность по дням</h3>
+          <span>тёмные ячейки = больше расход</span>
+        </div>
+        <div id="heatmap" class="heatmap"></div>
+      </section>
+
       <section class="categories">
         <header class="categories-head">
           <h3>Все категории</h3>
@@ -90,6 +98,21 @@
           <input id="search" type="search" placeholder="поиск" />
           <button id="export">CSV</button>
         </header>
+        <div class="tx-filters">
+          <select id="filter-category">
+            <option value="">все категории</option>
+          </select>
+          <select id="filter-member">
+            <option value="">вся семья</option>
+          </select>
+          <select id="filter-source">
+            <option value="">все источники</option>
+            <option value="photo">фото</option>
+            <option value="text">текст</option>
+            <option value="voice">голос</option>
+          </select>
+          <button id="filter-reset" type="button" title="Сбросить фильтры">↺</button>
+        </div>
         <ul id="tx-list" class="tx-list"></ul>
         <div class="tx-pagination">
           <button id="load-more">Ещё...</button>
@@ -107,6 +130,19 @@
           <button id="cat-modal-close" type="button" aria-label="Закрыть">×</button>
         </header>
         <ul id="cat-modal-list" class="modal-cat-list"></ul>
+      </div>
+    </div>
+
+    <div id="photo-modal" class="modal hidden" role="dialog" aria-modal="true">
+      <div class="modal-backdrop"></div>
+      <div class="modal-card photo-modal-card">
+        <header class="modal-head">
+          <h3 id="photo-modal-title">Фото чека</h3>
+          <button id="photo-modal-close" type="button" aria-label="Закрыть">×</button>
+        </header>
+        <div class="photo-modal-body">
+          <img id="photo-modal-img" alt="Фото чека" />
+        </div>
       </div>
     </div>
 

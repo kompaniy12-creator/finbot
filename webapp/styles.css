@@ -298,8 +298,106 @@ canvas {
   }
 }
 
+.heatmap {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 3px;
+  position: relative;
+  z-index: 1;
+  margin-top: 6px;
+}
+.hm-cell {
+  aspect-ratio: 1;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--secondary-bg) 60%, transparent);
+  cursor: pointer;
+  transition: transform 80ms ease;
+}
+.hm-cell:hover {
+  transform: scale(1.15);
+}
+.hm-blank {
+  background: transparent;
+  pointer-events: none;
+}
+.hm-lvl-0 {
+  background: color-mix(in srgb, var(--secondary-bg) 35%, transparent);
+}
+.hm-lvl-1 {
+  background: color-mix(in srgb, var(--neon-cyan) 25%, var(--secondary-bg));
+}
+.hm-lvl-2 {
+  background: color-mix(in srgb, var(--neon-blue) 45%, var(--secondary-bg));
+}
+.hm-lvl-3 {
+  background: color-mix(in srgb, var(--neon-blue) 70%, var(--neon-pink));
+}
+.hm-lvl-4 {
+  background: color-mix(in srgb, var(--neon-pink) 80%, var(--neon-blue));
+}
+.heatmap-empty {
+  text-align: center;
+  font-size: 12px;
+  color: var(--hint);
+  padding: 12px 0;
+}
+
 .transactions {
   margin-top: 16px;
+}
+.tx-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.tx-filters select {
+  flex: 1 1 28%;
+  min-width: 100px;
+  padding: 6px 8px;
+  border: 1px solid var(--hint);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 12px;
+}
+.tx-filters button {
+  background: var(--secondary-bg);
+  color: var(--text);
+  border: none;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 14px;
+}
+.tx-photo {
+  background: transparent;
+  border: none;
+  color: var(--hint);
+  font-size: 14px;
+  cursor: pointer;
+  padding: 0 4px;
+  margin-left: 4px;
+}
+.tx-photo:hover {
+  color: var(--text);
+}
+
+.photo-modal-card {
+  max-height: 92vh;
+}
+.photo-modal-body {
+  padding: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: auto;
+}
+.photo-modal-body img {
+  max-width: 100%;
+  max-height: 70vh;
+  border-radius: 6px;
+  background: var(--secondary-bg);
 }
 .tx-header {
   display: flex;

@@ -47,21 +47,30 @@ Deno.serve(async (req: Request) => {
   const today = todayWarsawIso();
   const win = resolveDateWindow(url, today);
 
+  // Optional filters (each independently applied; empty/invalid -> ignored).
+  const UUID = /^[0-9a-f-]{36}$/i;
+  const filterCategoryId = url.searchParams.get("category_id");
+  const filterMemberId = url.searchParams.get("family_member_id");
+  const filterSource = (url.searchParams.get("source") ?? "").toLowerCase();
+  const validSource = filterSource === "photo" || filterSource === "voice" ||
+      filterSource === "text"
+    ? filterSource
+    : null;
+  const validCategory = filterCategoryId && UUID.test(filterCategoryId) ? filterCategoryId : null;
+  const validMember = filterMemberId && UUID.test(filterMemberId) ? filterMemberId : null;
+
   // Build SQL via Management API isn't available from Edge; use supabase-js with
   // two queries + merge in JS. This keeps the endpoint stateless.
 
   // Family-wide feed: every member sees every member's transactions.
   void me;
   // 1. Receipts (one row per receipt) with line counts.
-  let rq = sb.from("receipts").select(
-    "id, merchant, total, currency, total_pln, receipt_date, family_member_id, created_at",
-  ).eq("archived", false);
-  if (search) rq = rq.ilike("merchant", `%${search}%`);
-  rq = rq.gte("receipt_date", win.start).lte("receipt_date", win.end);
-  rq = rq.order("created_at", { ascending: false }).limit(200);
-  const rRes = await rq;
-  if (rRes.error) return json(req, { error: rRes.error.message }, 500);
-  const receipts = (rRes.data ?? []) as Array<{
+  // NOTE: receipts don't have a category_id at the receipt level (categories
+  // live on line items), so a category filter HIDES receipts entirely. Same
+  // for a text/voice source filter (receipts are always source=photo).
+  const skipReceipts = validCategory !== null ||
+    (validSource !== null && validSource !== "photo");
+  let receipts: Array<{
     id: string;
     merchant: string | null;
     total: number;
@@ -70,7 +79,28 @@ Deno.serve(async (req: Request) => {
     receipt_date: string;
     family_member_id: string;
     created_at: string;
-  }>;
+  }> = [];
+  if (!skipReceipts) {
+    let rq = sb.from("receipts").select(
+      "id, merchant, total, currency, total_pln, receipt_date, family_member_id, created_at",
+    ).eq("archived", false);
+    if (search) rq = rq.ilike("merchant", `%${search}%`);
+    if (validMember) rq = rq.eq("family_member_id", validMember);
+    rq = rq.gte("receipt_date", win.start).lte("receipt_date", win.end);
+    rq = rq.order("created_at", { ascending: false }).limit(200);
+    const rRes = await rq;
+    if (rRes.error) return json(req, { error: rRes.error.message }, 500);
+    receipts = (rRes.data ?? []) as Array<{
+      id: string;
+      merchant: string | null;
+      total: number;
+      currency: string;
+      total_pln: number;
+      receipt_date: string;
+      family_member_id: string;
+      created_at: string;
+    }>;
+  }
 
   // Line counts per receipt (single round-trip).
   const receiptIds = receipts.map((r) => r.id);
@@ -90,6 +120,9 @@ Deno.serve(async (req: Request) => {
     "id, name, amount, currency, amount_pln, expense_date, category_id, family_member_id, source, needs_review, needs_confirmation, created_at",
   ).eq("archived", false).is("receipt_id", null);
   if (search) eq = eq.ilike("name", `%${search}%`);
+  if (validCategory) eq = eq.eq("category_id", validCategory);
+  if (validMember) eq = eq.eq("family_member_id", validMember);
+  if (validSource) eq = eq.eq("source", validSource);
   eq = eq.gte("expense_date", win.start).lte("expense_date", win.end);
   eq = eq.order("created_at", { ascending: false }).limit(200);
   const eRes = await eq;

@@ -64,7 +64,8 @@ export function helpCommand(member: FamilyMember): CommandReply {
       "/categories - список категорий",
       "/dashboard - открыть дашборд",
       "/history - последние траты",
-      "/stats - сводка за месяц",
+      "/stats - сводка за месяц (вся семья)",
+      "/me - моя статистика за месяц",
       "/undo - отменить последнюю",
       "/recurring - регулярные траты (с M14)",
     ].join("\n") + adminOnly,
@@ -409,6 +410,99 @@ export function unsupportedReply(): CommandReply {
   return {
     text:
       "Пока умею только команды (/start, /help). Парсинг трат включается с M7. Возвращайся позже!",
+  };
+}
+
+// Personal stats card. Unlike statsCommand (family-wide month total),
+// /me returns the caller's own activity for the current month: their
+// spend, top category, average per record, days with activity, and a
+// share-of-family percentage.
+export async function meCommand(
+  sb: SupabaseClient,
+  member: FamilyMember,
+): Promise<CommandReply> {
+  const tz = Deno.env.get("DEFAULT_TIMEZONE") ?? "Europe/Warsaw";
+  const fmt = new Intl.DateTimeFormat("en-CA", {
+    timeZone: tz,
+    year: "numeric",
+    month: "2-digit",
+  });
+  const ym = fmt.format(new Date());
+  const monthStart = `${ym}-01`;
+
+  const [mineRes, allRes, catRes] = await Promise.all([
+    sb.from("expenses")
+      .select("amount, currency, amount_pln, category_id, expense_date")
+      .eq("archived", false)
+      .eq("family_member_id", member.id)
+      .gte("expense_date", monthStart),
+    sb.from("expenses")
+      .select("amount_pln")
+      .eq("archived", false)
+      .gte("expense_date", monthStart),
+    sb.from("categories").select("id, name"),
+  ]);
+  if (mineRes.error) return { text: `DB error: ${mineRes.error.message}` };
+
+  const mine = (mineRes.data ?? []) as Array<{
+    amount: number;
+    currency: string;
+    amount_pln: number;
+    category_id: string;
+    expense_date: string;
+  }>;
+  const all = (allRes.data ?? []) as Array<{ amount_pln: number }>;
+  const catName = new Map(
+    ((catRes.data ?? []) as Array<{ id: string; name: string }>).map((c) => [c.id, c.name]),
+  );
+
+  if (mine.length === 0) {
+    return { text: `${member.name}, в этом месяце ещё нет твоих записей.` };
+  }
+
+  let totalPln = 0;
+  const byCcy = new Map<string, number>();
+  const byCat = new Map<string, number>();
+  const days = new Set<string>();
+  for (const r of mine) {
+    totalPln += Number(r.amount_pln);
+    byCcy.set(r.currency, (byCcy.get(r.currency) ?? 0) + Number(r.amount));
+    byCat.set(r.category_id, (byCat.get(r.category_id) ?? 0) + Number(r.amount_pln));
+    days.add(r.expense_date);
+  }
+  const topCat = [...byCat.entries()].sort((a, b) => b[1] - a[1])[0];
+  const avgPerRecord = totalPln / mine.length;
+  const familyTotalPln = all.reduce((acc, r) => acc + Number(r.amount_pln), 0);
+  const sharePct = familyTotalPln > 0 ? (totalPln / familyTotalPln) * 100 : 0;
+
+  const ccyOrder = ["PLN", "EUR", "USD", "ALL"];
+  const ccyLines = [...byCcy.entries()]
+    .sort((a, b) => {
+      const ia = ccyOrder.indexOf(a[0]);
+      const ib = ccyOrder.indexOf(b[0]);
+      if (ia >= 0 && ib >= 0) return ia - ib;
+      if (ia >= 0) return -1;
+      if (ib >= 0) return 1;
+      return a[0].localeCompare(b[0]);
+    })
+    .map(([c, v]) => `  ${c}: ${v.toFixed(2)}`);
+
+  return {
+    text: [
+      `Привет, ${member.name}. Твоя статистика за ${ym}:`,
+      "",
+      `Записей: ${mine.length}`,
+      `Активных дней: ${days.size}`,
+      `Средний чек: ${avgPerRecord.toFixed(2)} PLN`,
+      `Доля от семьи: ${sharePct.toFixed(1)}%`,
+      "",
+      "По валютам:",
+      ...ccyLines,
+      "",
+      topCat
+        ? `Топ-категория: ${catName.get(topCat[0]) ?? "?"} (${topCat[1].toFixed(2)} PLN)`
+        : "Топ-категория: -",
+    ].join("\n"),
   };
 }
 

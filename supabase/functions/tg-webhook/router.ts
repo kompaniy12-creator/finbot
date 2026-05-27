@@ -14,6 +14,7 @@ import {
   healthCommand,
   helpCommand,
   historyCommand,
+  meCommand,
   membersCommand,
   promoteCommand,
   revokeCommand,
@@ -91,6 +92,8 @@ export async function routeCommand(
       return await historyCommand(ctx.sb, ctx.member);
     case "stats":
       return await statsCommand(ctx.sb, ctx.member);
+    case "me":
+      return await meCommand(ctx.sb, ctx.member);
     case "undo":
       return await undoCommand(ctx.sb, ctx.member);
     case "members":

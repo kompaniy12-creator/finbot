@@ -17,6 +17,9 @@ const state = {
   month: todayMonth(), // YYYY-MM, used when period === "month"
   txOffset: 0,
   txSearch: "",
+  txFilterCategory: "",
+  txFilterMember: "",
+  txFilterSource: "",
   txItems: [], // mixed feed: kind=receipt|expense
   expandedReceipts: new Map(), // receipt_id -> [line items], lazy-loaded
   categories: new Map(),
@@ -24,6 +27,8 @@ const state = {
   me: null, // { id, role, name, ... } from /api-me
   byCategory: [], // breakdown from api-stats: all 24 cats with totals incl. zeros
   byDay: [], // full-period daily totals from api-stats
+  periodStart: null,
+  periodEnd: null,
   charts: { donut: null, line: null, bar: null },
 };
 
@@ -136,7 +141,10 @@ async function loadKpis() {
   }
   state.byCategory = Array.isArray(r.by_category) ? r.by_category : [];
   state.byDay = Array.isArray(r.by_day) ? r.by_day : [];
+  state.periodStart = r.period_start || null;
+  state.periodEnd = r.period_end || null;
   renderCategories();
+  renderHeatmap();
 }
 
 function renderCategories() {
@@ -176,6 +184,89 @@ function renderCategories() {
   // Add button visibility
   const addBtn = $("#cat-add-btn");
   if (addBtn) addBtn.style.display = admin ? "" : "none";
+}
+
+function renderHeatmap() {
+  const el = $("#heatmap");
+  if (!el || !state.periodStart || !state.periodEnd) return;
+  const byDay = new Map((state.byDay || []).map((d) => [d.date, Number(d.total_eur || 0)]));
+  const start = state.periodStart;
+  const end = state.periodEnd;
+  const startMs = new Date(start + "T00:00:00Z").getTime();
+  const endMs = new Date(end + "T00:00:00Z").getTime();
+  const days = Math.round((endMs - startMs) / 86_400_000) + 1;
+  if (days <= 0 || days > 366) {
+    el.innerHTML = `<div class="heatmap-empty">период не выбран</div>`;
+    return;
+  }
+  const max = Math.max(0, ...byDay.values());
+  el.innerHTML = "";
+  // Compute leading blank cells: align so columns are weekdays Mon-Sun.
+  // getUTCDay: 0=Sunday..6=Saturday. Convert to Mon=0..Sun=6.
+  const firstDow = (new Date(startMs).getUTCDay() + 6) % 7;
+  for (let i = 0; i < firstDow; i++) {
+    const blank = document.createElement("div");
+    blank.className = "hm-cell hm-blank";
+    el.appendChild(blank);
+  }
+  for (let i = 0; i < days; i++) {
+    const t = startMs + i * 86_400_000;
+    const iso = new Date(t).toISOString().slice(0, 10);
+    const v = byDay.get(iso) ?? 0;
+    const intensity = max > 0 ? Math.min(1, v / max) : 0;
+    const lvl = v === 0 ? 0 : intensity < 0.25 ? 1 : intensity < 0.5 ? 2 : intensity < 0.75 ? 3 : 4;
+    const cell = document.createElement("div");
+    cell.className = `hm-cell hm-lvl-${lvl}`;
+    cell.title = `${iso}: ${v.toFixed(2)} EUR`;
+    cell.dataset.date = iso;
+    cell.addEventListener("click", () => {
+      // Tap a day: jump period to that single day.
+      state.period = "custom";
+      state.from = iso;
+      state.to = iso;
+      document.querySelectorAll(".period-tabs button").forEach((b) => b.classList.remove("active"));
+      const dayBtn = document.querySelector(".period-tabs button[data-period='custom']");
+      if (dayBtn) dayBtn.classList.add("active");
+      refresh();
+    });
+    el.appendChild(cell);
+  }
+}
+
+async function openReceiptPhoto(receiptId, title) {
+  const m = $("#photo-modal");
+  const img = $("#photo-modal-img");
+  $("#photo-modal-title").textContent = title || "Фото чека";
+  img.removeAttribute("src");
+  m.classList.remove("hidden");
+  try {
+    const r = await api("/api-receipt-photo?id=" + encodeURIComponent(receiptId));
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({}));
+      const msg = {
+        no_photo: "У этого чека нет сохранённого фото.",
+        photo_purged: "Фото удалено (срок хранения истёк).",
+      }[err.error] || ("Не удалось загрузить фото: " + (err.error || r.status));
+      TG.showAlert(msg);
+      m.classList.add("hidden");
+      return;
+    }
+    const j = await r.json();
+    if (!j.url) {
+      TG.showAlert("Пустой URL фото.");
+      m.classList.add("hidden");
+      return;
+    }
+    img.src = j.url;
+  } catch (_e) {
+    TG.showAlert("Ошибка сети при загрузке фото.");
+    m.classList.add("hidden");
+  }
+}
+
+function closePhotoModal() {
+  $("#photo-modal").classList.add("hidden");
+  $("#photo-modal-img").removeAttribute("src");
 }
 
 function openCategoryForm(catId) {
@@ -277,6 +368,9 @@ async function loadTransactions(reset = false) {
     offset: String(state.txOffset),
     search: state.txSearch,
   });
+  if (state.txFilterCategory) qs.set("category_id", state.txFilterCategory);
+  if (state.txFilterMember) qs.set("family_member_id", state.txFilterMember);
+  if (state.txFilterSource) qs.set("source", state.txFilterSource);
   const r = await api("/api-transactions?" + qs.toString() + "&" + periodQuery())
     .then((r) => r.json());
   state.txItems = state.txItems.concat(r.items || []);
@@ -304,14 +398,25 @@ function renderTransactions() {
       li.innerHTML =
         `<div class="name"><span class="caret">${caret}</span> ${
           escapeHtml(t.title)
-        }<div class="meta">${meta}</div></div>` +
+        } <button class="tx-photo" type="button" data-id="${t.id}" data-title="${
+          escapeHtml(t.title)
+        }" title="Открыть фото чека">🖼</button><div class="meta">${meta}</div></div>` +
         `<div class="amt">${Number(t.amount).toFixed(2)} ${t.currency}</div>` +
         `<button class="tx-del" type="button" title="Удалить" aria-label="Удалить">×</button>`;
       li.style.cursor = "pointer";
       li.addEventListener("click", (ev) => {
-        if (ev.target && ev.target.classList.contains("tx-del")) return;
+        const cl = ev.target && ev.target.classList;
+        if (!cl) return toggleReceipt(t.id);
+        if (cl.contains("tx-del") || cl.contains("tx-photo")) return;
         toggleReceipt(t.id);
       });
+      const photoBtn = li.querySelector(".tx-photo");
+      if (photoBtn) {
+        photoBtn.addEventListener("click", (ev) => {
+          ev.stopPropagation();
+          openReceiptPhoto(t.id, t.title);
+        });
+      }
       const delBtn = li.querySelector(".tx-del");
       delBtn.addEventListener("click", (ev) => {
         ev.stopPropagation();
@@ -802,6 +907,60 @@ async function main() {
   $("#cat-modal-close").addEventListener("click", closeCategoryPicker);
   document.querySelector("#cat-modal .modal-backdrop")
     .addEventListener("click", closeCategoryPicker);
+
+  // Filter chips above transactions
+  const filterCat = $("#filter-category");
+  const filterMem = $("#filter-member");
+  const filterSrc = $("#filter-source");
+  if (filterCat) {
+    // Fill category options (sorted same as state.byCategory if available, else by name)
+    const cats = [...state.categories.values()].sort((a, b) => {
+      if (a.is_fallback !== b.is_fallback) return a.is_fallback ? 1 : -1;
+      return a.name.localeCompare(b.name, "ru");
+    });
+    for (const c of cats) {
+      const o = document.createElement("option");
+      o.value = c.id;
+      o.textContent = c.name;
+      filterCat.appendChild(o);
+    }
+    filterCat.addEventListener("change", () => {
+      state.txFilterCategory = filterCat.value;
+      loadTransactions(true);
+    });
+  }
+  if (filterMem) {
+    for (const fm of state.family.values()) {
+      const o = document.createElement("option");
+      o.value = fm.id;
+      o.textContent = fm.name;
+      filterMem.appendChild(o);
+    }
+    filterMem.addEventListener("change", () => {
+      state.txFilterMember = filterMem.value;
+      loadTransactions(true);
+    });
+  }
+  if (filterSrc) {
+    filterSrc.addEventListener("change", () => {
+      state.txFilterSource = filterSrc.value;
+      loadTransactions(true);
+    });
+  }
+  $("#filter-reset").addEventListener("click", () => {
+    state.txFilterCategory = "";
+    state.txFilterMember = "";
+    state.txFilterSource = "";
+    if (filterCat) filterCat.value = "";
+    if (filterMem) filterMem.value = "";
+    if (filterSrc) filterSrc.value = "";
+    loadTransactions(true);
+  });
+
+  // Photo-modal close
+  $("#photo-modal-close").addEventListener("click", closePhotoModal);
+  document.querySelector("#photo-modal .modal-backdrop")
+    .addEventListener("click", closePhotoModal);
 
   // Category-add/edit form modal
   const addBtn = $("#cat-add-btn");
