@@ -15,6 +15,7 @@ import { log } from "../_shared/log.ts";
 import type { ProgressEmitter } from "../_shared/progress.ts";
 import { defaultEmbedFn } from "../_shared/embedder.ts";
 import { mapWithConcurrency } from "../_shared/concurrency.ts";
+import { parseTip } from "../_shared/tip_parse.ts";
 
 // Parallel embedding for photo items so they also feed the kNN learning loop.
 // gte-small in Supabase.ai is fast (~50-200ms per call), so 6 concurrent
@@ -77,6 +78,14 @@ export async function processPhotoMessage(args: {
   fileId: string;
   fileMime?: string;
   telegramMessageId: number;
+  /**
+   * Free-form caption the user attached to the photo. Used for two things:
+   * (1) tip parsing - if the caption contains "чаевые 100 лек" we add an
+   *     extra expense row for the tip; (2) Vision context - the rest is
+   *     passed to Claude as "user note" so it can pick a better category
+   *     for the line items (e.g. "уличные собаки" -> Уличные животные).
+   */
+  caption?: string;
   progress?: ProgressEmitter;
 }): Promise<PhotoOutcome> {
   const p = args.progress;
@@ -172,6 +181,15 @@ export async function processPhotoMessage(args: {
     categories,
   });
 
+  // Extract a tip from the caption if present; whatever's left becomes a
+  // free-form context note for Vision (helps category assignment).
+  const captionRaw = (args.caption ?? "").trim();
+  const tip = captionRaw ? parseTip(captionRaw) : null;
+  const visionContext = tip ? tip.remainder : captionRaw;
+  const userMessage = visionContext
+    ? `Parse this receipt. Дополнительный контекст от пользователя (учти его при выборе категорий для позиций): "${visionContext}"`
+    : "Parse this receipt.";
+
   let resp;
   try {
     resp = await callClaude({
@@ -192,7 +210,7 @@ export async function processPhotoMessage(args: {
               url: signed.data.signedUrl,
             },
           },
-          { type: "text", text: "Parse this receipt." },
+          { type: "text", text: userMessage },
         ],
       }],
     });
@@ -363,6 +381,62 @@ export async function processPhotoMessage(args: {
   }
   const insertedHint = bulkIns.data?.length ?? 0;
 
+  // Tip line from caption ("чаевые 100 лек"). Inserted as a separate expense
+  // attached to the same receipt, so it shows up under the receipt in the
+  // Mini App and counts toward totals. Category: pick the SAME category as
+  // the receipt majority (best guess for tips at a restaurant), falling back
+  // to fallback if rows is empty for any reason.
+  let tipInserted = false;
+  if (tip) {
+    const tipCurrency = tip.currency ?? receipt.currency;
+    const tipRateNeeded = tipCurrency !== receipt.currency;
+    let tipRate = receiptRate;
+    if (tipRateNeeded) {
+      try {
+        tipRate = await getRate(args.sb, tipCurrency, receipt.receipt_date);
+      } catch {
+        tipRate = 1.0;
+      }
+    }
+    // Pick the most frequent category among saved lines (= category of the
+    // majority of receipt items). Fallback if nothing was inserted.
+    const counts = new Map<string, number>();
+    for (const r of rows) counts.set(r.category_id, (counts.get(r.category_id) ?? 0) + 1);
+    const topCat = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? fallbackCatId;
+    const tipPln = Math.round(tip.amount * tipRate * 100) / 100;
+    const tipIns = await args.sb.from("expenses").insert({
+      name: "Чаевые",
+      name_normalized: "tip gratuity",
+      expense_date: receipt.receipt_date,
+      amount: tip.amount,
+      currency: tipCurrency,
+      amount_pln: tipPln,
+      category_id: topCat,
+      family_member_id: args.member.id,
+      source: "photo",
+      receipt_id: receiptId,
+      needs_review: false,
+      telegram_message_id: args.telegramMessageId,
+      line_index: rows.length, // append after Vision lines
+    });
+    if (tipIns.error) {
+      log("warn", "photo_tip_insert_failed", { error: tipIns.error.message });
+    } else {
+      tipInserted = true;
+      // Update receipt total to include the tip.
+      const newTotal = Math.round(
+        (Number(receipt.total) + tip.amount * (
+              tipCurrency === receipt.currency ? 1 : tipRate / receiptRate
+            )) * 100,
+      ) / 100;
+      const newTotalPln = Math.round((totalPln + tipPln) * 100) / 100;
+      await args.sb.from("receipts").update({
+        total: newTotal,
+        total_pln: newTotalPln,
+      }).eq("id", receiptId);
+    }
+  }
+
   // Mandatory verification: trust nothing, count what's actually in the DB.
   const verifyRes = await args.sb.from("expenses")
     .select("id", { count: "exact", head: true })
@@ -376,18 +450,31 @@ export async function processPhotoMessage(args: {
     currency: receipt.currency,
     category_name: catById.get(r.category_id)?.name ?? "?",
   }));
+  if (tipInserted && tip) {
+    summary.push({
+      name: "Чаевые",
+      amount: tip.amount,
+      currency: tip.currency ?? receipt.currency,
+      category_name: catById.get(
+        [...new Map(rows.map((r) => [r.category_id, true])).keys()][0] ?? fallbackCatId,
+      )?.name ?? "?",
+    });
+  }
+  // expected count = OCR items + (tip if user added one). Verification
+  // compares against the receipt's row count, which now also includes the tip.
+  const expectedWithTip = expected + (tipInserted ? 1 : 0);
 
-  if (verifiedCount < expected) {
+  if (verifiedCount < expectedWithTip) {
     log("warn", "photo_partial_save", {
       receipt_id: receiptId,
-      expected,
+      expected: expectedWithTip,
       verified: verifiedCount,
     });
     return {
       kind: "partial",
       receipt_id: receiptId,
       expense_count: verifiedCount,
-      expected_count: expected,
+      expected_count: expectedWithTip,
       merchant: receipt.merchant ?? null,
       total: receipt.total,
       currency: receipt.currency,
@@ -399,7 +486,7 @@ export async function processPhotoMessage(args: {
     kind: "ok",
     receipt_id: receiptId,
     expense_count: verifiedCount,
-    expected_count: expected,
+    expected_count: expectedWithTip,
     verified: true,
     reconciled: recon.ok,
     merchant: receipt.merchant ?? null,

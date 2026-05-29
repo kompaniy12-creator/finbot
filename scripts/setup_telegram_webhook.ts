@@ -23,8 +23,7 @@ const env = z.object({
 
 // Clean URL - no secret query param. Telegram will send the secret in the
 // X-Telegram-Bot-Api-Secret-Token header instead.
-const webhookUrl =
-  `https://${env.SUPABASE_PROJECT_REF}.supabase.co/functions/v1/tg-webhook`;
+const webhookUrl = `https://${env.SUPABASE_PROJECT_REF}.supabase.co/functions/v1/tg-webhook`;
 
 console.log(`Setting webhook -> ${webhookUrl} (secret via header)`);
 

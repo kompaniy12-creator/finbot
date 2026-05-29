@@ -62,7 +62,9 @@ if (recs.length === 0) {
   console.log("no real receipt -> skipping receipt-items check");
 } else {
   const rec = recs[0];
-  console.log(`receipt: ${rec.merchant} (${rec.id}) ${rec.total} ${rec.currency} on ${rec.receipt_date}`);
+  console.log(
+    `receipt: ${rec.merchant} (${rec.id}) ${rec.total} ${rec.currency} on ${rec.receipt_date}`,
+  );
   const eurRate = (await rest(
     `exchange_rates?currency=eq.EUR&rate_date=lte.${rec.receipt_date}&order=rate_date.desc&limit=1&select=rate_date,rate_pln`,
   )) as Array<{ rate_date: string; rate_pln: number }>;
@@ -73,14 +75,18 @@ if (recs.length === 0) {
     receipt: { total_pln: number; total_eur: number };
     items: Array<{ id: string; name: string; amount_pln: number; amount_eur: number }>;
   };
-  console.log(`  api total_pln=${body.receipt.total_pln} total_eur=${body.receipt.total_eur} expected_total_eur=${expectedTotalEur}`);
+  console.log(
+    `  api total_pln=${body.receipt.total_pln} total_eur=${body.receipt.total_eur} expected_total_eur=${expectedTotalEur}`,
+  );
   console.log(`  ${body.items.length} line(s):`);
   for (const it of body.items.slice(0, 5)) {
     const expectedLineEur = eurRate[0]
       ? Math.round((Number(it.amount_pln) / Number(eurRate[0].rate_pln)) * 100) / 100
       : null;
     const ok = expectedLineEur === it.amount_eur ? "OK" : "MISMATCH";
-    console.log(`    "${it.name}" pln=${it.amount_pln} eur=${it.amount_eur} expected=${expectedLineEur} [${ok}]`);
+    console.log(
+      `    "${it.name}" pln=${it.amount_pln} eur=${it.amount_eur} expected=${expectedLineEur} [${ok}]`,
+    );
   }
 }
 
@@ -104,7 +110,10 @@ if (nonPln.length === 0) {
       `exchange_rates?currency=eq.EUR&rate_date=lte.${e.expense_date}&order=rate_date.desc&limit=1&select=rate_pln`,
     )) as Array<{ rate_pln: number }>;
     if (!eurRate[0]) continue;
-    const expectedEur = Math.round((Number(e.amount_pln) / Number(eurRate[0].rate_pln)) * 100) / 100;
-    console.log(`  ${e.expense_date}  ${e.amount} ${e.currency} -> pln=${e.amount_pln}, expected_eur=${expectedEur}`);
+    const expectedEur = Math.round((Number(e.amount_pln) / Number(eurRate[0].rate_pln)) * 100) /
+      100;
+    console.log(
+      `  ${e.expense_date}  ${e.amount} ${e.currency} -> pln=${e.amount_pln}, expected_eur=${expectedEur}`,
+    );
   }
 }

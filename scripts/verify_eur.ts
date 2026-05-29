@@ -64,9 +64,7 @@ for (const it of tx.items.slice(0, 3)) {
     `exchange_rates?currency=eq.EUR&rate_date=lte.${date}&order=rate_date.desc&limit=1&select=rate_date,rate_pln`,
   ) as Array<{ rate_date: string; rate_pln: number }>;
   const rate = rates[0]?.rate_pln;
-  const expectedEur = rate
-    ? Math.round((Number(it.amount_pln) / Number(rate)) * 100) / 100
-    : null;
+  const expectedEur = rate ? Math.round((Number(it.amount_pln) / Number(rate)) * 100) / 100 : null;
   const ok = expectedEur === it.amount_eur ? "OK" : "MISMATCH";
   console.log(
     `  ${date}  pln=${it.amount_pln}  eur=${it.amount_eur}  expected=${expectedEur} (rate ${rate} from ${
@@ -77,7 +75,7 @@ for (const it of tx.items.slice(0, 3)) {
 
 // 3. Sanity: total_eur ≈ sum(amount_eur over all unarchived rows in period)
 // Pull aggregated rows directly via REST.
-const monthStart = (stats.period_start as string);
+const monthStart = stats.period_start as string;
 const all = await sb(
   `expenses?archived=eq.false&expense_date=gte.${monthStart}&select=amount_pln,expense_date`,
 ) as Array<{ amount_pln: number; expense_date: string }>;

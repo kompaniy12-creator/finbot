@@ -92,6 +92,11 @@ const CATEGORIES = [
     description: "Pet food, veterinarian, grooming, toys, pet accessories",
   },
   {
+    name: "Уличные животные",
+    description:
+      "Helping street animals: food for stray dogs and cats, animal welfare donations, feeding strays, rescue support",
+  },
+  {
     name: "Хобби, увлечения",
     description: "Hobby supplies, craft materials, musical instruments, collecting",
   },

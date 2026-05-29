@@ -261,6 +261,7 @@ export async function dispatch(
         member: input.member,
         fileId: largest.file_id,
         telegramMessageId: msg.message_id,
+        caption: msg.caption,
         progress: prog ?? undefined,
       });
       text = formatPhotoReply(outcome);
@@ -283,6 +284,7 @@ export async function dispatch(
       fileId: msg.document.file_id,
       fileMime: msg.document.mime_type,
       telegramMessageId: msg.message_id,
+      caption: msg.caption,
     });
     return { chatId: msg.chat.id, reply: { text: formatPhotoReply(outcome) } };
   }

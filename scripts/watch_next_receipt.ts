@@ -68,7 +68,9 @@ while (Date.now() < deadline) {
     console.log(`  saved lines: ${lines.length}`);
     for (const l of lines.slice(0, 5)) {
       console.log(
-        `    [${l.line_index}] ${l.name} → ${catName.get(l.category_id) ?? "?"}: ${l.amount} ${l.currency}`,
+        `    [${l.line_index}] ${l.name} → ${
+          catName.get(l.category_id) ?? "?"
+        }: ${l.amount} ${l.currency}`,
       );
     }
     if (lines.length > 5) console.log(`    ... and ${lines.length - 5} more`);
