@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <title>FinBot Dashboard</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div id="gate" class="gate">
+      <div class="gate-card">
+        <h1>FinBot</h1>
+        <p>Открой через Telegram, нажми кнопку «Дашборд» в меню бота.</p>
+      </div>
+    </div>
+
+    <main id="app" class="app hidden">
+      <header>
+        <h1 id="hello">FinBot</h1>
+        <div class="period-tabs">
+          <button data-period="day">День</button>
+          <button data-period="week">Неделя</button>
+          <button class="active" data-period="month">Месяц</button>
+          <button data-period="custom">Период</button>
+        </div>
+        <div id="custom-range" class="custom-range hidden">
+          <input type="date" id="range-from" />
+          <span>-</span>
+          <input type="date" id="range-to" />
+          <button id="range-apply" type="button">OK</button>
+        </div>
+        <div id="month-picker" class="month-picker">
+          <select id="month-select"></select>
+        </div>
+      </header>
+
+      <section class="kpis">
+        <div class="kpi kpi-total">
+          <label>Всего</label>
+          <strong id="kpi-total">- EUR</strong>
+          <div id="kpi-total-delta" class="kpi-delta"></div>
+          <div id="kpi-forecast" class="kpi-forecast"></div>
+          <ul id="kpi-by-currency" class="kpi-currency-list"></ul>
+        </div>
+        <div class="kpi">
+          <label>Записей</label>
+          <strong id="kpi-count">-</strong>
+          <div id="kpi-count-delta" class="kpi-delta"></div>
+        </div>
+        <div class="kpi"><label>Топ-категория</label><strong id="kpi-top">-</strong></div>
+      </section>
+
+      <section class="chart-row">
+        <div class="chart-card chart-card-donut">
+          <div class="chart-head">
+            <h3>По категориям</h3>
+            <span>доля расходов</span>
+          </div>
+          <canvas id="donut"></canvas>
+        </div>
+        <div class="chart-card chart-card-line">
+          <div class="chart-head">
+            <h3>По дням</h3>
+            <span>динамика периода</span>
+          </div>
+          <canvas id="line"></canvas>
+        </div>
+      </section>
+
+      <section class="chart-card chart-card-wide">
+        <div class="chart-head">
+          <h3>Топ-5</h3>
+          <span>главные категории</span>
+        </div>
+        <canvas id="bar"></canvas>
+      </section>
+
+      <section class="chart-card chart-card-wide heatmap-card">
+        <div class="chart-head">
+          <h3>Активность по дням</h3>
+          <span>тёмные ячейки = больше расход</span>
+        </div>
+        <div id="heatmap" class="heatmap"></div>
+      </section>
+
+      <section class="categories">
+        <header class="categories-head">
+          <h3>Все категории</h3>
+          <button id="cat-add-btn" type="button" style="display: none">+ Добавить</button>
+        </header>
+        <ul id="cat-list" class="cat-list"></ul>
+      </section>
+
+      <section class="transactions">
+        <header class="tx-header">
+          <h3>Транзакции</h3>
+          <input id="search" type="search" placeholder="поиск" />
+          <button id="export">CSV</button>
+        </header>
+        <div class="tx-filters">
+          <select id="filter-category">
+            <option value="">все категории</option>
+          </select>
+          <select id="filter-member">
+            <option value="">вся семья</option>
+          </select>
+          <select id="filter-source">
+            <option value="">все источники</option>
+            <option value="photo">фото</option>
+            <option value="text">текст</option>
+            <option value="voice">голос</option>
+          </select>
+          <button id="filter-reset" type="button" title="Сбросить фильтры">↺</button>
+        </div>
+        <ul id="tx-list" class="tx-list"></ul>
+        <div class="tx-pagination">
+          <button id="load-more">Ещё...</button>
+        </div>
+      </section>
+
+      <footer><small id="version">FinBot v1.0</small></footer>
+    </main>
+
+    <div id="cat-modal" class="modal hidden" role="dialog" aria-modal="true">
+      <div class="modal-backdrop"></div>
+      <div class="modal-card">
+        <header class="modal-head">
+          <h3 id="cat-modal-title">Выбрать категорию</h3>
+          <button id="cat-modal-close" type="button" aria-label="Закрыть">×</button>
+        </header>
+        <ul id="cat-modal-list" class="modal-cat-list"></ul>
+      </div>
+    </div>
+
+    <div id="photo-modal" class="modal hidden" role="dialog" aria-modal="true">
+      <div class="modal-backdrop"></div>
+      <div class="modal-card photo-modal-card">
+        <header class="modal-head">
+          <h3 id="photo-modal-title">Фото чека</h3>
+          <button id="photo-modal-close" type="button" aria-label="Закрыть">×</button>
+        </header>
+        <div class="photo-modal-body">
+          <img id="photo-modal-img" alt="Фото чека" />
+        </div>
+      </div>
+    </div>
+
+    <div id="cat-form-modal" class="modal hidden" role="dialog" aria-modal="true">
+      <div class="modal-backdrop"></div>
+      <div class="modal-card">
+        <header class="modal-head">
+          <h3 id="cat-form-title">Новая категория</h3>
+          <button id="cat-form-close" type="button" aria-label="Закрыть">×</button>
+        </header>
+        <div class="cat-form">
+          <input type="hidden" id="cat-form-id" />
+          <label>Название
+            <input type="text" id="cat-form-name" maxlength="80" placeholder="Например: Подписки" />
+          </label>
+          <label>Описание (по-английски, для авто-классификации)
+            <textarea
+              id="cat-form-desc"
+              maxlength="500"
+              rows="3"
+              placeholder="Streaming services, software subscriptions, memberships"
+            ></textarea>
+          </label>
+          <label class="cat-form-checkbox">
+            <input type="checkbox" id="cat-form-fallback" />
+            <span>Fallback-категория (попадают неясные траты)</span>
+          </label>
+          <div class="cat-form-actions">
+            <button id="cat-form-cancel" type="button">Отмена</button>
+            <button id="cat-form-save" type="button" class="primary">Сохранить</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="./tg-webapp.js"></script>
+    <script src="./app.js"></script>
+  </body>
+</html>
