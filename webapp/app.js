@@ -76,6 +76,11 @@ function gateOrApp() {
   return true;
 }
 
+// Reuse a single rejection for stale-session so callers' catch blocks can
+// avoid stacking a second alert on top of the one api() already shows.
+const SESSION_EXPIRED = Symbol("session_expired");
+let sessionAlertShown = false;
+
 async function api(path, opts = {}) {
   const url = API_BASE + path;
   const headers = Object.assign({}, opts.headers, {
@@ -84,10 +89,17 @@ async function api(path, opts = {}) {
   });
   const resp = await fetch(url, Object.assign({}, opts, { headers }));
   if (resp.status === 401) {
-    TG.showAlert("Срок сессии истек. Открой Mini App заново через бота.");
-    throw new Error("401");
+    if (!sessionAlertShown) {
+      sessionAlertShown = true;
+      TG.showAlert("Срок сессии истёк. Закрой Mini App и открой заново через бота.");
+    }
+    throw SESSION_EXPIRED;
   }
   return resp;
+}
+
+function isSessionExpired(e) {
+  return e === SESSION_EXPIRED;
 }
 
 async function loadCategoriesAndFamily() {
@@ -269,8 +281,8 @@ async function openReceiptPhoto(receiptId, title) {
       return;
     }
     img.src = j.url;
-  } catch (_e) {
-    TG.showAlert("Ошибка сети при загрузке фото.");
+  } catch (e) {
+    if (!isSessionExpired(e)) TG.showAlert("Ошибка сети при загрузке фото.");
     m.classList.add("hidden");
   }
 }
@@ -334,8 +346,8 @@ async function submitCategoryForm() {
     closeCategoryForm();
     await loadCategoriesAndFamily();
     await refresh();
-  } catch (_e) {
-    TG.showAlert("Ошибка сети.");
+  } catch (e) {
+    if (!isSessionExpired(e)) TG.showAlert("Ошибка сети.");
   } finally {
     $("#cat-form-save").disabled = false;
   }
@@ -364,8 +376,8 @@ async function deleteCategory(id, name, count) {
     }
     await loadCategoriesAndFamily();
     await refresh();
-  } catch (_e) {
-    TG.showAlert("Ошибка сети.");
+  } catch (e) {
+    if (!isSessionExpired(e)) TG.showAlert("Ошибка сети.");
   }
 }
 
@@ -548,8 +560,8 @@ async function recategorize(expense, category, receiptId) {
     renderTransactions();
     loadKpis().catch(() => {});
     loadCharts();
-  } catch (_e) {
-    TG.showAlert("Ошибка сети при смене категории.");
+  } catch (e) {
+    if (!isSessionExpired(e)) TG.showAlert("Ошибка сети при смене категории.");
   }
 }
 
@@ -582,6 +594,7 @@ async function deleteItem(kind, id, label, receiptId) {
     loadKpis().catch(() => {});
     loadCharts();
   } catch (e) {
+    if (isSessionExpired(e)) return; // alert already shown by api()
     TG.showAlert("Ошибка сети при удалении.");
   }
 }
@@ -604,7 +617,7 @@ async function toggleReceipt(id) {
     }
     renderTransactions();
   } catch (e) {
-    TG.showAlert("Не удалось загрузить позиции чека.");
+    if (!isSessionExpired(e)) TG.showAlert("Не удалось загрузить позиции чека.");
   }
 }
 
@@ -1104,7 +1117,7 @@ async function main() {
       a.remove();
       URL.revokeObjectURL(url);
     } catch (e) {
-      TG.showAlert("Не удалось скачать CSV.");
+      if (!isSessionExpired(e)) TG.showAlert("Не удалось скачать CSV.");
     }
   });
 }

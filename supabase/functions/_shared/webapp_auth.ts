@@ -12,10 +12,13 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { FamilyMember } from "./types.ts";
 import { log } from "./log.ts";
 
-// 1-hour TTL on initData. Telegram's auth_date is unix-seconds; we refuse
-// anything older. Was 24h; tightened so a stolen/leaked initData URL is
-// only useful for at most an hour before the user must reopen the Mini App.
-const TTL_SECONDS = 60 * 60;
+// 4-hour TTL on initData. Telegram's auth_date is unix-seconds; we refuse
+// anything older. Was 1h after the security pass, but in practice that
+// broke normal usage - users keep the Mini App open through an evening,
+// hit a stale-session 401 and assume the bot is broken. 4h is the sweet
+// spot: a stolen/leaked URL still expires same-day, but normal sessions
+// don't break in the middle of the user pressing × on a transaction.
+const TTL_SECONDS = 4 * 60 * 60;
 
 async function hmacSha256(key: Uint8Array, data: string): Promise<Uint8Array> {
   // Copy to a fresh ArrayBuffer so the type narrows to ArrayBuffer (not SharedArrayBuffer).
