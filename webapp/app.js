@@ -735,7 +735,16 @@ function commonChartOptions(empty) {
         callbacks: {
           label(ctx) {
             const label = ctx.dataset.label ? ctx.dataset.label + ": " : "";
-            return label + money(ctx.parsed.y ?? ctx.parsed.x ?? ctx.parsed);
+            // Horizontal bar (indexAxis="y") puts the value on .x and the
+            // row index on .y - reading .y first would show "0.00 EUR" for
+            // the top row, "1.00 EUR" for the next, etc. Pick the axis that
+            // actually carries the magnitude based on the chart's indexAxis.
+            const isHorizontalBar = ctx.chart?.options?.indexAxis === "y";
+            let val;
+            if (typeof ctx.parsed === "number") val = ctx.parsed;
+            else if (isHorizontalBar) val = ctx.parsed.x ?? ctx.parsed.y ?? 0;
+            else val = ctx.parsed.y ?? ctx.parsed.x ?? 0;
+            return label + money(val);
           },
         },
       },
