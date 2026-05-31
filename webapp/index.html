@@ -6,7 +6,7 @@
     <title>FinBot Dashboard</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
-    <link rel="stylesheet" href="./styles.css?v=20260531a" />
+    <link rel="stylesheet" href="./styles.css?v=20260531b" />
   </head>
   <body>
     <div id="gate" class="gate">
@@ -80,9 +80,27 @@
       <section class="chart-card chart-card-wide heatmap-card">
         <div class="chart-head">
           <h3>Активность по дням</h3>
-          <span>тёмные ячейки = больше расход</span>
+          <span>ярче ячейка = больше расход</span>
+        </div>
+        <div class="hm-dow-row">
+          <div>пн</div>
+          <div>вт</div>
+          <div>ср</div>
+          <div>чт</div>
+          <div>пт</div>
+          <div>сб</div>
+          <div>вс</div>
         </div>
         <div id="heatmap" class="heatmap"></div>
+        <div class="hm-legend">
+          <span>меньше</span>
+          <div class="hm-cell hm-lvl-0"></div>
+          <div class="hm-cell hm-lvl-1"></div>
+          <div class="hm-cell hm-lvl-2"></div>
+          <div class="hm-cell hm-lvl-3"></div>
+          <div class="hm-cell hm-lvl-4"></div>
+          <span>больше</span>
+        </div>
       </section>
 
       <section class="categories">
@@ -179,7 +197,7 @@
       </div>
     </div>
 
-    <script src="./tg-webapp.js?v=20260531a"></script>
-    <script src="./app.js?v=20260531a"></script>
+    <script src="./tg-webapp.js?v=20260531b"></script>
+    <script src="./app.js?v=20260531b"></script>
   </body>
 </html>

@@ -224,8 +224,8 @@ function renderHeatmap() {
   }
   const max = Math.max(0, ...byDay.values());
   el.innerHTML = "";
-  // Compute leading blank cells: align so columns are weekdays Mon-Sun.
-  // getUTCDay: 0=Sunday..6=Saturday. Convert to Mon=0..Sun=6.
+  // Align so columns are weekdays Mon-Sun. getUTCDay: 0=Sunday..6=Saturday;
+  // convert to Mon=0..Sun=6.
   const firstDow = (new Date(startMs).getUTCDay() + 6) % 7;
   for (let i = 0; i < firstDow; i++) {
     const blank = document.createElement("div");
@@ -238,9 +238,13 @@ function renderHeatmap() {
     const v = byDay.get(iso) ?? 0;
     const intensity = max > 0 ? Math.min(1, v / max) : 0;
     const lvl = v === 0 ? 0 : intensity < 0.25 ? 1 : intensity < 0.5 ? 2 : intensity < 0.75 ? 3 : 4;
-    const cell = document.createElement("div");
+    const cell = document.createElement("button");
+    cell.type = "button";
     cell.className = `hm-cell hm-lvl-${lvl}`;
-    cell.title = `${iso}: ${v.toFixed(2)} EUR`;
+    const dayNum = Number(iso.slice(8, 10));
+    cell.innerHTML = `<span class="hm-day">${dayNum}</span>` +
+      (v > 0 ? `<span class="hm-amt">${Math.round(v)}€</span>` : "");
+    cell.title = v > 0 ? `${iso}: ${v.toFixed(2)} EUR` : `${iso}: без трат`;
     cell.dataset.date = iso;
     cell.addEventListener("click", () => {
       // Tap a day: jump period to that single day.
