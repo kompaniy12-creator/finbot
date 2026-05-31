@@ -864,6 +864,19 @@ function drawBarTop5(entries) {
       plugins: {
         ...commonChartOptions(empty).plugins,
         legend: { display: false },
+        tooltip: {
+          ...commonChartOptions(empty).plugins.tooltip,
+          // Horizontal bar: bar magnitude lives on .x. We override the
+          // common callback explicitly to avoid any indexAxis-detection
+          // edge cases in Chart.js.
+          callbacks: {
+            label(ctx) {
+              if (empty) return "Нет расходов";
+              const value = Number(ctx.parsed?.x ?? 0);
+              return `${ctx.dataset.label}: ${money(value)}`;
+            },
+          },
+        },
       },
     },
   });
