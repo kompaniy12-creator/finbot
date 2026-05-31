@@ -10,6 +10,7 @@ import { notifyUser } from "../_shared/notify.ts";
 import { buildAnalystSnapshot } from "../_shared/analyst_snapshot.ts";
 import { buildAskPrompt } from "../_shared/prompts/ask.ts";
 import { callClaude } from "../_shared/claude.ts";
+import { runAskAgent } from "../_shared/ask_agent.ts";
 
 const WEBAPP_URL_FALLBACK = "https://kompaniy12-creator.github.io/finbot/";
 
@@ -755,52 +756,54 @@ export async function askCommand(
     return { text: "Слишком длинный вопрос (макс 500 символов). Попробуй короче." };
   }
 
-  const snapshot = await buildAnalystSnapshot(sb);
-  // Inject viewer info so the model knows who's asking.
-  const payload = {
-    viewer_id: viewer.id,
-    viewer_name: viewer.name,
-    viewer_role: viewer.role,
-    snapshot,
-  };
+  // Snapshot + read tools + propose_changes tool run INSIDE runAskAgent.
+  // (Old direct-Claude path kept its imports because the agent re-uses them.)
+  void buildAskPrompt;
+  void buildAnalystSnapshot;
+  void callClaude;
 
+  let agentResult;
   try {
-    const { response } = await callClaude({
-      sb,
-      familyMemberId: viewer.id,
-      model: Deno.env.get("CLAUDE_MODEL_FAST") ?? "claude-haiku-4-5-20251001",
-      system: buildAskPrompt(),
-      messages: [{
-        role: "user",
-        content: `Контекст (JSON snapshot всех финансовых данных семьи):\n\`\`\`json\n${
-          JSON.stringify(payload)
-        }\n\`\`\`\n\nВопрос: ${q}`,
-      }],
-      maxTokens: 600,
-    });
-    const raw = response.content
-      .filter((c) => c.type === "text")
-      .map((c) => (c as { text: string }).text)
-      .join("\n")
-      .trim();
-    if (!raw) {
-      return { text: "Не смог сформулировать ответ. Попробуй переформулировать вопрос." };
-    }
-    // Strip Markdown syntax the model may emit despite the instruction:
-    // **bold**, __bold__, *italic*, _italic_, `code`, ### headings.
-    // We send replies with parse_mode=HTML, so raw Markdown shows as literal
-    // characters in Telegram.
-    const text = raw
-      .replace(/\*\*(.+?)\*\*/gs, "$1") // **bold**
-      .replace(/__(.+?)__/gs, "$1") // __bold__
-      .replace(/(?<![*\w])\*(?!\s)([^*\n]+?)(?<!\s)\*(?![*\w])/g, "$1") // *italic*
-      .replace(/(?<![_\w])_(?!\s)([^_\n]+?)(?<!\s)_(?![_\w])/g, "$1") // _italic_
-      .replace(/```[\s\S]*?```/g, (m) => m.replace(/```/g, "")) // ```code blocks```
-      .replace(/`([^`\n]+)`/g, "$1") // `inline code`
-      .replace(/^#{1,6}\s+/gm, "") // # headings
-      .replace(/[<>]/g, ""); // strip stray < > that would break HTML parse
-    return { text: `🤖 ${text}` };
+    agentResult = await runAskAgent({ sb, viewer, question: q });
   } catch (err) {
     return { text: `Ошибка аналитика: ${(err as Error).message}` };
   }
+
+  // Strip any Markdown the model might still emit despite the instruction.
+  const sanitize = (s: string) =>
+    s
+      .replace(/\*\*(.+?)\*\*/gs, "$1")
+      .replace(/__(.+?)__/gs, "$1")
+      .replace(/(?<![*\w])\*(?!\s)([^*\n]+?)(?<!\s)\*(?![*\w])/g, "$1")
+      .replace(/(?<![_\w])_(?!\s)([^_\n]+?)(?<!\s)_(?![_\w])/g, "$1")
+      .replace(/```[\s\S]*?```/g, (m) => m.replace(/```/g, ""))
+      .replace(/`([^`\n]+)`/g, "$1")
+      .replace(/^#{1,6}\s+/gm, "")
+      .replace(/[<>]/g, "");
+
+  const cleanText = sanitize(agentResult.text || "");
+
+  if (agentResult.proposalId && agentResult.actionCount > 0) {
+    // Show the proposal and inline confirm/cancel. Actual writes happen in
+    // the askapply callback.
+    return {
+      text: `🤖 ${cleanText}\n\nПодтвердить ${agentResult.actionCount} ${
+        agentResult.actionCount === 1 ? "действие" : "действий"
+      }?`,
+      reply_markup: {
+        inline_keyboard: [[
+          {
+            text: `✅ Применить (${agentResult.actionCount})`,
+            callback_data: `askapply:${agentResult.proposalId}`,
+          },
+          {
+            text: "❌ Отмена",
+            callback_data: `askcancel:${agentResult.proposalId}`,
+          },
+        ]],
+      } as unknown as CommandReply["reply_markup"],
+    };
+  }
+
+  return { text: `🤖 ${cleanText}` };
 }

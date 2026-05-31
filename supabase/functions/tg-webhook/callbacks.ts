@@ -13,6 +13,8 @@
 //   mpromo:<member_uuid>            - promote to admin
 //   mdemo:<member_uuid>             - demote to member
 //   subadd:<expense_uuid>           - add a detected subscription to recurring_expenses
+//   askapply:<proposal_uuid>        - execute the queued ask-agent proposal
+//   askcancel:<proposal_uuid>       - mark the proposal cancelled
 //
 // Byte-budget sanity check:
 //   "catset:" (7) + uuid (36) + ":" (1) + 8 = 52 bytes <= 64. OK.
@@ -134,6 +136,22 @@ export async function handleCallback(args: {
       );
     case "subadd":
       return await doSubAdd(
+        args.sb,
+        args.member,
+        args.chatId,
+        cb.parts[0]!,
+        args.messageId,
+      );
+    case "askapply":
+      return await doAskApply(
+        args.sb,
+        args.member,
+        args.chatId,
+        cb.parts[0]!,
+        args.messageId,
+      );
+    case "askcancel":
+      return await doAskCancel(
         args.sb,
         args.member,
         args.chatId,
@@ -768,5 +786,171 @@ async function doSubAdd(
     },
     edit_message_id: editMessageId,
     answer_text: "Добавлено",
+  };
+}
+
+// --- /ask agent proposal apply/cancel ------------------------------------
+
+interface ProposalRow {
+  id: string;
+  proposer_family_member_id: string;
+  proposer_telegram_id: number;
+  question: string;
+  actions: Array<Record<string, unknown>>;
+  status: string;
+  expires_at: string;
+}
+
+async function loadProposal(
+  sb: SupabaseClient,
+  proposalId: string,
+): Promise<ProposalRow | null> {
+  if (!/^[0-9a-f-]{36}$/i.test(proposalId)) return null;
+  const r = await sb.from("ask_proposals")
+    .select(
+      "id, proposer_family_member_id, proposer_telegram_id, question, actions, status, expires_at",
+    )
+    .eq("id", proposalId).maybeSingle();
+  return (r.data as ProposalRow | null) ?? null;
+}
+
+async function doAskApply(
+  sb: SupabaseClient,
+  actor: FamilyMember,
+  chatId: number,
+  proposalId: string,
+  editMessageId?: number,
+): Promise<CallbackOutput> {
+  const p = await loadProposal(sb, proposalId);
+  if (!p) {
+    return {
+      chatId,
+      reply: { text: "Предложение не найдено или удалено." },
+      edit_message_id: editMessageId,
+    };
+  }
+  if (p.proposer_family_member_id !== actor.id && actor.role !== "admin") {
+    return { chatId, reply: { text: "Подтвердить может только автор запроса (или админ)." } };
+  }
+  if (p.status !== "pending") {
+    return {
+      chatId,
+      reply: { text: `Это предложение уже ${p.status}.` },
+      edit_message_id: editMessageId,
+    };
+  }
+  if (new Date(p.expires_at).getTime() < Date.now()) {
+    await sb.from("ask_proposals").update({ status: "expired" }).eq("id", p.id);
+    return {
+      chatId,
+      reply: { text: "Срок предложения истёк (10 мин). Спроси ещё раз." },
+      edit_message_id: editMessageId,
+    };
+  }
+
+  let applied = 0;
+  let failed = 0;
+  const failures: string[] = [];
+  for (const a of p.actions) {
+    const kind = String(a.kind ?? "");
+    try {
+      if (kind === "delete_expense") {
+        const id = String(a.expense_id);
+        const upd = await sb.from("expenses").update({ archived: true }).eq("id", id);
+        if (upd.error) throw new Error(upd.error.message);
+        applied++;
+      } else if (kind === "recategorize_expense") {
+        const id = String(a.expense_id);
+        const newCat = String(a.new_category_id);
+        const upd = await sb.from("expenses")
+          .update({ category_id: newCat, corrected_by_user: true, needs_confirmation: false })
+          .eq("id", id);
+        if (upd.error) throw new Error(upd.error.message);
+        applied++;
+      } else if (kind === "delete_receipt") {
+        const id = String(a.receipt_id);
+        const updLines = await sb.from("expenses").update({ archived: true })
+          .eq("receipt_id", id).eq("archived", false);
+        if (updLines.error) throw new Error(updLines.error.message);
+        const updRec = await sb.from("receipts").update({ archived: true }).eq("id", id);
+        if (updRec.error) throw new Error(updRec.error.message);
+        applied++;
+      } else {
+        throw new Error(`unknown action: ${kind}`);
+      }
+    } catch (err) {
+      failed++;
+      failures.push(`${kind}: ${(err as Error).message}`);
+      log("warn", "ask_apply_action_failed", {
+        proposal: p.id,
+        kind,
+        error: (err as Error).message,
+      });
+    }
+  }
+
+  await sb.from("ask_proposals").update({
+    status: "applied",
+    applied_at: new Date().toISOString(),
+    applied_count: applied,
+    failed_count: failed,
+  }).eq("id", p.id);
+
+  await recordAudit(sb, {
+    actorTelegramId: actor.telegram_id,
+    actorFamilyMemberId: actor.id,
+    action: "ask_proposal_applied",
+    targetId: p.id,
+    targetName: p.question.slice(0, 80),
+    details: { actions: p.actions, applied, failed },
+  });
+
+  const head = failed === 0
+    ? `✅ Применено ${applied} из ${p.actions.length}.`
+    : `⚠ Применено ${applied}, не удалось ${failed} из ${p.actions.length}.`;
+  const failList = failures.length > 0 ? `\n\n` + failures.slice(0, 5).join("\n") : "";
+
+  return {
+    chatId,
+    reply: { text: head + failList },
+    edit_message_id: editMessageId,
+    answer_text: failed === 0 ? "Готово" : `Применено ${applied}/${p.actions.length}`,
+  };
+}
+
+async function doAskCancel(
+  sb: SupabaseClient,
+  actor: FamilyMember,
+  chatId: number,
+  proposalId: string,
+  editMessageId?: number,
+): Promise<CallbackOutput> {
+  const p = await loadProposal(sb, proposalId);
+  if (!p) {
+    return {
+      chatId,
+      reply: { text: "Предложение не найдено." },
+      edit_message_id: editMessageId,
+    };
+  }
+  if (p.proposer_family_member_id !== actor.id && actor.role !== "admin") {
+    return { chatId, reply: { text: "Отменить может только автор (или админ)." } };
+  }
+  if (p.status === "pending") {
+    await sb.from("ask_proposals").update({ status: "cancelled" }).eq("id", p.id);
+    await recordAudit(sb, {
+      actorTelegramId: actor.telegram_id,
+      actorFamilyMemberId: actor.id,
+      action: "ask_proposal_cancelled",
+      targetId: p.id,
+      targetName: p.question.slice(0, 80),
+      details: { actions_count: p.actions.length },
+    });
+  }
+  return {
+    chatId,
+    reply: { text: `❌ Предложение отменено (${p.actions.length} действий не применены).` },
+    edit_message_id: editMessageId,
+    answer_text: "Отменено",
   };
 }
