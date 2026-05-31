@@ -778,14 +778,27 @@ export async function askCommand(
       }],
       maxTokens: 600,
     });
-    const text = response.content
+    const raw = response.content
       .filter((c) => c.type === "text")
       .map((c) => (c as { text: string }).text)
       .join("\n")
       .trim();
-    if (!text) {
+    if (!raw) {
       return { text: "Не смог сформулировать ответ. Попробуй переформулировать вопрос." };
     }
+    // Strip Markdown syntax the model may emit despite the instruction:
+    // **bold**, __bold__, *italic*, _italic_, `code`, ### headings.
+    // We send replies with parse_mode=HTML, so raw Markdown shows as literal
+    // characters in Telegram.
+    const text = raw
+      .replace(/\*\*(.+?)\*\*/gs, "$1") // **bold**
+      .replace(/__(.+?)__/gs, "$1") // __bold__
+      .replace(/(?<![*\w])\*(?!\s)([^*\n]+?)(?<!\s)\*(?![*\w])/g, "$1") // *italic*
+      .replace(/(?<![_\w])_(?!\s)([^_\n]+?)(?<!\s)_(?![_\w])/g, "$1") // _italic_
+      .replace(/```[\s\S]*?```/g, (m) => m.replace(/```/g, "")) // ```code blocks```
+      .replace(/`([^`\n]+)`/g, "$1") // `inline code`
+      .replace(/^#{1,6}\s+/gm, "") // # headings
+      .replace(/[<>]/g, ""); // strip stray < > that would break HTML parse
     return { text: `🤖 ${text}` };
   } catch (err) {
     return { text: `Ошибка аналитика: ${(err as Error).message}` };

@@ -73,7 +73,28 @@ export interface AnalystSnapshot {
       category: string;
       member: string;
     }>;
+    /** Full list of individual expense rows in the current month. */
+    all_expenses: Array<{
+      date: string;
+      name: string;
+      amount: number;
+      currency: string;
+      eur: number;
+      category: string;
+      member: string;
+      source: string;
+    }>;
   };
+  previous_month_expenses: Array<{
+    date: string;
+    name: string;
+    amount: number;
+    currency: string;
+    eur: number;
+    category: string;
+    member: string;
+    source: string;
+  }>;
   recent_receipts: Array<{
     date: string;
     merchant: string | null;
@@ -123,6 +144,7 @@ export async function buildAnalystSnapshot(sb: SupabaseClient): Promise<AnalystS
     catRes,
     trendExpRes,
     monthExpRes,
+    prevMonthExpRes,
     receiptsRes,
     recurringRes,
     lifetimeByCatRes,
@@ -141,6 +163,13 @@ export async function buildAnalystSnapshot(sb: SupabaseClient): Promise<AnalystS
       .eq("archived", false)
       .gte("expense_date", monthStart)
       .lte("expense_date", monthEnd),
+    sb.from("expenses")
+      .select(
+        "id, name, amount, currency, amount_pln, category_id, family_member_id, source, expense_date",
+      )
+      .eq("archived", false)
+      .gte("expense_date", prevStart)
+      .lte("expense_date", prevEnd),
     sb.from("receipts")
       .select("id, merchant, total, currency, total_pln, receipt_date")
       .eq("archived", false)
@@ -181,6 +210,17 @@ export async function buildAnalystSnapshot(sb: SupabaseClient): Promise<AnalystS
     source: string;
     expense_date: string;
     receipt_id: string | null;
+  }>;
+  const prevMonthRowsFull = (prevMonthExpRes.data ?? []) as Array<{
+    id: string;
+    name: string;
+    amount: number;
+    currency: string;
+    amount_pln: number;
+    category_id: string;
+    family_member_id: string;
+    source: string;
+    expense_date: string;
   }>;
   const receipts = (receiptsRes.data ?? []) as Array<{
     id: string;
@@ -288,8 +328,23 @@ export async function buildAnalystSnapshot(sb: SupabaseClient): Promise<AnalystS
   const deltaEur = monthEur - prevEur;
   const deltaPct = prevEur > 0 ? (deltaEur / prevEur) * 100 : null;
 
-  // --- Top expenses this month (top 8 by EUR) ------------------------------
-  const topExp = monthRows
+  // --- Full month expense lists (current + previous) -----------------------
+  // trendRows already includes both because the trend window covers 6 months,
+  // so we slice from it instead of issuing extra queries.
+  const decorate = (r: typeof trendRows[number] & { name?: string }) => ({
+    date: r.expense_date,
+    name: (r as { name?: string }).name ?? "",
+    amount: Number(r.amount),
+    currency: r.currency,
+    eur: r2(toEur(Number(r.amount_pln), r.expense_date)),
+    category: catName.get(r.category_id) ?? "?",
+    member: memberName.get(r.family_member_id) ?? "?",
+    source: r.source,
+  });
+  // Need `name` for individual rows: trendExpRes didn't select it, so use
+  // monthRows for current month (which DOES have name + receipt_id), and
+  // fetch previous month names separately.
+  const allMonthExpenses = monthRows
     .map((r) => ({
       date: r.expense_date,
       name: r.name,
@@ -298,9 +353,25 @@ export async function buildAnalystSnapshot(sb: SupabaseClient): Promise<AnalystS
       eur: r2(toEur(Number(r.amount_pln), r.expense_date)),
       category: catName.get(r.category_id) ?? "?",
       member: memberName.get(r.family_member_id) ?? "?",
+      source: r.source,
     }))
-    .sort((a, b) => b.eur - a.eur)
-    .slice(0, 8);
+    .sort((a, b) => a.date === b.date ? b.eur - a.eur : a.date < b.date ? 1 : -1);
+  // Top expenses are now derived from the same list, sliced.
+  const topExp = [...allMonthExpenses].sort((a, b) => b.eur - a.eur).slice(0, 30);
+  void decorate;
+
+  const prevMonthExpensesOut = prevMonthRowsFull
+    .map((r) => ({
+      date: r.expense_date,
+      name: r.name,
+      amount: Number(r.amount),
+      currency: r.currency,
+      eur: r2(toEur(Number(r.amount_pln), r.expense_date)),
+      category: catName.get(r.category_id) ?? "?",
+      member: memberName.get(r.family_member_id) ?? "?",
+      source: r.source,
+    }))
+    .sort((a, b) => a.date === b.date ? b.eur - a.eur : a.date < b.date ? 1 : -1);
 
   // --- Recent receipts (already loaded) -----------------------------------
   // Need item_count per receipt.
@@ -430,7 +501,9 @@ export async function buildAnalystSnapshot(sb: SupabaseClient): Promise<AnalystS
       by_member: byMemberCurrentMonth,
       by_source: bySourceCurrentMonth,
       top_expenses: topExp,
+      all_expenses: allMonthExpenses,
     },
+    previous_month_expenses: prevMonthExpensesOut,
     recent_receipts: recentReceipts,
     recurring_expenses: recurringOut,
     categories: categoriesOut,
