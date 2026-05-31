@@ -107,15 +107,6 @@ async function editReply(
   await tgRequest("editMessageText", body);
 }
 
-async function notifyAdminText(text: string): Promise<void> {
-  const { TELEGRAM_ADMIN_TELEGRAM_ID } = getEnv();
-  await tgRequest("sendMessage", {
-    chat_id: Number(TELEGRAM_ADMIN_TELEGRAM_ID),
-    text,
-    parse_mode: "HTML",
-  });
-}
-
 async function notifyAdminWithButtons(
   text: string,
   buttons: Array<Array<{ text: string; callback_data: string }>>,
