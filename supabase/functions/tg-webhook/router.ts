@@ -5,6 +5,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { FamilyMember, TelegramUpdate } from "../_shared/types.ts";
 import {
+  askCommand,
   auditCommand,
   categoriesCommand,
   type CommandReply,
@@ -96,6 +97,8 @@ export async function routeCommand(
       return await statsCommand(ctx.sb, ctx.member);
     case "me":
       return await meCommand(ctx.sb, ctx.member);
+    case "ask":
+      return await askCommand(ctx.sb, args, ctx.member);
     case "undo":
       return await undoCommand(ctx.sb, ctx.member);
     case "members":

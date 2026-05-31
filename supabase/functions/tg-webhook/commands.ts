@@ -7,6 +7,9 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { FamilyMember } from "../_shared/types.ts";
 import { recordAudit } from "../_shared/audit.ts";
 import { notifyUser } from "../_shared/notify.ts";
+import { buildAnalystSnapshot } from "../_shared/analyst_snapshot.ts";
+import { buildAskPrompt } from "../_shared/prompts/ask.ts";
+import { callClaude } from "../_shared/claude.ts";
 
 const WEBAPP_URL_FALLBACK = "https://kompaniy12-creator.github.io/finbot/";
 
@@ -67,6 +70,7 @@ export function helpCommand(member: FamilyMember): CommandReply {
       "/history - последние траты",
       "/stats - сводка за месяц (вся семья)",
       "/me - моя статистика за месяц",
+      "/ask - спросить аналитика (например: /ask на что я больше всего трачу)",
       "/undo - отменить последнюю",
       "/recurring - регулярные траты (с M14)",
     ].join("\n") + adminOnly,
@@ -723,4 +727,67 @@ export async function statsCommand(
       `Всего: ${total.toFixed(2)} PLN`,
     ].join("\n"),
   };
+}
+
+// /ask <question> -> personal financial analyst. Builds a snapshot of all
+// the family's data and asks Claude Haiku to answer with that snapshot as
+// the ONLY source of truth.
+export async function askCommand(
+  sb: SupabaseClient,
+  question: string,
+  viewer: FamilyMember,
+): Promise<CommandReply> {
+  const q = (question || "").trim();
+  if (!q) {
+    return {
+      text: [
+        "Использование: /ask ВОПРОС",
+        "",
+        "Примеры:",
+        "/ask сколько я потратил на еду в этом месяце",
+        "/ask какая моя топ-категория за последние полгода",
+        "/ask на сколько вырос расход в мае по сравнению с апрелем",
+        "/ask какие у меня регулярные платежи",
+      ].join("\n"),
+    };
+  }
+  if (q.length > 500) {
+    return { text: "Слишком длинный вопрос (макс 500 символов). Попробуй короче." };
+  }
+
+  const snapshot = await buildAnalystSnapshot(sb);
+  // Inject viewer info so the model knows who's asking.
+  const payload = {
+    viewer_id: viewer.id,
+    viewer_name: viewer.name,
+    viewer_role: viewer.role,
+    snapshot,
+  };
+
+  try {
+    const { response } = await callClaude({
+      sb,
+      familyMemberId: viewer.id,
+      model: Deno.env.get("CLAUDE_MODEL_FAST") ?? "claude-haiku-4-5-20251001",
+      system: buildAskPrompt(),
+      messages: [{
+        role: "user",
+        content: `Контекст (JSON snapshot всех финансовых данных семьи):\n\`\`\`json\n${
+          JSON.stringify(payload)
+        }\n\`\`\`\n\nВопрос: ${q}`,
+      }],
+      maxTokens: 600,
+    });
+    const text = response.content
+      .filter((c) => c.type === "text")
+      .map((c) => (c as { text: string }).text)
+      .join("\n")
+      .trim();
+    if (!text) {
+      return { text: "Не смог сформулировать ответ. Попробуй переформулировать вопрос." };
+    }
+    return { text: `🤖 ${text}` };
+  } catch (err) {
+    return { text: `Ошибка аналитика: ${(err as Error).message}` };
+  }
 }
