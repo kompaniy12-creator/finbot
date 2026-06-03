@@ -948,3 +948,171 @@ body.tab-expense .tab-only.show-on-expense.kpi {
   color: var(--hint);
   font-size: 12px;
 }
+
+/* ---- Collapsible <details> settings sections ---------------------- */
+details.settings-section {
+  margin-bottom: 12px;
+  background: var(--secondary-bg);
+  border-radius: 10px;
+  padding: 0;
+  overflow: hidden;
+}
+details.settings-section > summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 14px;
+  user-select: none;
+  position: relative;
+  padding-right: 36px;
+}
+details.settings-section > summary::-webkit-details-marker {
+  display: none;
+}
+details.settings-section > summary::after {
+  content: "▸";
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  transition: transform 0.15s ease;
+  color: var(--hint);
+}
+details.settings-section[open] > summary::after {
+  transform: translateY(-50%) rotate(90deg);
+}
+details.settings-section > summary > .settings-section-head,
+details.settings-section > summary.settings-section-head {
+  display: contents;
+}
+details.settings-section > summary h4 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  display: inline;
+}
+details.settings-section > p.settings-hint,
+details.settings-section > .profile-row,
+details.settings-section > .theme-options,
+details.settings-section > ul,
+details.settings-section > button {
+  margin-left: 14px;
+  margin-right: 14px;
+}
+details.settings-section > ul:last-child,
+details.settings-section > button:last-child {
+  margin-bottom: 14px;
+}
+
+/* ---- Profile / theme / users widgets ------------------------------ */
+.profile-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.profile-row input[type="text"] {
+  flex: 1;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--text);
+}
+.theme-options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.theme-options label {
+  padding: 6px 0;
+  cursor: pointer;
+}
+
+/* User rows in Settings → Пользователи. Reuses .cat-row layout but with
+   action chips instead of edit/delete pencil. */
+.user-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  background: var(--bg);
+  border-radius: 8px;
+  margin-bottom: 6px;
+}
+.user-row .user-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+.user-row .user-name {
+  font-weight: 600;
+}
+.user-row .user-meta {
+  color: var(--hint);
+  font-size: 12px;
+}
+.user-row .user-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.user-row .user-actions button {
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--text);
+  cursor: pointer;
+}
+.user-row .user-actions button.danger {
+  color: #ff6b6b;
+  border-color: color-mix(in srgb, #ff6b6b 35%, var(--line));
+}
+.user-row .user-actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.user-row .role-badge {
+  display: inline-block;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 500;
+}
+.role-badge.role-admin {
+  background: color-mix(in srgb, var(--neon-blue) 22%, transparent);
+  color: var(--neon-blue);
+}
+.role-badge.role-member {
+  background: color-mix(in srgb, var(--hint) 22%, transparent);
+  color: var(--hint);
+}
+.role-badge.role-inactive {
+  background: color-mix(in srgb, #ff6b6b 22%, transparent);
+  color: #ff6b6b;
+}
+
+/* ---- Manual theme overrides (user-selected, beat the Telegram vars) */
+body.theme-light {
+  --bg: #ffffff;
+  --text: #111111;
+  --hint: #808080;
+  --link: #2481cc;
+  --button: #2481cc;
+  --button-text: #ffffff;
+  --secondary-bg: #f4f4f7;
+  --card-bg: #ffffff;
+  --line: rgba(0, 0, 0, 0.12);
+}
+body.theme-dark {
+  --bg: #18181a;
+  --text: #f0f0f3;
+  --hint: #8a8a8f;
+  --link: #6cb4ff;
+  --button: #2481cc;
+  --button-text: #ffffff;
+  --secondary-bg: #25262a;
+  --card-bg: #1f1f24;
+  --line: rgba(255, 255, 255, 0.1);
+}

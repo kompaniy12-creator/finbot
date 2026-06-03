@@ -181,21 +181,290 @@ function bindNav() {
 
 // Hook the settings "Отозвать сессии" button into api-* surface.
 async function bindSettings() {
+  bindThemePicker();
+  bindProfileEditor();
+  bindUsersPanel();
+  bindUserFormModal();
+
   const btn = $("#settings-web-logout");
-  if (!btn) return;
+  if (btn) {
+    btn.addEventListener("click", () => {
+      const status = $("#settings-web-logout-status");
+      status.textContent = "В Telegram: /web_logout";
+      status.className = "settings-status tone-good";
+    });
+  }
+}
+
+// --- Theme picker -------------------------------------------------------
+// Three modes: auto (use Telegram's CSS vars, no override class), light,
+// dark. Persisted in localStorage so the choice survives reloads even when
+// the Mini App is reopened from a fresh Telegram launch.
+const THEME_KEY = "finbot_theme";
+function applyTheme(theme) {
+  document.body.classList.remove("theme-light", "theme-dark");
+  if (theme === "light") document.body.classList.add("theme-light");
+  else if (theme === "dark") document.body.classList.add("theme-dark");
+  try {
+    localStorage.setItem(THEME_KEY, theme);
+  } catch (_) { /* private mode */ }
+}
+function loadTheme() {
+  let saved = "auto";
+  try {
+    saved = localStorage.getItem(THEME_KEY) || "auto";
+  } catch (_) { /* ignore */ }
+  if (!["auto", "light", "dark"].includes(saved)) saved = "auto";
+  applyTheme(saved);
+  return saved;
+}
+function bindThemePicker() {
+  const current = loadTheme();
+  for (const r of document.querySelectorAll('input[name="theme"]')) {
+    r.checked = r.value === current;
+    r.addEventListener("change", () => applyTheme(r.value));
+  }
+}
+
+// --- Profile (own display name) -----------------------------------------
+function bindProfileEditor() {
+  const input = $("#settings-name-input");
+  const btn = $("#settings-name-save");
+  if (!input || !btn) return;
+  input.value = (state.me && state.me.name) || "";
   btn.addEventListener("click", async () => {
-    const status = $("#settings-web-logout-status");
+    const newName = (input.value || "").trim();
+    const status = $("#settings-name-status");
+    if (!newName) {
+      status.textContent = "Имя не может быть пустым.";
+      status.className = "settings-status tone-bad";
+      return;
+    }
+    if (newName === state.me?.name) {
+      status.textContent = "Без изменений.";
+      status.className = "settings-status";
+      return;
+    }
+    btn.disabled = true;
     status.textContent = "...";
     status.className = "settings-status";
     try {
-      // No dedicated API yet; we rely on the bot command. Show instructions.
-      status.textContent = "В Telegram: /web_logout";
+      const r = await api("/api-me-mutate", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: newName }),
+      });
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}));
+        status.textContent = "Ошибка: " + (err.error || r.status);
+        status.className = "settings-status tone-bad";
+        return;
+      }
+      const j = await r.json();
+      if (j.member) {
+        state.me = { ...(state.me || {}), name: j.member.name };
+        // Refresh the greeting in the header.
+        if (TG.user && TG.user.first_name) {
+          $("#hello").textContent = "FinBot, " + j.member.name;
+        }
+      }
+      status.textContent = "Сохранено ✓";
       status.className = "settings-status tone-good";
     } catch (e) {
-      status.textContent = "Ошибка: " + ((e && e.message) || e);
-      status.className = "settings-status tone-bad";
+      if (!isSessionExpired(e)) {
+        status.textContent = "Ошибка сети";
+        status.className = "settings-status tone-bad";
+      }
+    } finally {
+      btn.disabled = false;
     }
   });
+}
+
+// --- Users panel (admin only) -------------------------------------------
+// Hidden for non-admins. Lists every family_member (including inactive
+// revoked ones, greyed out) with quick promote/demote/revoke/restore.
+async function bindUsersPanel() {
+  const wrapper = $("#settings-users-wrapper");
+  if (!wrapper) return;
+  if (!isAdmin()) {
+    wrapper.style.display = "none";
+    return;
+  }
+  wrapper.style.display = "";
+  await refreshUsersList();
+  const addBtn = $("#settings-user-add");
+  if (addBtn) addBtn.addEventListener("click", openUserForm);
+}
+
+async function refreshUsersList() {
+  const ul = $("#settings-users-list");
+  if (!ul) return;
+  ul.innerHTML = "<li class='cat-empty'>загрузка...</li>";
+  try {
+    // api-family-mutate doesn't have a list endpoint; api-family does, and
+    // it returns active members. We need inactive too for the admin UI,
+    // so call a direct query via the admin path - reuse api-family which
+    // we'll teach in a moment. For now, just show active members from
+    // state.family.
+    const r = await api("/api-family?all=1").then((r) => r.json());
+    const items = Array.isArray(r.items) ? r.items : [];
+    if (items.length === 0) {
+      ul.innerHTML = "<li class='cat-empty'>Никого нет.</li>";
+      return;
+    }
+    ul.innerHTML = "";
+    for (const u of items) {
+      ul.appendChild(renderUserRow(u));
+    }
+  } catch (e) {
+    if (!isSessionExpired(e)) {
+      ul.innerHTML = "<li class='cat-empty'>Ошибка загрузки.</li>";
+    }
+  }
+}
+
+function renderUserRow(u) {
+  const li = document.createElement("li");
+  li.className = "user-row";
+  const isSelf = state.me && u.id === state.me.id;
+  const badge = !u.active
+    ? '<span class="role-badge role-inactive">отозван</span>'
+    : u.role === "admin"
+    ? '<span class="role-badge role-admin">админ</span>'
+    : '<span class="role-badge role-member">участник</span>';
+  const selfTag = isSelf ? ' <small style="color: var(--hint);">(ты)</small>' : "";
+  li.innerHTML = `<div class="user-head">
+       <span class="user-name">${escapeHtml(u.name)} ${badge}${selfTag}</span>
+       <span class="user-meta">tid: ${u.telegram_id}</span>
+     </div>
+     <div class="user-actions"></div>`;
+  const actions = li.querySelector(".user-actions");
+  const mkBtn = (label, opts, handler) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.textContent = label;
+    if (opts && opts.danger) b.classList.add("danger");
+    if (opts && opts.disabled) b.disabled = true;
+    if (handler) b.addEventListener("click", handler);
+    return b;
+  };
+  // Promote / demote (disabled on self for safety - can't lose all admins).
+  if (u.active) {
+    if (u.role === "member") {
+      actions.appendChild(
+        mkBtn("Сделать админом", { disabled: isSelf }, () => patchUser(u.id, { role: "admin" })),
+      );
+    } else {
+      actions.appendChild(
+        mkBtn("Снять админа", { disabled: isSelf }, () => patchUser(u.id, { role: "member" })),
+      );
+    }
+    actions.appendChild(
+      mkBtn("Отозвать", { danger: true, disabled: isSelf }, () => revokeUser(u.id, u.name)),
+    );
+  } else {
+    actions.appendChild(mkBtn("Восстановить", {}, () => patchUser(u.id, { active: true })));
+  }
+  return li;
+}
+
+async function patchUser(id, patch) {
+  try {
+    const r = await api("/api-family-mutate?id=" + encodeURIComponent(id), {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    });
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({}));
+      const msgs = {
+        cannot_demote_self: "Нельзя снять с себя роль админа.",
+        cannot_revoke_self: "Нельзя отозвать доступ у самого себя.",
+      };
+      TG.showAlert(msgs[err.error] || ("Ошибка: " + (err.error || r.status)));
+      return;
+    }
+    await refreshUsersList();
+    await loadCategoriesAndFamily();
+  } catch (e) {
+    if (!isSessionExpired(e)) TG.showAlert("Ошибка сети");
+  }
+}
+
+async function revokeUser(id, name) {
+  const ok = await TG.showConfirm(`Отозвать доступ у "${name}"?`);
+  if (!ok) return;
+  try {
+    const r = await api("/api-family-mutate?id=" + encodeURIComponent(id), { method: "DELETE" });
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({}));
+      TG.showAlert("Ошибка: " + (err.error || r.status));
+      return;
+    }
+    await refreshUsersList();
+    await loadCategoriesAndFamily();
+  } catch (e) {
+    if (!isSessionExpired(e)) TG.showAlert("Ошибка сети");
+  }
+}
+
+// --- User add modal -----------------------------------------------------
+function bindUserFormModal() {
+  const close = $("#user-form-close");
+  const cancel = $("#user-form-cancel");
+  const save = $("#user-form-save");
+  if (!close || !cancel || !save) return;
+  close.addEventListener("click", closeUserForm);
+  cancel.addEventListener("click", closeUserForm);
+  document.querySelector("#user-form-modal .modal-backdrop")
+    .addEventListener("click", closeUserForm);
+  save.addEventListener("click", submitUserForm);
+}
+function openUserForm() {
+  $("#user-form-modal").classList.remove("hidden");
+  $("#user-form-tid").value = "";
+  $("#user-form-name").value = "";
+  $("#user-form-role").value = "member";
+  setTimeout(() => $("#user-form-tid").focus(), 50);
+}
+function closeUserForm() {
+  $("#user-form-modal").classList.add("hidden");
+}
+async function submitUserForm() {
+  const tid = Number($("#user-form-tid").value || "0");
+  const name = ($("#user-form-name").value || "").trim();
+  const role = $("#user-form-role").value;
+  if (!tid || tid < 1000) {
+    TG.showAlert("Введи валидный Telegram ID (число от 1000).");
+    return;
+  }
+  if (!name) {
+    TG.showAlert("Имя обязательно.");
+    return;
+  }
+  const save = $("#user-form-save");
+  save.disabled = true;
+  try {
+    const r = await api("/api-family-mutate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ telegram_id: tid, name, role }),
+    });
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({}));
+      const msgs = { already_active: "Этот пользователь уже активен." };
+      TG.showAlert(msgs[err.error] || ("Ошибка: " + (err.error || r.status)));
+      return;
+    }
+    closeUserForm();
+    await refreshUsersList();
+    await loadCategoriesAndFamily();
+  } catch (e) {
+    if (!isSessionExpired(e)) TG.showAlert("Ошибка сети");
+  } finally {
+    save.disabled = false;
+  }
 }
 
 // Reuse a single rejection for stale-session so callers' catch blocks can
