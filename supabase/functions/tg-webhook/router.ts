@@ -385,12 +385,16 @@ function formatPhotoReply(outcome: PhotoOutcome): string {
       } ${outcome.existing_currency}, ${outcome.existing_date}.\n\nЕсли это другая покупка, удали старый чек в Mini App и пришли фото заново.`;
     }
     case "ok": {
+      const isIncome = outcome.tx_kind === "income";
+      const emoji = isIncome ? "💰" : "✅";
+      const sign = isIncome ? "+" : "";
       const merchantStr = outcome.merchant ? `${outcome.merchant} ` : "";
-      const header = `✅ ${merchantStr}(${
+      const header = `${emoji} ${merchantStr}(${sign}${
         outcome.total.toFixed(2)
       } ${outcome.currency}, проверено ${outcome.expense_count}/${outcome.expected_count} поз.)`;
+      const bullet = isIncome ? "➕" : "-";
       const lines = outcome.items.map((it) =>
-        `- ${it.name} → ${it.category_name}: ${it.amount.toFixed(2)} ${it.currency}`
+        `${bullet} ${it.name} → ${it.category_name}: ${sign}${it.amount.toFixed(2)} ${it.currency}`
       );
       const warn = outcome.reconciled
         ? ""
@@ -399,9 +403,11 @@ function formatPhotoReply(outcome: PhotoOutcome): string {
       return `${header}\n\n${lines.join("\n")}${warn}${hint}`;
     }
     case "partial": {
+      const isIncome = outcome.tx_kind === "income";
+      const sign = isIncome ? "+" : "";
       const merchantStr = outcome.merchant ? `${outcome.merchant} ` : "";
       const header =
-        `⚠ ${merchantStr}сохранил ${outcome.expense_count} из ${outcome.expected_count} поз. (итог ${
+        `⚠ ${merchantStr}сохранил ${outcome.expense_count} из ${outcome.expected_count} поз. (итог ${sign}${
           outcome.total.toFixed(2)
         } ${outcome.currency})`;
       return `${header}\n\nЧасть позиций не сохранилась. Удали чек в Mini App и пришли фото заново, либо проверь руками что записалось.`;

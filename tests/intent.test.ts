@@ -64,3 +64,32 @@ Deno.test("intent: word boundary - 'какойто' (no boundary) is not a quest
   // boundary works on "какой" itself.
   assertEquals(classifyIntent("какой кофе купил"), "question"); // real question
 });
+
+import { detectPhotoKind } from "../supabase/functions/_shared/intent.ts";
+
+Deno.test("detectPhotoKind: empty caption → expense", () => {
+  assertEquals(detectPhotoKind(""), "expense");
+  assertEquals(detectPhotoKind("   "), "expense");
+});
+
+Deno.test("detectPhotoKind: income category names → income", () => {
+  assertEquals(detectPhotoKind("Зарплата"), "income");
+  assertEquals(detectPhotoKind("Дивиденды"), "income");
+  assertEquals(detectPhotoKind("Девиденды"), "income"); // common typo
+  assertEquals(detectPhotoKind("Фриланс"), "income");
+  assertEquals(detectPhotoKind("Подарок"), "income");
+});
+
+Deno.test("detectPhotoKind: income keywords in middle → income", () => {
+  assertEquals(detectPhotoKind("пришла зарплата за июнь"), "income");
+  assertEquals(detectPhotoKind("PayPal salary"), "income");
+  assertEquals(detectPhotoKind("вернули долг от Васи"), "income");
+  assertEquals(detectPhotoKind("получил кэшбэк"), "income");
+});
+
+Deno.test("detectPhotoKind: generic captions stay expense", () => {
+  assertEquals(detectPhotoKind("Lidl"), "expense");
+  assertEquals(detectPhotoKind("Магазин у дома"), "expense");
+  assertEquals(detectPhotoKind("чек за бензин"), "expense");
+  assertEquals(detectPhotoKind("Уличные собаки"), "expense");
+});

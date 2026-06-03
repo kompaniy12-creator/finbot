@@ -16,6 +16,7 @@ import type { ProgressEmitter } from "../_shared/progress.ts";
 import { defaultEmbedFn } from "../_shared/embedder.ts";
 import { mapWithConcurrency } from "../_shared/concurrency.ts";
 import { parseTip } from "../_shared/tip_parse.ts";
+import { detectPhotoKind } from "../_shared/intent.ts";
 
 // Parallel embedding for photo items so they also feed the kNN learning loop.
 // gte-small in Supabase.ai is fast (~50-200ms per call), so 6 concurrent
@@ -58,6 +59,7 @@ export type PhotoOutcome =
     total: number;
     currency: string;
     items: ReceiptLineSummary[];
+    tx_kind?: "expense" | "income";
   }
   | {
     kind: "partial";
@@ -68,6 +70,7 @@ export type PhotoOutcome =
     total: number;
     currency: string;
     items: ReceiptLineSummary[];
+    tx_kind?: "expense" | "income";
   };
 
 const DEDUP_WINDOW_DAYS = 30;
@@ -156,17 +159,22 @@ export async function processPhotoMessage(args: {
 
   if (p) await p.update("👁 Распознаю чек через Claude Vision...");
 
+  // Decide whether this photo is income or expense based on caption hints.
+  // The default is expense (every store receipt). User can override by
+  // writing an income hint in the caption: an income category name (with
+  // fuzzy match for typos: "Девиденды" ≈ "Дивиденды"), or one of the
+  // strong income keywords. Detected before loading categories so we can
+  // load the right kind's pool for Vision.
+  const captionRawForKind = (args.caption ?? "").trim();
+  const photoKind = detectPhotoKind(captionRawForKind);
+
   // Preload categories so Vision can assign one per item in a single call.
   // This collapses the old N-item Claude-fallback loop into 0 extra calls.
-  // Receipts are always expenses, so restrict the candidate list to expense
-  // categories. Otherwise Vision can (and did) pick an income category like
-  // "Зарплата" for a salary screenshot, producing a row with kind='expense'
-  // but category.kind='income' - which then shows nowhere coherent in the
-  // dashboard.
+  // Filter by detected kind so Vision can't mix expense and income pools.
   const catRows = await args.sb
     .from("categories")
     .select("id, name, kind, is_fallback")
-    .eq("kind", "expense")
+    .eq("kind", photoKind)
     .order("is_fallback", { ascending: true })
     .order("name", { ascending: true });
   const categories = (catRows.data ?? []) as Array<
@@ -175,9 +183,10 @@ export async function processPhotoMessage(args: {
   const catById = new Map(categories.map((c) => [c.id, c]));
   const fallbackCatId = categories.find((c) => c.is_fallback)?.id ?? categories[0]?.id ?? null;
   if (!fallbackCatId) {
-    log("error", "photo_no_categories");
+    log("error", "photo_no_categories", { kind: photoKind });
     return { kind: "parse_failed" };
   }
+  log("info", "photo_kind_detected", { kind: photoKind, caption: captionRawForKind.slice(0, 50) });
 
   // Call Claude Vision
   const model = Deno.env.get("CLAUDE_MODEL_VISION") ?? "claude-sonnet-4-6";
@@ -359,11 +368,14 @@ export async function processPhotoMessage(args: {
   // Build all rows in memory, then ONE atomic bulk INSERT.
   // Vision already assigned category_id to each item; validate against the
   // category list and fall back to the "miscellaneous" category if Vision
-  // hallucinated an ID that isn't in the DB.
+  // hallucinated an ID that isn't in the DB. The photo-level kind (detected
+  // from caption) is propagated to every row so income screenshots
+  // (Дивиденды, Зарплата etc.) land in the income bucket.
   const rows = receipt.items.map((item, i) => {
     const validCat = catById.has(item.category_id) ? item.category_id : fallbackCatId;
     const hallucinated = !catById.has(item.category_id);
     return {
+      kind: photoKind,
       name: item.name,
       name_normalized: item.name_normalized_en,
       expense_date: receipt.receipt_date,
@@ -411,6 +423,7 @@ export async function processPhotoMessage(args: {
     const topCat = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? fallbackCatId;
     const tipPln = Math.round(tip.amount * tipRate * 100) / 100;
     const tipIns = await args.sb.from("expenses").insert({
+      kind: photoKind, // inherits photo's overall kind (expense in 99% of cases)
       name: "Чаевые",
       name_normalized: "tip gratuity",
       expense_date: receipt.receipt_date,
@@ -485,6 +498,7 @@ export async function processPhotoMessage(args: {
       total: receipt.total,
       currency: receipt.currency,
       items: summary,
+      tx_kind: photoKind,
     };
   }
 
@@ -499,6 +513,7 @@ export async function processPhotoMessage(args: {
     total: receipt.total,
     currency: receipt.currency,
     items: summary,
+    tx_kind: photoKind,
   };
 }
 

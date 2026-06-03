@@ -63,3 +63,108 @@ export function classifyIntent(text: string): Intent {
   if (hasDigit) return "expense";
   return "question";
 }
+
+// ---- Photo caption -> income/expense ------------------------------------
+//
+// When a user sends a photo (typically a bank-app screenshot) with a caption,
+// the caption is the user's intent signal: "Зарплата" → income, "Lidl" or
+// "Магазин" → expense. We're permissive about typos because users type these
+// in a hurry on mobile.
+
+// Income trigger words (verbs + nouns that imply incoming money) in the four
+// languages the family uses. Substring match - we don't need word boundaries
+// because false positives would require an income token to appear inside an
+// unrelated word, which is vanishingly rare.
+const INCOME_KEYWORDS = [
+  // Russian + Ukrainian
+  "зарплат",
+  "зп",
+  "аванс",
+  "гонорар",
+  "фриланс",
+  "халтур",
+  "темка",
+  "темки",
+  "дивиденд",
+  "дивідент",
+  "девиденд", // common misspelling
+  "дивідент",
+  "девідент",
+  "кэшбэк",
+  "кэшбек",
+  "кешбек",
+  "кешбэк",
+  "cashback",
+  "возврат",
+  "вернул",
+  "повернул",
+  "подарок мне",
+  "подарили",
+  "подарунок",
+  "получил",
+  "получила",
+  "прислали",
+  "прислала",
+  "пришла зарплат",
+  "пришла зп",
+  "пришл",
+  "виплат",
+  "выплат",
+  "пенсия",
+  "пенсі",
+  // English
+  "salary",
+  "paycheck",
+  "payroll",
+  "freelance",
+  "refund",
+  "dividend",
+  "gift",
+  "income",
+  "received",
+  // Polish
+  "wypłata",
+  "wyplata",
+  "pensja",
+  "zwrot",
+  "prezent",
+  "premia",
+];
+
+// Pre-canned income category names (Russian, matches seed in migration 0018).
+// Lowercased. We also include the most common typo variants the user has
+// shown ("Девиденды").
+const INCOME_CATEGORY_NAMES = [
+  "зарплата",
+  "дивиденды",
+  "девиденды",
+  "дивідент",
+  "фриланс",
+  "темки",
+  "темка",
+  "подарок",
+  "возврат долгов",
+  "прочий",
+];
+
+/**
+ * Decide whether a photo (typically a bank receipt screenshot) should be
+ * recorded as income or expense. Default is expense - that's the common case
+ * (every store receipt). Returns "income" only when the caption clearly
+ * signals it: a known income keyword or a (fuzzy) match against an income
+ * category name.
+ */
+export function detectPhotoKind(caption: string): "expense" | "income" {
+  const c = (caption || "").trim().toLowerCase();
+  if (!c) return "expense";
+  for (const kw of INCOME_KEYWORDS) {
+    if (c.includes(kw)) return "income";
+  }
+  // Exact / starts-with match against income category names.
+  for (const name of INCOME_CATEGORY_NAMES) {
+    if (c === name || c.startsWith(name + " ") || c.endsWith(" " + name)) {
+      return "income";
+    }
+  }
+  return "expense";
+}
