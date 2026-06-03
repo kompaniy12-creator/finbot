@@ -6,7 +6,7 @@
     <title>FinBot Dashboard</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
-    <link rel="stylesheet" href="./styles.css?v=20260604e" />
+    <link rel="stylesheet" href="./styles.css?v=20260604f" />
   </head>
   <body>
     <div id="gate" class="gate">
@@ -58,17 +58,17 @@
           <strong id="kpi-income">- EUR</strong>
           <div id="kpi-income-delta" class="kpi-delta"></div>
         </div>
-        <div class="kpi tab-only show-on-dashboard show-on-expense">
+        <div class="kpi tab-only show-on-dashboard">
           <label>Записей</label>
           <strong id="kpi-count">-</strong>
           <div id="kpi-count-delta" class="kpi-delta"></div>
         </div>
-        <div class="kpi tab-only show-on-dashboard show-on-expense">
+        <div class="kpi tab-only show-on-dashboard">
           <label>Топ-категория</label><strong id="kpi-top">-</strong>
         </div>
       </section>
 
-      <section class="chart-row tab-only show-on-dashboard show-on-expense">
+      <section class="chart-row tab-only show-on-dashboard">
         <div class="chart-card chart-card-donut">
           <div class="chart-head">
             <h3>По категориям</h3>
@@ -85,7 +85,7 @@
         </div>
       </section>
 
-      <section class="chart-card chart-card-wide tab-only show-on-dashboard show-on-expense">
+      <section class="chart-card chart-card-wide tab-only show-on-dashboard">
         <div class="chart-head">
           <h3>Топ-5</h3>
           <span>главные категории</span>
@@ -94,7 +94,7 @@
       </section>
 
       <section
-        class="chart-card chart-card-wide heatmap-card tab-only show-on-dashboard show-on-expense"
+        class="chart-card chart-card-wide heatmap-card tab-only show-on-dashboard"
       >
         <div class="chart-head">
           <h3>Активность по дням</h3>
@@ -129,7 +129,7 @@
         <ul id="cat-list" class="cat-list"></ul>
       </section>
 
-      <section class="transactions tab-only show-on-dashboard show-on-income show-on-expense">
+      <section class="transactions tab-only show-on-income show-on-expense">
         <header class="tx-header">
           <h3>Транзакции</h3>
           <input id="search" type="search" placeholder="поиск" />
@@ -278,7 +278,7 @@
       </div>
     </div>
 
-    <script src="./tg-webapp.js?v=20260604e"></script>
-    <script src="./app.js?v=20260604e"></script>
+    <script src="./tg-webapp.js?v=20260604f"></script>
+    <script src="./app.js?v=20260604f"></script>
   </body>
 </html>
