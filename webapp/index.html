@@ -6,7 +6,7 @@
     <title>FinBot Dashboard</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
-    <link rel="stylesheet" href="./styles.css?v=20260604c" />
+    <link rel="stylesheet" href="./styles.css?v=20260604d" />
   </head>
   <body>
     <div id="gate" class="gate">
@@ -119,10 +119,10 @@
         </div>
       </section>
 
-      <section class="categories tab-only show-on-dashboard show-on-settings">
+      <section class="categories tab-only show-on-dashboard">
         <header class="categories-head">
-          <h3>Все категории</h3>
-          <button id="cat-add-btn" type="button" style="display: none">+ Добавить</button>
+          <h3>Категории за период</h3>
+          <small style="color: var(--hint);">только с тратами</small>
         </header>
         <ul id="cat-list" class="cat-list"></ul>
       </section>
@@ -158,18 +158,40 @@
         <header class="categories-head">
           <h3>Настройки</h3>
         </header>
-        <ul class="settings-list">
-          <li>
-            <strong>Веб-сессии</strong>
-            <p>Отозвать все активные браузерные сессии (на других устройствах).</p>
-            <button id="settings-web-logout" type="button">Отозвать сессии</button>
-            <span id="settings-web-logout-status" class="settings-status"></span>
-          </li>
-          <li>
-            <strong>Версия</strong>
-            <p id="settings-version">FinBot v1.1</p>
-          </li>
-        </ul>
+
+        <div class="settings-section">
+          <header class="settings-section-head">
+            <h4>💸 Настройки расходов</h4>
+            <button id="settings-add-expense" type="button" class="settings-add-btn">+ Категория</button>
+          </header>
+          <p class="settings-hint">Категории, по которым ты записываешь траты.</p>
+          <ul id="settings-cat-expense" class="cat-list"></ul>
+        </div>
+
+        <div class="settings-section">
+          <header class="settings-section-head">
+            <h4>💰 Настройки доходов</h4>
+            <button id="settings-add-income" type="button" class="settings-add-btn">+ Категория</button>
+          </header>
+          <p class="settings-hint">Категории доходов: зарплата, дивиденды, подарки и т.д.</p>
+          <ul id="settings-cat-income" class="cat-list"></ul>
+        </div>
+
+        <div class="settings-section">
+          <header class="settings-section-head"><h4>⚙️ Другое</h4></header>
+          <ul class="settings-list">
+            <li>
+              <strong>Веб-сессии</strong>
+              <p>Отозвать все активные браузерные сессии (на других устройствах).</p>
+              <button id="settings-web-logout" type="button">Отозвать сессии</button>
+              <span id="settings-web-logout-status" class="settings-status"></span>
+            </li>
+            <li>
+              <strong>Версия</strong>
+              <p id="settings-version">FinBot v1.1</p>
+            </li>
+          </ul>
+        </div>
       </section>
 
       <footer><small id="version">FinBot v1.1</small></footer>
@@ -250,7 +272,7 @@
       </div>
     </div>
 
-    <script src="./tg-webapp.js?v=20260604c"></script>
-    <script src="./app.js?v=20260604c"></script>
+    <script src="./tg-webapp.js?v=20260604d"></script>
+    <script src="./app.js?v=20260604d"></script>
   </body>
 </html>

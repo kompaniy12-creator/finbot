@@ -22,11 +22,15 @@ const CreateSchema = z.object({
   name: z.string().min(1).max(80),
   description: z.string().min(1).max(500),
   is_fallback: z.boolean().optional(),
+  kind: z.enum(["expense", "income"]).default("expense"),
 });
 const UpdateSchema = z.object({
   name: z.string().min(1).max(80).optional(),
   description: z.string().min(1).max(500).optional(),
   is_fallback: z.boolean().optional(),
+  // kind is intentionally not editable on update - changing kind would
+  // require rewriting child expense rows too. If you need a different
+  // kind, create a new category and recategorise.
 });
 
 async function embed(text: string): Promise<number[] | null> {
@@ -61,9 +65,14 @@ Deno.serve(async (req: Request) => {
     const exists = await sb.from("categories").select("id").eq("name", body.name).maybeSingle();
     if (exists.data) return json(req, { error: "name_taken" }, 409);
 
-    // If marking as fallback, unset any existing fallback first (only one allowed).
+    // Fallback is per-kind: one expense fallback, one income fallback. If
+    // the new category claims fallback, unset only the existing fallback of
+    // the SAME kind (not across kinds).
     if (body.is_fallback) {
-      await sb.from("categories").update({ is_fallback: false }).eq("is_fallback", true);
+      await sb.from("categories")
+        .update({ is_fallback: false })
+        .eq("is_fallback", true)
+        .eq("kind", body.kind);
     }
 
     const embedding = await embed(body.description);
@@ -71,8 +80,9 @@ Deno.serve(async (req: Request) => {
       name: body.name,
       description: body.description,
       is_fallback: body.is_fallback ?? false,
+      kind: body.kind,
       embedding,
-    }).select("id, name, is_fallback").maybeSingle();
+    }).select("id, name, is_fallback, kind").maybeSingle();
     if (ins.error || !ins.data) {
       return json(req, { error: ins.error?.message ?? "insert_failed" }, 500);
     }
@@ -102,7 +112,7 @@ Deno.serve(async (req: Request) => {
     }
 
     const before = await sb.from("categories")
-      .select("id, name, description, is_fallback")
+      .select("id, name, description, is_fallback, kind")
       .eq("id", id).maybeSingle();
     if (!before.data) return json(req, { error: "not_found" }, 404);
     const cur = before.data as {
@@ -110,6 +120,7 @@ Deno.serve(async (req: Request) => {
       name: string;
       description: string;
       is_fallback: boolean;
+      kind: "expense" | "income";
     };
 
     // Name collision check.
@@ -119,12 +130,15 @@ Deno.serve(async (req: Request) => {
       if (other.data) return json(req, { error: "name_taken" }, 409);
     }
 
-    // is_fallback toggle: enforce single-fallback invariant.
+    // is_fallback toggle: per-kind invariant - one fallback per kind.
     if (body.is_fallback === true && !cur.is_fallback) {
-      await sb.from("categories").update({ is_fallback: false }).eq("is_fallback", true);
+      await sb.from("categories")
+        .update({ is_fallback: false })
+        .eq("is_fallback", true)
+        .eq("kind", cur.kind);
     } else if (body.is_fallback === false && cur.is_fallback) {
-      // Refuse to unset the last fallback: the categorizer falls back to it
-      // when nothing else fits.
+      // Refuse to unset the last fallback for this kind: the categorizer
+      // needs one to fall back to when nothing else fits.
       return json(req, { error: "need_a_fallback" }, 409);
     }
 
@@ -165,14 +179,21 @@ Deno.serve(async (req: Request) => {
     if (!id || !/^[0-9a-f-]{36}$/i.test(id)) return json(req, { error: "id_required" }, 400);
 
     const target = await sb.from("categories")
-      .select("id, name, is_fallback").eq("id", id).maybeSingle();
+      .select("id, name, is_fallback, kind").eq("id", id).maybeSingle();
     if (!target.data) return json(req, { error: "not_found" }, 404);
-    const tgt = target.data as { id: string; name: string; is_fallback: boolean };
+    const tgt = target.data as {
+      id: string;
+      name: string;
+      is_fallback: boolean;
+      kind: "expense" | "income";
+    };
     if (tgt.is_fallback) return json(req, { error: "cannot_delete_fallback" }, 409);
 
-    // Find the family's fallback category to receive the migrated rows.
+    // Fallback receiver must be the SAME kind: income rows must land on the
+    // income fallback, not the expense one (and vice versa) - otherwise we'd
+    // mix kinds and break the kind-scoped categorizer downstream.
     const fb = await sb.from("categories")
-      .select("id, name").eq("is_fallback", true).maybeSingle();
+      .select("id, name").eq("is_fallback", true).eq("kind", tgt.kind).maybeSingle();
     if (!fb.data) return json(req, { error: "no_fallback_category" }, 500);
     const fallbackId = (fb.data as { id: string }).id;
 

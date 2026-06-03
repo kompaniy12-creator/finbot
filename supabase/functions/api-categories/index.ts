@@ -10,7 +10,7 @@ Deno.serve(async (req: Request) => {
   if (!me) return unauthorized(req);
 
   const res = await sb.from("categories")
-    .select("id, name, description, usage_count, is_fallback")
+    .select("id, name, description, usage_count, is_fallback, kind")
     .order("usage_count", { ascending: false });
   if (res.error) return json(req, { error: res.error.message }, 500);
   return json(req, { items: res.data ?? [] });

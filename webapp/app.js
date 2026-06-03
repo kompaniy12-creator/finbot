@@ -329,31 +329,74 @@ async function loadKpis() {
 }
 
 function renderCategories() {
+  // Dashboard category list: read-only summary of WHERE the money went this
+  // period. Only rows with actual spend; zero-spend categories live in the
+  // settings panel, not the dashboard. No edit/delete here - those are in
+  // Настройки → Расходы / Доходы.
   const ul = $("#cat-list");
   if (!ul) return;
   ul.innerHTML = "";
-  const admin = isAdmin();
-  for (const c of state.byCategory) {
+  const rows = state.byCategory.filter((c) => Number(c.total_eur) > 0);
+  if (rows.length === 0) {
+    ul.innerHTML = `<li class="cat-empty">За этот период расходов ещё не было.</li>`;
+    return;
+  }
+  for (const c of rows) {
     const li = document.createElement("li");
-    li.className = "cat-row" + (c.total_eur > 0 ? "" : " cat-empty");
+    li.className = "cat-row";
     const meta = c.count > 0 ? `${c.count} ${c.count === 1 ? "запись" : "записей"}` : "пусто";
+    li.innerHTML = `<div class="name">${escapeHtml(c.name)}<div class="meta">${meta}</div></div>` +
+      `<div class="amt">${Number(c.total_eur).toFixed(2)} EUR</div>`;
+    ul.appendChild(li);
+  }
+  // Render the settings panel CRUD lists alongside, so opening Настройки
+  // shows the full per-kind picture without an extra round-trip.
+  renderSettingsCategoryList("expense", "#settings-cat-expense");
+  renderSettingsCategoryList("income", "#settings-cat-income");
+}
+
+function renderSettingsCategoryList(kind, ulSelector) {
+  const ul = document.querySelector(ulSelector);
+  if (!ul) return;
+  ul.innerHTML = "";
+  const admin = isAdmin();
+  // Settings list is the FULL catalogue for that kind, including empties.
+  // categories Map is keyed by id and carries kind from api-categories.
+  const all = [...state.categories.values()]
+    .filter((c) => (c.kind ?? "expense") === kind)
+    .sort((a, b) => {
+      if (a.is_fallback !== b.is_fallback) return a.is_fallback ? 1 : -1;
+      return (a.name || "").localeCompare(b.name || "", "ru");
+    });
+  if (all.length === 0) {
+    ul.innerHTML = `<li class="cat-empty">Категорий нет. Нажми «+ Категория».</li>`;
+    return;
+  }
+  for (const c of all) {
+    const li = document.createElement("li");
+    li.className = "cat-row";
+    const fallbackTag = c.is_fallback
+      ? `<small style="color: var(--hint);"> (fallback)</small>`
+      : "";
+    const meta = c.usage_count
+      ? `использована ${c.usage_count} раз`
+      : "ещё не использована";
     const adminBtns = admin
       ? `<button class="cat-edit" type="button" data-id="${c.id}" title="Изменить">✏️</button>` +
         (c.is_fallback
           ? `<button class="cat-del" type="button" disabled title="Fallback нельзя удалить">×</button>`
           : `<button class="cat-del" type="button" data-id="${c.id}" data-name="${
             escapeHtml(c.name)
-          }" data-count="${c.count}" title="Удалить">×</button>`)
+          }" data-count="${c.usage_count || 0}" title="Удалить">×</button>`)
       : "";
-    li.innerHTML = `<div class="name">${escapeHtml(c.name)}<div class="meta">${meta}</div></div>` +
-      `<div class="amt">${Number(c.total_eur).toFixed(2)} EUR</div>` +
+    li.innerHTML =
+      `<div class="name">${escapeHtml(c.name)}${fallbackTag}<div class="meta">${meta}</div></div>` +
       adminBtns;
     ul.appendChild(li);
   }
-  // Wire admin buttons
   if (admin) {
     ul.querySelectorAll(".cat-edit").forEach((b) => {
-      b.addEventListener("click", () => openCategoryForm(b.dataset.id));
+      b.addEventListener("click", () => openCategoryForm(b.dataset.id, kind));
     });
     ul.querySelectorAll(".cat-del[data-id]").forEach((b) => {
       b.addEventListener(
@@ -362,8 +405,8 @@ function renderCategories() {
       );
     });
   }
-  // Add button visibility
-  const addBtn = $("#cat-add-btn");
+  // Hide the per-kind + button for non-admins.
+  const addBtn = document.querySelector(kind === "income" ? "#settings-add-income" : "#settings-add-expense");
   if (addBtn) addBtn.style.display = admin ? "" : "none";
 }
 
@@ -454,13 +497,19 @@ function closePhotoModal() {
   $("#photo-modal-img").removeAttribute("src");
 }
 
-function openCategoryForm(catId) {
+// When creating a new category, `kind` ('expense' | 'income') tells the
+// backend which bucket it belongs to. When editing, kind is derived from
+// the existing row and isn't editable.
+function openCategoryForm(catId, kind) {
   const m = $("#cat-form-modal");
   const cat = catId ? state.byCategory.find((c) => c.id === catId) : null;
-  // We need name + description; byCategory doesn't carry description, fetch
-  // from state.categories which holds the raw /api-categories items.
   const raw = catId ? state.categories.get(catId) : null;
-  $("#cat-form-title").textContent = catId ? "Изменить категорию" : "Новая категория";
+  const resolvedKind = (raw && raw.kind) || kind || "expense";
+  state.catFormKind = resolvedKind;
+  const kindLabel = resolvedKind === "income" ? "дохода" : "расхода";
+  $("#cat-form-title").textContent = catId
+    ? `Изменить категорию ${kindLabel}`
+    : `Новая категория ${kindLabel}`;
   $("#cat-form-id").value = catId || "";
   $("#cat-form-name").value = (raw && raw.name) || (cat && cat.name) || "";
   $("#cat-form-desc").value = (raw && raw.description) || "";
@@ -490,10 +539,15 @@ async function submitCategoryForm() {
   $("#cat-form-save").disabled = true;
   try {
     const path = id ? "/api-category-mutate?id=" + encodeURIComponent(id) : "/api-category-mutate";
+    // kind is only meaningful on create (POST); the backend rejects it on
+    // PATCH because changing kind would orphan child expense rows.
+    const body = id
+      ? { name, description, is_fallback: isFallback }
+      : { name, description, is_fallback: isFallback, kind: state.catFormKind || "expense" };
     const r = await api(path, {
       method: id ? "PATCH" : "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name, description, is_fallback: isFallback }),
+      body: JSON.stringify(body),
     });
     if (!r.ok) {
       const err = await r.json().catch(() => ({}));
@@ -1191,9 +1245,12 @@ async function main() {
   document.querySelector("#photo-modal .modal-backdrop")
     .addEventListener("click", closePhotoModal);
 
-  // Category-add/edit form modal
-  const addBtn = $("#cat-add-btn");
-  if (addBtn) addBtn.addEventListener("click", () => openCategoryForm(null));
+  // Category-add/edit form modal. Add buttons live in the Settings panel,
+  // one per kind, so the modal is pre-seeded with the right kind on open.
+  const addExpense = $("#settings-add-expense");
+  if (addExpense) addExpense.addEventListener("click", () => openCategoryForm(null, "expense"));
+  const addIncome = $("#settings-add-income");
+  if (addIncome) addIncome.addEventListener("click", () => openCategoryForm(null, "income"));
   $("#cat-form-close").addEventListener("click", closeCategoryForm);
   $("#cat-form-cancel").addEventListener("click", closeCategoryForm);
   document.querySelector("#cat-form-modal .modal-backdrop")

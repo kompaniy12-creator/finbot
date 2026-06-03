@@ -918,3 +918,33 @@ body.tab-expense .tab-only.show-on-expense.kpi {
 .settings-status.tone-bad {
   color: #ff6b6b;
 }
+
+/* ---- Settings subsections ----------------------------------------- */
+.settings-section {
+  margin-bottom: 24px;
+}
+.settings-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+.settings-section-head h4 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+.settings-add-btn {
+  padding: 6px 12px;
+  border-radius: 8px;
+  border: none;
+  background: var(--button);
+  color: var(--button-text);
+  font-size: 13px;
+  cursor: pointer;
+}
+.settings-hint {
+  margin: 0 0 10px;
+  color: var(--hint);
+  font-size: 12px;
+}
