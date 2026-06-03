@@ -738,28 +738,12 @@ function renderTransactions() {
 function openCategoryPicker(expense, receiptId) {
   const modal = $("#cat-modal");
   const list = $("#cat-modal-list");
-  // Determine the row's kind so we only show same-kind categories - an
-  // income row (salary) should never be re-classified into "Алкоголь", and
-  // vice versa. Sources:
-  //   - api-transactions FeedItem: tx_kind
-  //   - api-receipt-items line:    kind
-  //   - last-resort fallback:      kind of the row's current category
-  let rowKind = expense.tx_kind || expense.kind;
-  if (!rowKind && expense.category_id) {
-    const cur = state.categories.get(expense.category_id);
-    rowKind = (cur && cur.kind) || "expense";
-  }
-  if (!rowKind) rowKind = "expense";
-  const kindLabel = rowKind === "income" ? "дохода" : "расхода";
-  $("#cat-modal-title").textContent =
-    `Категория ${kindLabel} для: ${expense.name || expense.title || "запись"}`;
+  $("#cat-modal-title").textContent = `Категория для: ${expense.name || expense.title || "запись"}`;
   list.innerHTML = "";
-  const sorted = [...state.categories.values()]
-    .filter((c) => (c.kind || "expense") === rowKind)
-    .sort((a, b) => {
-      if (a.is_fallback !== b.is_fallback) return a.is_fallback ? 1 : -1;
-      return a.name.localeCompare(b.name, "ru");
-    });
+  const sorted = [...state.categories.values()].sort((a, b) => {
+    if (a.is_fallback !== b.is_fallback) return a.is_fallback ? 1 : -1;
+    return a.name.localeCompare(b.name, "ru");
+  });
   for (const c of sorted) {
     const li = document.createElement("li");
     if (c.id === expense.category_id) li.className = "active";

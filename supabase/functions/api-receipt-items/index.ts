@@ -39,7 +39,7 @@ Deno.serve(async (req: Request) => {
 
   const lineRes = await sb.from("expenses")
     .select(
-      "id, kind, name, amount, currency, amount_pln, category_id, line_index, needs_review, needs_confirmation, created_at",
+      "id, name, amount, currency, amount_pln, category_id, line_index, needs_review, needs_confirmation, created_at",
     )
     .eq("receipt_id", id)
     .eq("archived", false)
@@ -49,7 +49,6 @@ Deno.serve(async (req: Request) => {
   const eurRates = await loadEurRates(sb, [receipt.receipt_date]);
   const lines = (lineRes.data ?? []) as Array<{
     id: string;
-    kind: "expense" | "income";
     name: string;
     amount: number;
     currency: string;
