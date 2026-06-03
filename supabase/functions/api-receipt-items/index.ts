@@ -3,16 +3,14 @@
 // the receipt, or be admin).
 
 import { adminClient } from "../_shared/supabase.ts";
-import { authenticateInitData, extractInitData } from "../_shared/webapp_auth.ts";
+import { authenticate } from "../_shared/webapp_auth.ts";
 import { handleOptions, json, unauthorized } from "../_shared/api_response.ts";
 import { loadEurRates, plnToEur } from "../_shared/eur_view.ts";
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return handleOptions(req);
-  const initData = extractInitData(req);
-  if (!initData) return unauthorized(req);
   const sb = adminClient();
-  const me = await authenticateInitData(initData, sb);
+  const me = await authenticate(req, sb);
   if (!me) return unauthorized(req);
 
   const id = new URL(req.url).searchParams.get("id");

@@ -39,6 +39,29 @@ function lastDayOf(ym: string): string {
 export interface AnalystSnapshot {
   today: string;
   family: Array<{ id: string; name: string; role: string }>;
+  /**
+   * Income side (kind='income' rows). Mirrors the expense fields but stays
+   * separate so that "totals.eur" etc. continue to mean EXPENSES - the
+   * analyst should never silently subtract one from the other unless asked
+   * for the explicit `net_eur` field.
+   */
+  income: {
+    month_to_date: { ym: string; eur: number; count: number; net_eur: number };
+    previous_month: { ym: string; eur: number; count: number; net_eur: number };
+    current_month: {
+      by_category: Array<{ name: string; eur: number; count: number; pct: number }>;
+      all: Array<{
+        date: string;
+        name: string;
+        amount: number;
+        currency: string;
+        eur: number;
+        category: string;
+        member: string;
+        source: string;
+      }>;
+    };
+  };
   totals: {
     today: { eur: number; count: number; by_currency: Record<string, number> };
     week_to_date: { eur: number; count: number; days: number };
@@ -152,20 +175,22 @@ export async function buildAnalystSnapshot(sb: SupabaseClient): Promise<AnalystS
     sb.from("family_members").select("id, name, role").eq("active", true),
     sb.from("categories").select("id, name, is_fallback"),
     sb.from("expenses")
-      .select("amount, currency, amount_pln, category_id, family_member_id, source, expense_date")
+      .select(
+        "kind, amount, currency, amount_pln, category_id, family_member_id, source, expense_date",
+      )
       .eq("archived", false)
       .gte("expense_date", trendStartIso)
       .lte("expense_date", today),
     sb.from("expenses")
       .select(
-        "id, name, amount, currency, amount_pln, category_id, family_member_id, source, expense_date, receipt_id",
+        "id, kind, name, amount, currency, amount_pln, category_id, family_member_id, source, expense_date, receipt_id",
       )
       .eq("archived", false)
       .gte("expense_date", monthStart)
       .lte("expense_date", monthEnd),
     sb.from("expenses")
       .select(
-        "id, name, amount, currency, amount_pln, category_id, family_member_id, source, expense_date",
+        "id, kind, name, amount, currency, amount_pln, category_id, family_member_id, source, expense_date",
       )
       .eq("archived", false)
       .gte("expense_date", prevStart)
@@ -180,7 +205,7 @@ export async function buildAnalystSnapshot(sb: SupabaseClient): Promise<AnalystS
     sb.from("recurring_expenses")
       .select("name, amount, currency, day_of_month, active, category_id, family_member_id"),
     sb.from("expenses")
-      .select("category_id, amount_pln")
+      .select("kind, category_id, amount_pln")
       .eq("archived", false),
   ]);
 
@@ -190,7 +215,8 @@ export async function buildAnalystSnapshot(sb: SupabaseClient): Promise<AnalystS
     name: string;
     is_fallback: boolean;
   }>;
-  const trendRows = (trendExpRes.data ?? []) as Array<{
+  const trendRowsAll = (trendExpRes.data ?? []) as Array<{
+    kind: "expense" | "income";
     amount: number;
     currency: string;
     amount_pln: number;
@@ -199,8 +225,15 @@ export async function buildAnalystSnapshot(sb: SupabaseClient): Promise<AnalystS
     source: string;
     expense_date: string;
   }>;
-  const monthRows = (monthExpRes.data ?? []) as Array<{
+  // Existing aggregations were written before income existed; keep them
+  // expense-only so "totals.month_to_date.eur" still means EXPENSES, not
+  // a sneaky net number. Income gets its own parallel totals at the bottom.
+  const trendRows = trendRowsAll.filter((r) => r.kind !== "income");
+  const trendIncomeRows = trendRowsAll.filter((r) => r.kind === "income");
+
+  const monthRowsAll = (monthExpRes.data ?? []) as Array<{
     id: string;
+    kind: "expense" | "income";
     name: string;
     amount: number;
     currency: string;
@@ -211,8 +244,12 @@ export async function buildAnalystSnapshot(sb: SupabaseClient): Promise<AnalystS
     expense_date: string;
     receipt_id: string | null;
   }>;
-  const prevMonthRowsFull = (prevMonthExpRes.data ?? []) as Array<{
+  const monthRows = monthRowsAll.filter((r) => r.kind !== "income");
+  const monthIncomeRows = monthRowsAll.filter((r) => r.kind === "income");
+
+  const prevMonthRowsFullAll = (prevMonthExpRes.data ?? []) as Array<{
     id: string;
+    kind: "expense" | "income";
     name: string;
     amount: number;
     currency: string;
@@ -222,6 +259,8 @@ export async function buildAnalystSnapshot(sb: SupabaseClient): Promise<AnalystS
     source: string;
     expense_date: string;
   }>;
+  const prevMonthRowsFull = prevMonthRowsFullAll.filter((r) => r.kind !== "income");
+  const prevMonthIncomeRowsFull = prevMonthRowsFullAll.filter((r) => r.kind === "income");
   const receipts = (receiptsRes.data ?? []) as Array<{
     id: string;
     merchant: string | null;
@@ -240,6 +279,7 @@ export async function buildAnalystSnapshot(sb: SupabaseClient): Promise<AnalystS
     family_member_id: string;
   }>;
   const lifetimeRows = (lifetimeByCatRes.data ?? []) as Array<{
+    kind: "expense" | "income";
     category_id: string;
     amount_pln: number;
   }>;
@@ -406,9 +446,12 @@ export async function buildAnalystSnapshot(sb: SupabaseClient): Promise<AnalystS
     active: r.active,
   }));
 
-  // --- Lifetime by category -----------------------------------------------
+  // --- Lifetime by category (expenses only) -------------------------------
+  // Income rows aren't part of the spend lifetime number; they get their
+  // own income-side aggregation above.
   const lifetimeByCat = new Map<string, { count: number; pln: number }>();
   for (const r of lifetimeRows) {
+    if (r.kind === "income") continue;
     const cur = lifetimeByCat.get(r.category_id) ?? { count: 0, pln: 0 };
     cur.count++;
     cur.pln += Number(r.amount_pln);
@@ -460,9 +503,74 @@ export async function buildAnalystSnapshot(sb: SupabaseClient): Promise<AnalystS
     count: monthBySourceCount.get(s) ?? 0,
   }));
 
+  // --- Income totals (parallel pipeline; expense totals above stay pure) ---
+  let monthIncomeEur = 0;
+  for (const r of monthIncomeRows) {
+    monthIncomeEur += toEur(Number(r.amount_pln), r.expense_date);
+  }
+  let prevIncomeEur = 0;
+  for (const r of prevMonthIncomeRowsFull) {
+    prevIncomeEur += toEur(Number(r.amount_pln), r.expense_date);
+  }
+  void trendIncomeRows;
+
+  const monthIncomeByCatEur = new Map<string, number>();
+  const monthIncomeByCatCount = new Map<string, number>();
+  for (const r of monthIncomeRows) {
+    const eur = toEur(Number(r.amount_pln), r.expense_date);
+    monthIncomeByCatEur.set(r.category_id, (monthIncomeByCatEur.get(r.category_id) ?? 0) + eur);
+    monthIncomeByCatCount.set(
+      r.category_id,
+      (monthIncomeByCatCount.get(r.category_id) ?? 0) + 1,
+    );
+  }
+  const incomeByCategoryCurrentMonth = cats
+    .map((c) => {
+      const eur = monthIncomeByCatEur.get(c.id) ?? 0;
+      return {
+        name: c.name,
+        eur: r2(eur),
+        count: monthIncomeByCatCount.get(c.id) ?? 0,
+        pct: monthIncomeEur > 0 ? Math.round((eur / monthIncomeEur) * 1000) / 10 : 0,
+      };
+    })
+    .filter((x) => x.eur > 0 || x.count > 0)
+    .sort((a, b) => b.eur - a.eur);
+
+  const allMonthIncome = monthIncomeRows
+    .map((r) => ({
+      date: r.expense_date,
+      name: r.name,
+      amount: Number(r.amount),
+      currency: r.currency,
+      eur: r2(toEur(Number(r.amount_pln), r.expense_date)),
+      category: catName.get(r.category_id) ?? "?",
+      member: memberName.get(r.family_member_id) ?? "?",
+      source: r.source,
+    }))
+    .sort((a, b) => a.date === b.date ? b.eur - a.eur : a.date < b.date ? 1 : -1);
+
   return {
     today,
     family: family.map((m) => ({ id: m.id, name: m.name, role: m.role })),
+    income: {
+      month_to_date: {
+        ym: monthYm,
+        eur: r2(monthIncomeEur),
+        count: monthIncomeRows.length,
+        net_eur: r2(monthIncomeEur - monthEur),
+      },
+      previous_month: {
+        ym: prevYm,
+        eur: r2(prevIncomeEur),
+        count: prevMonthIncomeRowsFull.length,
+        net_eur: r2(prevIncomeEur - prevEur),
+      },
+      current_month: {
+        by_category: incomeByCategoryCurrentMonth,
+        all: allMonthIncome,
+      },
+    },
     totals: {
       today: {
         eur: r2(todayEur),

@@ -96,6 +96,14 @@ export const TelegramChatSchema = z.object({
   type: z.string(),
 });
 
+// Thin schema for reply_to_message: we only need to identify the parent
+// message in our ask_threads table. Avoids recursive z.lazy() complexity.
+export const TelegramReplyToSchema = z.object({
+  message_id: z.number().int(),
+  from: TelegramUserSchema.optional(),
+  text: z.string().optional(),
+}).passthrough();
+
 export const TelegramMessageSchema = z.object({
   message_id: z.number().int(),
   from: TelegramUserSchema.optional(),
@@ -123,6 +131,7 @@ export const TelegramMessageSchema = z.object({
     file_size: z.number().optional(),
   }).optional(),
   media_group_id: z.string().optional(),
+  reply_to_message: TelegramReplyToSchema.optional(),
 });
 
 export const TelegramCallbackQuerySchema = z.object({

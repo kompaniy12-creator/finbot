@@ -21,6 +21,10 @@ export interface CategorizeInput {
   name: string;
   nameNormalizedEn: string;
   familyMemberId: string;
+  // Defaults to "expense". When "income", the kNN and Claude fallback search
+  // only over income-kind categories so a salary entry can never be filed
+  // under "Продукты" (and vice versa).
+  kind?: "expense" | "income";
 }
 
 export type CategorizeMethod = "knn" | "claude" | "new";
@@ -75,14 +79,17 @@ export async function categorize(
   deps: CategorizeDeps,
   input: CategorizeInput,
 ): Promise<CategorizeOutput> {
+  const kind = input.kind ?? "expense";
   const embedding = await deps.embedFn(input.nameNormalizedEn);
 
-  // 1. kNN via match_expenses RPC.
+  // 1. kNN via match_expenses RPC. The RPC filters by kind so an income
+  // query can never come back with an expense category id.
   const rpc = await deps.sb.rpc("match_expenses", {
     query_embedding: embedding,
     family_id: input.familyMemberId,
     match_threshold: KNN_THRESHOLD,
     match_count: KNN_TOP_K,
+    kind_filter: kind,
   });
   const matches = (rpc.data ?? []) as SimilarExpenseRow[];
 
@@ -91,6 +98,7 @@ export async function categorize(
     log("info", "categorizer_knn_hit", {
       similarity: sim,
       category_id: matches[0]!.category_id,
+      kind,
     });
     return {
       categoryId: matches[0]!.category_id,
@@ -102,10 +110,12 @@ export async function categorize(
   }
 
   // 2. Claude fallback: load top-N categories by usage_count + top-5 similar
-  //    expenses (regardless of threshold).
+  //    expenses (regardless of threshold). Restrict candidate categories to
+  //    same kind so Claude can't accidentally cross the line.
   const cats = await deps.sb
     .from("categories")
     .select("id, name, description, is_fallback")
+    .eq("kind", kind)
     .order("usage_count", { ascending: false })
     .limit(FALLBACK_TOP_CATEGORIES);
   const topCategories = (cats.data ?? []) as CategoryRow[];
@@ -130,12 +140,15 @@ export async function categorize(
   }
 
   // 3. New category: insert with embedding from English description.
+  // Inherits kind from the input so a new income category never lands in
+  // the expense pool.
   const catEmbedding = await deps.embedFn(decision.description);
   const ins = await deps.sb.from("categories").insert({
     name: decision.name,
     description: decision.description,
     embedding: catEmbedding,
     is_fallback: false,
+    kind,
   }).select("id").maybeSingle();
 
   if (ins.error || !ins.data) {

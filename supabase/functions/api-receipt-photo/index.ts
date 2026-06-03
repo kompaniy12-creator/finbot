@@ -6,7 +6,7 @@
 // receipt's photo, matching the dashboard contract).
 
 import { adminClient } from "../_shared/supabase.ts";
-import { authenticateInitData, extractInitData } from "../_shared/webapp_auth.ts";
+import { authenticate } from "../_shared/webapp_auth.ts";
 import { handleOptions, json, unauthorized } from "../_shared/api_response.ts";
 
 const STORAGE_BUCKET = "receipts";
@@ -14,10 +14,8 @@ const SIGNED_URL_TTL_SEC = 300;
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return handleOptions(req);
-  const initData = extractInitData(req);
-  if (!initData) return unauthorized(req);
   const sb = adminClient();
-  const me = await authenticateInitData(initData, sb);
+  const me = await authenticate(req, sb);
   if (!me) return unauthorized(req);
   void me; // family-wide visibility, role unused
 

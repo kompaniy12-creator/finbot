@@ -1,14 +1,12 @@
 // GET /api-health: admin-only extended status.
 import { adminClient } from "../_shared/supabase.ts";
-import { authenticateInitData, extractInitData } from "../_shared/webapp_auth.ts";
+import { authenticate } from "../_shared/webapp_auth.ts";
 import { forbidden, handleOptions, json, unauthorized } from "../_shared/api_response.ts";
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return handleOptions(req);
-  const initData = extractInitData(req);
-  if (!initData) return unauthorized(req);
   const sb = adminClient();
-  const me = await authenticateInitData(initData, sb);
+  const me = await authenticate(req, sb);
   if (!me) return unauthorized(req);
   if (me.role !== "admin") return forbidden(req);
 

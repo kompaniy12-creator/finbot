@@ -10,7 +10,7 @@ import { notifyUser } from "../_shared/notify.ts";
 import { buildAnalystSnapshot } from "../_shared/analyst_snapshot.ts";
 import { buildAskPrompt } from "../_shared/prompts/ask.ts";
 import { callClaude } from "../_shared/claude.ts";
-import { runAskAgent } from "../_shared/ask_agent.ts";
+import { type AskTurn, runAskAgent } from "../_shared/ask_agent.ts";
 
 const WEBAPP_URL_FALLBACK = "https://kompaniy12-creator.github.io/finbot/";
 
@@ -22,21 +22,28 @@ export interface ReplyKeyboardButton {
 export interface CommandReply {
   text: string;
   reply_markup?: { inline_keyboard: ReplyKeyboardButton[][] };
+  // Optional callback fired by the webhook after the reply is sent and the
+  // bot's message_id is known. Used by /ask to persist the thread state so
+  // a follow-up Telegram "reply" can find the conversation.
+  onSent?: (messageId: number) => Promise<void>;
 }
 
 export function startCommand(member: FamilyMember): CommandReply {
   return {
     text: [
-      `Привет, ${member.name}. Это FinBot.`,
+      `Привет, ${member.name}. Это FinBot, твой личный финансовый помощник.`,
       "",
-      "Просто пиши, что потратил, можно текстом, голосом или фото чека. Я разберу.",
+      "Можно делать две вещи:",
+      "• записывать траты - текстом, голосом или фото чека (например: «кофе 12 zł»)",
+      "• разговаривать со мной как с финансовым консультантом - спрашивай, советуйся, проси посчитать или поправить (например: «на что я больше всего трачу?», «сколько ушло на еду в мае?»)",
+      "",
+      "Чтобы продолжить беседу - ответь (reply) на моё сообщение.",
       "",
       "Команды:",
       "/help - справка",
-      "/categories - 17 категорий",
       "/dashboard - открыть дашборд",
-      "/history - последние траты (M7)",
-      "/stats - сводка за месяц (M7)",
+      "/history - последние траты",
+      "/stats - сводка за месяц",
     ].join("\n"),
   };
 }
@@ -62,18 +69,28 @@ export function helpCommand(member: FamilyMember): CommandReply {
     : "";
   return {
     text: [
-      "Команды FinBot:",
+      "Что я умею:",
       "",
+      "• Записывать траты - пиши текстом, голосом или присылай фото чека.",
+      "  Пример: «кофе 12 zł и бензин 150 zł».",
+      "",
+      "• Общаться как личный финансист - просто задай вопрос или попроси что-то.",
+      "  Пример: «сколько потратил на еду в мае?», «удали последнюю запись», «покажи топ категорий».",
+      "  Чтобы продолжить беседу - ответь (reply) на моё сообщение.",
+      "",
+      "Команды:",
       "/start - приветствие",
       "/help - эта справка",
       "/categories - список категорий",
       "/dashboard - открыть дашборд",
+      "/web - получить ссылку на дашборд для браузера на компе",
+      "/web_logout - отозвать все браузерные сессии",
       "/history - последние траты",
       "/stats - сводка за месяц (вся семья)",
       "/me - моя статистика за месяц",
-      "/ask - спросить аналитика (например: /ask на что я больше всего трачу)",
+      "/ask ВОПРОС - то же, что просто написать вопрос",
       "/undo - отменить последнюю",
-      "/recurring - регулярные траты (с M14)",
+      "/recurring - регулярные траты",
     ].join("\n") + adminOnly,
   };
 }
@@ -104,6 +121,90 @@ export function dashboardCommand(): CommandReply {
     reply_markup: {
       inline_keyboard: [[{ text: "Дашборд", web_app: { url } }]],
     },
+  };
+}
+
+const MAGIC_TTL_MIN = 5;
+const WEB_RATE_LIMIT_PER_5MIN = 3;
+
+function randomHex(bytes: number): string {
+  const buf = new Uint8Array(bytes);
+  crypto.getRandomValues(buf);
+  return Array.from(buf).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+// /web - issues a one-time magic link the user opens in a regular browser.
+// The link expires after 5 minutes and can only be exchanged once. On the
+// browser side, ?magic=<token> hits api-web-exchange which trades it for a
+// 24-hour session token stored in localStorage.
+export async function webCommand(
+  sb: SupabaseClient,
+  member: FamilyMember,
+): Promise<CommandReply> {
+  // Soft per-user rate limit: 3 magic links per 5 minutes. We count
+  // unconsumed-and-still-valid rows; deliberately permissive so a user who
+  // refreshed and tossed a tab can ask again.
+  const since = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+  const recent = await sb
+    .from("web_sessions")
+    .select("id", { count: "exact", head: true })
+    .eq("family_member_id", member.id)
+    .gte("created_at", since);
+  if ((recent.count ?? 0) >= WEB_RATE_LIMIT_PER_5MIN) {
+    return {
+      text:
+        "Слишком много запросов ссылок подряд. Подожди 5 минут и попробуй снова, " +
+        "или используй уже выданную ссылку (живёт 5 минут).",
+    };
+  }
+
+  const magic = randomHex(32);
+  const magicExpiresAt = new Date(
+    Date.now() + MAGIC_TTL_MIN * 60 * 1000,
+  ).toISOString();
+  const ins = await sb.from("web_sessions").insert({
+    family_member_id: member.id,
+    magic_token: magic,
+    magic_expires_at: magicExpiresAt,
+  });
+  if (ins.error) {
+    return { text: `Не смог создать ссылку: ${ins.error.message}` };
+  }
+
+  const base = Deno.env.get("WEBAPP_URL") ?? WEBAPP_URL_FALLBACK;
+  // Strip a trailing slash to avoid `//` and any existing query.
+  const clean = base.replace(/\/+$/, "").split("?")[0];
+  const url = `${clean}/?magic=${magic}`;
+
+  return {
+    text: [
+      `Открой эту ссылку в браузере на компе - она залогинит тебя на 24 часа:`,
+      "",
+      url,
+      "",
+      `Ссылка действует 5 минут и работает один раз.`,
+      `Если что-то пойдёт не так - вызови /web ещё раз.`,
+      `Чтобы отозвать все активные сессии в браузерах - /web_logout.`,
+    ].join("\n"),
+  };
+}
+
+// /web_logout - invalidates every active web session for the caller, so a
+// lost laptop can't keep reading the data. Doesn't touch Telegram auth.
+export async function webLogoutCommand(
+  sb: SupabaseClient,
+  member: FamilyMember,
+): Promise<CommandReply> {
+  const upd = await sb
+    .from("web_sessions")
+    .update({ session_expires_at: new Date(0).toISOString() })
+    .eq("family_member_id", member.id)
+    .gt("session_expires_at", new Date().toISOString());
+  if (upd.error) {
+    return { text: `Ошибка отзыва: ${upd.error.message}` };
+  }
+  return {
+    text: "Все активные браузерные сессии отозваны. Чтобы войти заново - /web.",
   };
 }
 
@@ -730,58 +831,64 @@ export async function statsCommand(
   };
 }
 
-// /ask <question> -> personal financial analyst. Builds a snapshot of all
-// the family's data and asks Claude Haiku to answer with that snapshot as
-// the ONLY source of truth.
-export async function askCommand(
-  sb: SupabaseClient,
-  question: string,
-  viewer: FamilyMember,
-): Promise<CommandReply> {
-  const q = (question || "").trim();
-  if (!q) {
-    return {
-      text: [
-        "Использование: /ask ВОПРОС",
-        "",
-        "Примеры:",
-        "/ask сколько я потратил на еду в этом месяце",
-        "/ask какая моя топ-категория за последние полгода",
-        "/ask на сколько вырос расход в мае по сравнению с апрелем",
-        "/ask какие у меня регулярные платежи",
-      ].join("\n"),
-    };
-  }
-  if (q.length > 500) {
-    return { text: "Слишком длинный вопрос (макс 500 символов). Попробуй короче." };
-  }
+// Strip any Markdown the model might still emit despite the instruction.
+function sanitizeAskText(s: string): string {
+  return s
+    .replace(/\*\*(.+?)\*\*/gs, "$1")
+    .replace(/__(.+?)__/gs, "$1")
+    .replace(/(?<![*\w])\*(?!\s)([^*\n]+?)(?<!\s)\*(?![*\w])/g, "$1")
+    .replace(/(?<![_\w])_(?!\s)([^_\n]+?)(?<!\s)_(?![_\w])/g, "$1")
+    .replace(/```[\s\S]*?```/g, (m) => m.replace(/```/g, ""))
+    .replace(/`([^`\n]+)`/g, "$1")
+    .replace(/^#{1,6}\s+/gm, "")
+    .replace(/[<>]/g, "");
+}
 
-  // Snapshot + read tools + propose_changes tool run INSIDE runAskAgent.
-  // (Old direct-Claude path kept its imports because the agent re-uses them.)
-  void buildAskPrompt;
-  void buildAnalystSnapshot;
-  void callClaude;
+// Core /ask runner shared by /ask command and reply-continuation. Builds the
+// reply AND attaches onSent that persists the new thread row so the next
+// Telegram reply can find this conversation.
+export async function runAskAndBuildReply(args: {
+  sb: SupabaseClient;
+  viewer: FamilyMember;
+  chatId: number | null;
+  question: string;
+  priorTurns?: AskTurn[];
+}): Promise<CommandReply> {
+  const { sb, viewer, chatId, question, priorTurns } = args;
 
   let agentResult;
   try {
-    agentResult = await runAskAgent({ sb, viewer, question: q });
+    agentResult = await runAskAgent({ sb, viewer, question, priorTurns });
   } catch (err) {
     return { text: `Ошибка аналитика: ${(err as Error).message}` };
   }
 
-  // Strip any Markdown the model might still emit despite the instruction.
-  const sanitize = (s: string) =>
-    s
-      .replace(/\*\*(.+?)\*\*/gs, "$1")
-      .replace(/__(.+?)__/gs, "$1")
-      .replace(/(?<![*\w])\*(?!\s)([^*\n]+?)(?<!\s)\*(?![*\w])/g, "$1")
-      .replace(/(?<![_\w])_(?!\s)([^_\n]+?)(?<!\s)_(?![_\w])/g, "$1")
-      .replace(/```[\s\S]*?```/g, (m) => m.replace(/```/g, ""))
-      .replace(/`([^`\n]+)`/g, "$1")
-      .replace(/^#{1,6}\s+/gm, "")
-      .replace(/[<>]/g, "");
+  const cleanText = sanitizeAskText(agentResult.text || "");
+  const nextHistory: AskTurn[] = [
+    ...(priorTurns ?? []),
+    { question, answer: cleanText },
+  ];
 
-  const cleanText = sanitize(agentResult.text || "");
+  // Cap stored history so a long chat doesn't blow up the row size.
+  const trimmedHistory = nextHistory.slice(-8);
+
+  const persistThread = (chatId === null) ? undefined : async (messageId: number) => {
+    const ins = await sb.from("ask_threads").insert({
+      chat_id: chatId,
+      bot_message_id: messageId,
+      family_member_id: viewer.id,
+      history: trimmedHistory,
+    });
+    if (ins.error) {
+      // Non-fatal: thread storage failing just means follow-ups won't have
+      // context. The user still got their answer.
+      console.log(JSON.stringify({
+        level: "error",
+        event: "ask_thread_insert_failed",
+        error: ins.error.message,
+      }));
+    }
+  };
 
   if (agentResult.proposalId && agentResult.actionCount > 0) {
     // Show the proposal and inline confirm/cancel. Actual writes happen in
@@ -802,8 +909,51 @@ export async function askCommand(
           },
         ]],
       } as unknown as CommandReply["reply_markup"],
+      onSent: persistThread,
     };
   }
 
-  return { text: `🤖 ${cleanText}` };
+  return { text: `🤖 ${cleanText}`, onSent: persistThread };
+}
+
+// /ask <question> -> personal financial analyst. Builds a snapshot of all
+// the family's data and asks Claude Haiku to answer with that snapshot as
+// the ONLY source of truth.
+export async function askCommand(
+  sb: SupabaseClient,
+  question: string,
+  viewer: FamilyMember,
+  chatId?: number,
+): Promise<CommandReply> {
+  const q = (question || "").trim();
+  if (!q) {
+    return {
+      text: [
+        "Использование: /ask ВОПРОС",
+        "",
+        "Примеры:",
+        "/ask сколько я потратил на еду в этом месяце",
+        "/ask какая моя топ-категория за последние полгода",
+        "/ask на сколько вырос расход в мае по сравнению с апрелем",
+        "/ask какие у меня регулярные платежи",
+        "",
+        "Можно отвечать (reply) на мои сообщения, чтобы продолжить беседу.",
+      ].join("\n"),
+    };
+  }
+  if (q.length > 500) {
+    return { text: "Слишком длинный вопрос (макс 500 символов). Попробуй короче." };
+  }
+
+  // Keep historical imports alive (used to belong to the pre-agent flow).
+  void buildAskPrompt;
+  void buildAnalystSnapshot;
+  void callClaude;
+
+  return await runAskAndBuildReply({
+    sb,
+    viewer,
+    chatId: chatId ?? null,
+    question: q,
+  });
 }

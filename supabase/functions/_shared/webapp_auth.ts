@@ -129,3 +129,73 @@ export function extractInitData(req: Request): string | null {
   if (auth && auth.startsWith("tma ")) return auth.slice(4);
   return null;
 }
+
+/**
+ * Extract a web session token from Authorization: Bearer <token>.
+ * Used by the magic-link desktop flow (see migration 0017).
+ */
+export function extractBearerToken(req: Request): string | null {
+  const auth = req.headers.get("authorization");
+  if (!auth || !auth.startsWith("Bearer ")) return null;
+  const token = auth.slice(7).trim();
+  // Sanity: our session tokens are 64-hex (32 random bytes).
+  if (!/^[0-9a-f]{32,128}$/i.test(token)) return null;
+  return token;
+}
+
+/**
+ * Resolve a web session token to a FamilyMember. Returns null if the token
+ * is missing, expired, or revoked. Bumps last_used_at as a side effect.
+ */
+export async function authenticateWebSession(
+  token: string,
+  sb: SupabaseClient,
+): Promise<FamilyMember | null> {
+  const nowIso = new Date().toISOString();
+  const sess = await sb
+    .from("web_sessions")
+    .select("family_member_id, session_expires_at")
+    .eq("session_token", token)
+    .maybeSingle();
+  if (sess.error || !sess.data) return null;
+  const row = sess.data as { family_member_id: string; session_expires_at: string | null };
+  if (!row.session_expires_at || row.session_expires_at <= nowIso) return null;
+
+  const mem = await sb
+    .from("family_members")
+    .select("id, telegram_id, name, role, active")
+    .eq("id", row.family_member_id)
+    .eq("active", true)
+    .maybeSingle();
+  if (mem.error || !mem.data) return null;
+
+  // Bump last_used_at best-effort; failure here doesn't deny auth.
+  await sb.from("web_sessions").update({ last_used_at: nowIso }).eq("session_token", token);
+
+  return mem.data as FamilyMember;
+}
+
+/**
+ * Unified request auth: tries the web session Bearer token first, falls
+ * back to the Telegram initData path. Returns null if neither works.
+ *
+ * All api-* endpoints should call this instead of the Telegram-only path -
+ * that way the same endpoints serve both the in-Telegram Mini App and the
+ * desktop browser session.
+ */
+export async function authenticate(
+  req: Request,
+  sb: SupabaseClient,
+): Promise<FamilyMember | null> {
+  const bearer = extractBearerToken(req);
+  if (bearer) {
+    const m = await authenticateWebSession(bearer, sb);
+    if (m) return m;
+  }
+  const initData = extractInitData(req);
+  if (initData) {
+    const m = await authenticateInitData(initData, sb);
+    if (m) return m;
+  }
+  return null;
+}

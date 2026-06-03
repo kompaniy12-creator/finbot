@@ -121,6 +121,50 @@ const CATEGORIES = [
     description: "Miscellaneous expenses that do not fit other categories",
     isFallback: true,
   },
+  // ---- Income categories (kind='income') ------------------------------
+  // "Прочий" is the income fallback. is_fallback semantics are per-kind:
+  // we keep one fallback per kind, validated implicitly here.
+  {
+    name: "Зарплата",
+    description: "Salary, monthly wage, paycheck, primary employment income",
+    kind: "income",
+  },
+  {
+    name: "Дивиденды",
+    description:
+      "Dividends, stock dividends, equity payouts, investment income, capital distributions",
+    kind: "income",
+  },
+  {
+    name: "Фриланс",
+    description: "Freelance income, contract work, consulting fees, side project earnings",
+    kind: "income",
+  },
+  {
+    name: "Темки",
+    description:
+      "Side gigs, hustles, one-off deals, ad-hoc opportunities, informal earnings",
+    kind: "income",
+  },
+  {
+    name: "Подарок",
+    description:
+      "Gifts received, monetary presents from family or friends, birthday money",
+    kind: "income",
+  },
+  {
+    name: "Возврат долгов",
+    description:
+      "Loan repayments received, money returned, debts repaid back to me",
+    kind: "income",
+  },
+  {
+    name: "Прочий",
+    description:
+      "Other income, miscellaneous earnings, unclassified positive cash flow",
+    kind: "income",
+    isFallback: true,
+  },
 ];
 
 const FamilyMemberInputSchema = z.object({
@@ -158,30 +202,58 @@ Deno.serve(async (req: Request) => {
     );
   }
 
-  if ((existingCount ?? 0) >= CATEGORIES.length) {
-    log("info", "setup_once_skipped_already_seeded", {
-      existing: existingCount,
-    });
-    return Response.json({
-      ok: true,
-      message: "already seeded",
-      categories: existingCount,
-    });
-  }
+  // Note: we used to short-circuit here when existingCount >= CATEGORIES.length,
+  // but that prevents the refresh loop below from upgrading zero-vector
+  // placeholders (left behind by migrations that can't run gte-small inline)
+  // into real embeddings. The refresh loop is itself idempotent - it only
+  // touches rows whose embedding is a zero vector - so we let it run every time.
+  void existingCount;
 
   // Generate embeddings via Supabase.ai gte-small and insert categories.
   // @ts-ignore: Supabase global is runtime-only.
   const session = new Supabase.ai.Session("gte-small");
 
   let inserted = 0;
+  let refreshed = 0;
   for (const cat of CATEGORIES) {
-    // Skip if name already present (resume-friendly)
+    const kind = (cat as { kind?: string }).kind ?? "expense";
+    // Resume-friendly: if a row exists, only refresh the embedding when it
+    // looks like a zero-vector placeholder (set by migration 0018, where we
+    // couldn't run gte-small inline) - otherwise leave it alone.
     const { data: existing } = await sb
       .from("categories")
-      .select("id")
+      .select("id, embedding, kind")
       .eq("name", cat.name)
       .maybeSingle();
-    if (existing) continue;
+
+    if (existing) {
+      const row = existing as { id: string; embedding: unknown; kind: string | null };
+      const emb = row.embedding as number[] | string | null;
+      // pgvector serialises to "[0,0,...]" over JSON; both shapes possible.
+      const isPlaceholder = (typeof emb === "string" && /^\[\s*0(\.0+)?(\s*,\s*0(\.0+)?)*\s*\]$/.test(emb)) ||
+        (Array.isArray(emb) && emb.every((v) => v === 0));
+      if (isPlaceholder) {
+        const embedding = await session.run(cat.description, {
+          mean_pool: true,
+          normalize: true,
+        });
+        const upd = await sb.from("categories").update({
+          embedding,
+          description: cat.description,
+          kind,
+          is_fallback: cat.isFallback ?? false,
+        }).eq("id", row.id);
+        if (upd.error) {
+          log("error", "setup_once_refresh_category_failed", {
+            name: cat.name,
+            error: upd.error.message,
+          });
+          return Response.json({ ok: false, error: upd.error.message }, { status: 500 });
+        }
+        refreshed++;
+      }
+      continue;
+    }
 
     const embedding = await session.run(cat.description, {
       mean_pool: true,
@@ -193,6 +265,7 @@ Deno.serve(async (req: Request) => {
       description: cat.description,
       embedding,
       is_fallback: cat.isFallback ?? false,
+      kind,
     });
     if (insertErr) {
       log("error", "setup_once_insert_category_failed", {
@@ -205,6 +278,7 @@ Deno.serve(async (req: Request) => {
     }
     inserted++;
   }
+  log("info", "setup_once_seed_summary", { inserted, refreshed });
 
   // Family members from x-setup-family JSON header
   const familyHeader = req.headers.get("x-setup-family");
@@ -254,12 +328,14 @@ Deno.serve(async (req: Request) => {
 
   log("info", "setup_once_completed", {
     categories_inserted: inserted,
+    categories_refreshed: refreshed,
     family_inserted: familyInserted,
   });
 
   return Response.json({
     ok: true,
     categories_inserted: inserted,
+    categories_refreshed: refreshed,
     family_inserted: familyInserted,
   });
 });

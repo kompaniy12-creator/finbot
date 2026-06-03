@@ -45,7 +45,7 @@ function getEnv() {
 async function tgRequest(
   method: string,
   body: Record<string, unknown>,
-): Promise<void> {
+): Promise<unknown> {
   const { TELEGRAM_BOT_TOKEN } = getEnv();
   const resp = await fetch(
     `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/${method}`,
@@ -61,15 +61,18 @@ async function tgRequest(
   // entity parse, etc). Treat those as failures too so silent edits surface.
   if (!resp.ok) {
     log("error", "tg_request_http_failed", { method, status: resp.status, body: text });
-    return;
+    return null;
   }
   try {
-    const parsed = JSON.parse(text) as { ok?: boolean; description?: string };
+    const parsed = JSON.parse(text) as { ok?: boolean; description?: string; result?: unknown };
     if (parsed.ok === false) {
       log("error", "tg_request_api_failed", { method, description: parsed.description });
+      return null;
     }
+    return parsed.result ?? null;
   } catch (_e) {
     /* non-JSON 200 - ignore */
+    return null;
   }
 }
 
@@ -83,7 +86,17 @@ async function sendReply(chatId: number, reply: CommandReply): Promise<void> {
   if (reply.reply_markup) {
     body.reply_markup = reply.reply_markup;
   }
-  await tgRequest("sendMessage", body);
+  const result = await tgRequest("sendMessage", body);
+  if (reply.onSent) {
+    const msgId = (result as { message_id?: number } | null)?.message_id;
+    if (typeof msgId === "number") {
+      try {
+        await reply.onSent(msgId);
+      } catch (err) {
+        log("error", "onSent_callback_failed", { error: (err as Error).message });
+      }
+    }
+  }
 }
 
 async function editReply(

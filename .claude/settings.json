@@ -159,6 +159,6 @@
     "FINBOT_AUTONOMOUS_MODE": "1",
     "FINBOT_DOC_VERSION": "1.0.0"
   },
-  "model": "claude-opus-4-7",
+  "model": "claude-opus-4-8",
   "outputStyle": "default"
 }

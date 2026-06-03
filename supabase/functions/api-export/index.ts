@@ -1,6 +1,6 @@
 // GET /api-export?period=month|all: CSV of expenses.
 import { adminClient } from "../_shared/supabase.ts";
-import { authenticateInitData, extractInitData } from "../_shared/webapp_auth.ts";
+import { authenticate } from "../_shared/webapp_auth.ts";
 import { handleOptions, text, unauthorized } from "../_shared/api_response.ts";
 import { todayWarsawIso } from "../_shared/dates.ts";
 
@@ -13,10 +13,8 @@ function csvEscape(v: unknown): string {
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return handleOptions(req);
-  const initData = extractInitData(req);
-  if (!initData) return unauthorized(req);
   const sb = adminClient();
-  const me = await authenticateInitData(initData, sb);
+  const me = await authenticate(req, sb);
   if (!me) return unauthorized(req);
 
   const url = new URL(req.url);

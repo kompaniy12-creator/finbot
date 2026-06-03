@@ -29,6 +29,7 @@ interface QueryExpensesInput {
   family_member_id?: string;
   source?: "text" | "voice" | "photo";
   name_contains?: string;
+  kind?: "expense" | "income"; // defaults to expense for backwards compat
   limit?: number; // capped at 100
 }
 
@@ -61,11 +62,16 @@ async function tQueryExpenses(
   input: QueryExpensesInput,
 ): Promise<unknown> {
   const limit = Math.min(Math.max(Number(input.limit ?? 30), 1), 100);
+  // Default to expense for backwards compat. Pass kind='income' to get
+  // income rows. Pass kind='any' (handled as no filter) only if explicitly
+  // intended; we don't expose 'any' through the tool schema for now.
+  const kind = input.kind === "income" ? "income" : "expense";
   let q = sb.from("expenses")
     .select(
-      "id, name, amount, currency, amount_pln, category_id, family_member_id, source, expense_date, receipt_id, needs_confirmation, archived",
+      "id, kind, name, amount, currency, amount_pln, category_id, family_member_id, source, expense_date, receipt_id, needs_confirmation, archived",
     )
     .eq("archived", false)
+    .eq("kind", kind)
     .order("expense_date", { ascending: false })
     .limit(limit);
   if (input.from) q = q.gte("expense_date", input.from);
@@ -103,7 +109,8 @@ async function tQueryReceipts(
 
 async function tListCategories(sb: SupabaseClient): Promise<unknown> {
   const { data, error } = await sb.from("categories")
-    .select("id, name, is_fallback")
+    .select("id, name, kind, is_fallback")
+    .order("kind", { ascending: true })
     .order("is_fallback", { ascending: true })
     .order("name", { ascending: true });
   if (error) return { error: error.message };
@@ -164,10 +171,16 @@ const TOOLS: Anthropic.Messages.Tool[] = [
   {
     name: "query_expenses",
     description:
-      "Get a filtered list of expenses. Use this to find specific transactions the user is asking about (e.g. 'все траты на воду в мае'). Returns up to `limit` rows ordered by date desc.",
+      "Get a filtered list of expenses (or incomes). Use this to find specific transactions the user is asking about (e.g. 'все траты на воду в мае'). Returns up to `limit` rows ordered by date desc. DEFAULT kind='expense'. Pass kind='income' to query income rows instead (e.g. 'сколько я заработал в мае?').",
     input_schema: {
       type: "object",
       properties: {
+        kind: {
+          type: "string",
+          enum: ["expense", "income"],
+          description:
+            "expense (default) or income. Use 'income' to answer questions about earnings, salary, dividends, gifts received.",
+        },
         from: {
           type: "string",
           description: "Start date inclusive, ISO YYYY-MM-DD",
@@ -258,6 +271,11 @@ export interface AskAgentResult {
   actionCount: number;
 }
 
+export interface AskTurn {
+  question: string;
+  answer: string;
+}
+
 const SYSTEM_RULES =
   `Ты - личный финансовый аналитик-агент семьи в боте FinBot. У тебя есть инструменты для чтения данных и для предложения изменений.
 
@@ -268,11 +286,12 @@ const SYSTEM_RULES =
 4. Если действие может затронуть много записей (например 10+) - сначала покажи ИХ СПИСОК в human_summary и попроси подтверждения.
 
 ПРАВИЛА ДАННЫХ:
-- query_expenses возвращает только archived=false (актуальные).
+- query_expenses возвращает только archived=false (актуальные). По умолчанию возвращает РАСХОДЫ (kind='expense'). Чтобы получить доходы, передай source=null и используй kind='income' (см. параметры).
 - expense_id и category_id и receipt_id - это UUID из базы. Бери их ТОЛЬКО из реальных query-результатов или из snapshot, не выдумывай.
+- В snapshot поле totals.* и current_month.* - это РАСХОДЫ. Доход живёт отдельно в income.month_to_date / income.previous_month / income.current_month. Нетто = доход - расход и уже посчитан в income.month_to_date.net_eur (может быть отрицательным).
 - propose_changes принимает массив actions. Каждое action описывает одну запись, которую затронет. Поддерживаемые kinds:
-  - delete_expense - архивирует одну трату (по expense_id)
-  - recategorize_expense - меняет категорию (expense_id + new_category_id)
+  - delete_expense - архивирует одну трату ИЛИ доход (по expense_id) - механика та же, table одна
+  - recategorize_expense - меняет категорию (expense_id + new_category_id). ВАЖНО: новая категория должна быть того же kind (доходная-у-доходной, расходная-у-расходной)
   - delete_receipt - архивирует чек + все его строки (receipt_id)
 
 ФОРМАТИРОВАНИЕ ОТВЕТА:
@@ -285,9 +304,22 @@ export async function runAskAgent(args: {
   sb: SupabaseClient;
   viewer: FamilyMember;
   question: string;
+  priorTurns?: AskTurn[];
 }): Promise<AskAgentResult> {
-  const { sb, viewer, question } = args;
+  const { sb, viewer, question, priorTurns } = args;
   const snapshot = await buildAnalystSnapshot(sb);
+
+  // Render prior turns as a "Предыдущая беседа" preamble so a follow-up
+  // question (e.g. "Как считал?") has the earlier Q/A in context. We pass
+  // them as plain text rather than reconstructing the full tool-call history -
+  // the model doesn't need to see prior tool_use blocks, just what was asked
+  // and what was answered.
+  const priorBlock = (priorTurns && priorTurns.length > 0)
+    ? "Предыдущая беседа (для контекста, не повторяй):\n" +
+      priorTurns.map((t, i) =>
+        `[Тур ${i + 1}]\nВопрос: ${t.question}\nОтвет: ${t.answer}`
+      ).join("\n\n") + "\n\n"
+    : "";
 
   // Conversation state. We carry the assistant turns + tool results back
   // into the model on every loop iteration.
@@ -300,7 +332,8 @@ export async function runAskAgent(args: {
           `Контекст: viewer_id=${viewer.id}, viewer_name=${viewer.name}, viewer_role=${viewer.role}.\n` +
           `Финансовый snapshot (только для общих вопросов; для точечных действий используй tool query_expenses):\n` +
           "```json\n" + JSON.stringify(snapshot) + "\n```\n\n" +
-          `Вопрос пользователя: ${question}`,
+          priorBlock +
+          `Новый вопрос пользователя: ${question}`,
       },
     ],
   }];

@@ -6,7 +6,7 @@
 
 import { z } from "zod";
 import { adminClient } from "../_shared/supabase.ts";
-import { authenticateInitData, extractInitData } from "../_shared/webapp_auth.ts";
+import { authenticate } from "../_shared/webapp_auth.ts";
 import { forbidden, handleOptions, json, unauthorized } from "../_shared/api_response.ts";
 import { log } from "../_shared/log.ts";
 import { retrainCategory } from "../_shared/retrain.ts";
@@ -20,10 +20,8 @@ Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return handleOptions(req);
   if (req.method !== "POST") return json(req, { error: "method_not_allowed" }, 405);
 
-  const initData = extractInitData(req);
-  if (!initData) return unauthorized(req);
   const sb = adminClient();
-  const me = await authenticateInitData(initData, sb);
+  const me = await authenticate(req, sb);
   if (!me) return unauthorized(req);
 
   let body: z.infer<typeof BodySchema>;

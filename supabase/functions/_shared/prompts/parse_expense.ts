@@ -6,7 +6,8 @@ import { z } from "zod";
 
 export const ParseExpenseTool: Anthropic.Messages.Tool = {
   name: "record_expenses",
-  description: "Record one or more expenses extracted from a user message.",
+  description:
+    "Record one or more cash-flow events extracted from a user message. Each event is either an expense (money out) or income (money in).",
   input_schema: {
     type: "object",
     required: ["expenses"],
@@ -18,20 +19,26 @@ export const ParseExpenseTool: Anthropic.Messages.Tool = {
           type: "object",
           required: ["name", "name_normalized_en", "amount", "currency", "expense_date"],
           properties: {
+            kind: {
+              type: "string",
+              enum: ["expense", "income"],
+              description:
+                "expense (money out, default) or income (money in). Set 'income' when the user is reporting received money. Income triggers: 'получил', 'пришла', 'прислали', 'зарплата', 'аванс', 'гонорар', 'фриланс', 'халтура', 'темка', 'темки', 'дивиденды', 'кэшбэк', 'кешбек', 'возврат', 'вернули', 'отдали долг', 'подарили', 'подарок', 'salary', 'paycheck', 'freelance', 'refund', 'dividend', 'gift', 'paid me'. Default to 'expense' when unclear.",
+            },
             name: {
               type: "string",
               description:
-                "Item name in the original language (e.g., 'молоко 2%', 'kawa', 'хліб').",
+                "Item name in the original language (e.g., 'молоко 2%', 'kawa', 'зарплата июнь').",
             },
             name_normalized_en: {
               type: "string",
               description:
-                "Short English description of the item, lowercased, used for semantic search. Examples: 'milk 2 percent', 'coffee', 'bread'. Translate or transliterate proper nouns naturally (e.g., 'Biedronka' -> 'Biedronka grocery store').",
+                "Short English description, lowercased, used for semantic search. For expenses: item name ('milk 2 percent', 'coffee'). For income: source/type ('salary monthly wage', 'freelance contract', 'dividend payout', 'gift from parents', 'cashback refund').",
             },
             amount: {
               type: "number",
               minimum: 0.01,
-              description: "Amount in the original currency.",
+              description: "Amount in the original currency. Always positive, regardless of kind.",
             },
             currency: {
               type: "string",
@@ -43,7 +50,7 @@ export const ParseExpenseTool: Anthropic.Messages.Tool = {
               type: "string",
               pattern: "^\\d{4}-\\d{2}-\\d{2}$",
               description:
-                "Date the user actually paid (Europe/Warsaw, ISO YYYY-MM-DD). Default to today. Phrases like 'за март', '03/2026', 'за апрель 2026' describe what was paid for, NOT when - keep them in the name and leave expense_date as today. Only explicit payment-time words override today: 'вчера' = today-1, 'позавчера' = today-2, 'в субботу' = last Saturday, '12.05.2026' = that exact date.",
+                "Date the cash actually moved (Europe/Warsaw, ISO YYYY-MM-DD). Default to today. Phrases like 'за март', '03/2026', 'за апрель 2026' describe what was paid for or what period is covered, NOT when - keep them in the name and leave expense_date as today. Only explicit time words override today: 'вчера' = today-1, 'позавчера' = today-2, 'в субботу' = last Saturday, '12.05.2026' = that exact date.",
             },
             description: {
               type: "string",
@@ -94,7 +101,25 @@ Dates (CRITICAL):
   - "бензин 95 на 200 zl" -> "fuel gasoline"
   - "детский комбинезон на ребёнка" -> "children clothing baby"
   - "электричество за январь" -> "electricity utility bill"
-- If the message is NOT about an expense (greeting, question, etc.), do NOT call the tool. Respond with one short sentence asking what the user spent.`;
+- If the message is NOT about an expense or income (greeting, question, etc.), do NOT call the tool. Respond with one short sentence asking what the user spent.
+
+Income vs expense (NEW, CRITICAL):
+- kind="income" when the user is reporting MONEY RECEIVED.
+  Russian triggers: "получил/получила", "пришла", "пришло", "прислали", "зарплата", "аванс", "гонорар", "фриланс", "халтура", "темка", "темки", "дивиденды", "кэшбэк", "кешбек", "возврат", "вернули", "отдали долг", "подарили", "подарок мне".
+  English triggers: "salary", "paycheck", "freelance", "refund", "dividend", "gift", "paid me", "got paid".
+  Polish: "wypłata", "pensja", "zwrot", "prezent".
+- kind="expense" (default) when user is reporting MONEY SPENT.
+- Same item can never be both. If ambiguous (e.g. just "5000 zł"), default to expense.
+- Examples:
+  - "получил зарплату 5000 zł" -> kind=income, name="зарплата", name_normalized_en="salary monthly wage"
+  - "фриланс 800 €" -> kind=income, name="фриланс", name_normalized_en="freelance contract work"
+  - "дивиденды Apple 120 $" -> kind=income, name="дивиденды Apple", name_normalized_en="dividend stock payout"
+  - "вернули долг 200 zł" -> kind=income, name="возврат долга", name_normalized_en="loan repayment received"
+  - "подарили на ДР 500 zł" -> kind=income, name="подарок на день рождения", name_normalized_en="gift birthday money"
+  - "Алла прислала кэшбэк 50 zł" -> kind=income, name="кэшбэк", name_normalized_en="cashback refund"
+  - "кофе 12 zł" -> kind=expense (default)
+  - "5000 zł" (no context) -> kind=expense (default)
+`;
 
 export function buildParseExpensePrompt(params: { todayWarsaw: string }): {
   system: Anthropic.Messages.TextBlockParam[];
@@ -110,6 +135,7 @@ export function buildParseExpensePrompt(params: { todayWarsaw: string }): {
 }
 
 export const ParsedExpenseRowSchema = z.object({
+  kind: z.enum(["expense", "income"]).default("expense"),
   name: z.string().min(1),
   name_normalized_en: z.string().min(1),
   amount: z.number().positive(),

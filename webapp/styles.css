@@ -123,9 +123,24 @@ header h1 {
 
 .kpis {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  /* 5 KPIs now: Net / Расход / Доход / Записей / Топ-категория. Auto-fit
+     so the layout reflows on narrow phones to 2 columns. */
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 8px;
   margin: 0 0 16px;
+}
+.kpi-income strong {
+  color: #20c997;
+}
+.kpi-net strong.tone-good {
+  color: #20c997;
+}
+.kpi-net strong.tone-bad {
+  color: #ff6b6b;
+}
+.tx-row.tx-income .amt {
+  color: #20c997;
+  font-weight: 600;
 }
 .kpi {
   background: var(--secondary-bg);

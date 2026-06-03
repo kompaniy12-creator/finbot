@@ -6,13 +6,17 @@
     <title>FinBot Dashboard</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
-    <link rel="stylesheet" href="./styles.css?v=20260531b" />
+    <link rel="stylesheet" href="./styles.css?v=20260604a" />
   </head>
   <body>
     <div id="gate" class="gate">
       <div class="gate-card">
         <h1>FinBot</h1>
-        <p>Открой через Telegram, нажми кнопку «Дашборд» в меню бота.</p>
+        <p>Войти в дашборд:</p>
+        <ul style="text-align:left; padding-left: 20px; line-height: 1.6;">
+          <li>в Telegram → нажми «Дашборд» в меню бота;</li>
+          <li>в браузере на компе → попроси у бота ссылку командой <code>/web</code>.</li>
+        </ul>
       </div>
     </div>
 
@@ -37,12 +41,22 @@
       </header>
 
       <section class="kpis">
+        <div class="kpi kpi-net">
+          <label>Нетто</label>
+          <strong id="kpi-net">- EUR</strong>
+          <div id="kpi-net-delta" class="kpi-delta"></div>
+        </div>
         <div class="kpi kpi-total">
-          <label>Всего</label>
+          <label>Расход</label>
           <strong id="kpi-total">- EUR</strong>
           <div id="kpi-total-delta" class="kpi-delta"></div>
           <div id="kpi-forecast" class="kpi-forecast"></div>
           <ul id="kpi-by-currency" class="kpi-currency-list"></ul>
+        </div>
+        <div class="kpi kpi-income">
+          <label>Доход</label>
+          <strong id="kpi-income">- EUR</strong>
+          <div id="kpi-income-delta" class="kpi-delta"></div>
         </div>
         <div class="kpi">
           <label>Записей</label>

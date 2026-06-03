@@ -2,7 +2,7 @@
 // Returns totals in EUR (computed per-row using EUR/PLN rate at expense_date).
 // total_pln is kept for backwards-compat / internal consumers.
 import { adminClient } from "../_shared/supabase.ts";
-import { authenticateInitData, extractInitData } from "../_shared/webapp_auth.ts";
+import { authenticate } from "../_shared/webapp_auth.ts";
 import { handleOptions, json, unauthorized } from "../_shared/api_response.ts";
 import { todayWarsawIso } from "../_shared/dates.ts";
 import { loadEurRates, plnToEur } from "../_shared/eur_view.ts";
@@ -10,10 +10,8 @@ import { resolveDateWindow } from "../_shared/period.ts";
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return handleOptions(req);
-  const initData = extractInitData(req);
-  if (!initData) return unauthorized(req);
   const sb = adminClient();
-  const me = await authenticateInitData(initData, sb);
+  const me = await authenticate(req, sb);
   if (!me) return unauthorized(req);
 
   const url = new URL(req.url);
@@ -34,36 +32,49 @@ Deno.serve(async (req: Request) => {
   void me;
   const [expRes, catRes, prevRes] = await Promise.all([
     sb.from("expenses")
-      .select("amount, currency, amount_pln, category_id, expense_date")
+      .select("kind, amount, currency, amount_pln, category_id, expense_date")
       .eq("archived", false)
       .gte("expense_date", win.start)
       .lte("expense_date", win.end),
-    sb.from("categories").select("id, name, is_fallback"),
+    sb.from("categories").select("id, name, kind, is_fallback"),
     sb.from("expenses")
-      .select("amount_pln, expense_date")
+      .select("kind, amount_pln, expense_date")
       .eq("archived", false)
       .gte("expense_date", prevStartIso)
       .lte("expense_date", prevEndIso),
   ]);
-  const rows = (expRes.data ?? []) as Array<{
+  const allRows = (expRes.data ?? []) as Array<{
+    kind: "expense" | "income";
     amount: number;
     currency: string;
     amount_pln: number;
     category_id: string;
     expense_date: string;
   }>;
+  // Existing aggregations were written before income existed; keep them
+  // expense-only so totals/by_category/by_day stay strictly negative cashflow.
+  // Income gets its own parallel summary at the bottom of the response.
+  const rows = allRows.filter((r) => r.kind !== "income");
+  const incomeRows = allRows.filter((r) => r.kind === "income");
   const cats = (catRes.data ?? []) as Array<{
     id: string;
     name: string;
+    kind: "expense" | "income";
     is_fallback: boolean;
   }>;
 
-  const prevRows = (prevRes.data ?? []) as Array<{
+  const allPrev = (prevRes.data ?? []) as Array<{
+    kind: "expense" | "income";
     amount_pln: number;
     expense_date: string;
   }>;
+  const prevRows = allPrev.filter((r) => r.kind !== "income");
+  const prevIncomeRows = allPrev.filter((r) => r.kind === "income");
 
-  const dates = [...rows.map((r) => r.expense_date), ...prevRows.map((r) => r.expense_date)];
+  const dates = [
+    ...allRows.map((r) => r.expense_date),
+    ...allPrev.map((r) => r.expense_date),
+  ];
   const eurRates = await loadEurRates(sb, dates);
 
   let prevTotalEur = 0;
@@ -92,15 +103,41 @@ Deno.serve(async (req: Request) => {
   }
   const count = rows.length;
 
-  // One entry per category in DB, including zero-spend categories.
-  // Sort by total_eur desc; fallback ("Дополнительные расходы") tie-broken to bottom.
-  const breakdown = cats.map((c) => ({
+  // One entry per EXPENSE category in DB, including zero-spend categories.
+  // Income categories are excluded - they get their own breakdown.
+  const breakdown = cats.filter((c) => c.kind !== "income").map((c) => ({
     id: c.id,
     name: c.name,
     is_fallback: c.is_fallback,
     total_eur: Math.round((byCatEur.get(c.id) ?? 0) * 100) / 100,
     total_pln: Math.round((byCatPln.get(c.id) ?? 0) * 100) / 100,
     count: byCatCount.get(c.id) ?? 0,
+  })).sort((a, b) => {
+    if (b.total_eur !== a.total_eur) return b.total_eur - a.total_eur;
+    if (a.is_fallback !== b.is_fallback) return a.is_fallback ? 1 : -1;
+    return a.name.localeCompare(b.name, "ru");
+  });
+
+  // --- Income side (parallel pipeline) ------------------------------------
+  let totalIncomeEur = 0;
+  const incomeByCatEur = new Map<string, number>();
+  const incomeByCatCount = new Map<string, number>();
+  for (const r of incomeRows) {
+    const eur = plnToEur(Number(r.amount_pln), r.expense_date, eurRates) ?? 0;
+    totalIncomeEur += eur;
+    incomeByCatEur.set(r.category_id, (incomeByCatEur.get(r.category_id) ?? 0) + eur);
+    incomeByCatCount.set(r.category_id, (incomeByCatCount.get(r.category_id) ?? 0) + 1);
+  }
+  let prevIncomeEur = 0;
+  for (const r of prevIncomeRows) {
+    prevIncomeEur += plnToEur(Number(r.amount_pln), r.expense_date, eurRates) ?? 0;
+  }
+  const incomeBreakdown = cats.filter((c) => c.kind === "income").map((c) => ({
+    id: c.id,
+    name: c.name,
+    is_fallback: c.is_fallback,
+    total_eur: Math.round((incomeByCatEur.get(c.id) ?? 0) * 100) / 100,
+    count: incomeByCatCount.get(c.id) ?? 0,
   })).sort((a, b) => {
     if (b.total_eur !== a.total_eur) return b.total_eur - a.total_eur;
     if (a.is_fallback !== b.is_fallback) return a.is_fallback ? 1 : -1;
@@ -176,5 +213,16 @@ Deno.serve(async (req: Request) => {
         date,
         total_eur: Math.round(total * 100) / 100,
       })),
+    income: {
+      total_eur: Math.round(totalIncomeEur * 100) / 100,
+      count: incomeRows.length,
+      prev_total_eur: Math.round(prevIncomeEur * 100) / 100,
+      prev_count: prevIncomeRows.length,
+      by_category: incomeBreakdown,
+    },
+    // Net cashflow: income minus expense for the current window. Negative
+    // means the family is spending more than coming in.
+    net_eur: Math.round((totalIncomeEur - totalEur) * 100) / 100,
+    prev_net_eur: Math.round((prevIncomeEur - prevTotalEur) * 100) / 100,
   });
 });

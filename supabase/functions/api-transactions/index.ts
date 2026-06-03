@@ -5,14 +5,19 @@
 // Sorted by created_at desc. Search matches receipt.merchant or expense.name.
 
 import { adminClient } from "../_shared/supabase.ts";
-import { authenticateInitData, extractInitData } from "../_shared/webapp_auth.ts";
+import { authenticate } from "../_shared/webapp_auth.ts";
 import { handleOptions, json, unauthorized } from "../_shared/api_response.ts";
 import { loadEurRates, plnToEur } from "../_shared/eur_view.ts";
 import { todayWarsawIso } from "../_shared/dates.ts";
 import { resolveDateWindow } from "../_shared/period.ts";
 
 interface FeedItem {
+  // `kind` is the FEED row type (receipt vs solo expense), unchanged for
+  // backwards-compat. `tx_kind` is the cashflow direction (expense vs
+  // income) added when we introduced income tracking. Receipts are always
+  // tx_kind='expense' (you don't photograph a paycheck).
   kind: "receipt" | "expense";
+  tx_kind: "expense" | "income";
   id: string;
   title: string;
   amount: number;
@@ -31,10 +36,8 @@ interface FeedItem {
 
 Deno.serve(async (req: Request) => {
   if (req.method === "OPTIONS") return handleOptions(req);
-  const initData = extractInitData(req);
-  if (!initData) return unauthorized(req);
   const sb = adminClient();
-  const me = await authenticateInitData(initData, sb);
+  const me = await authenticate(req, sb);
   if (!me) return unauthorized(req);
 
   const url = new URL(req.url);
@@ -115,9 +118,10 @@ Deno.serve(async (req: Request) => {
     }
   }
 
-  // 2. Solo expenses (no receipt_id).
+  // 2. Solo expenses (no receipt_id). Now includes income rows too -
+  // they're filed in the same table, distinguished by tx_kind in the FeedItem.
   let eq = sb.from("expenses").select(
-    "id, name, amount, currency, amount_pln, expense_date, category_id, family_member_id, source, needs_review, needs_confirmation, created_at",
+    "id, kind, name, amount, currency, amount_pln, expense_date, category_id, family_member_id, source, needs_review, needs_confirmation, created_at",
   ).eq("archived", false).is("receipt_id", null);
   if (search) eq = eq.ilike("name", `%${search}%`);
   if (validCategory) eq = eq.eq("category_id", validCategory);
@@ -129,6 +133,7 @@ Deno.serve(async (req: Request) => {
   if (eRes.error) return json(req, { error: eRes.error.message }, 500);
   const solos = (eRes.data ?? []) as Array<{
     id: string;
+    kind: "expense" | "income";
     name: string;
     amount: number;
     currency: string;
@@ -150,6 +155,7 @@ Deno.serve(async (req: Request) => {
   const merged: FeedItem[] = [
     ...receipts.map<FeedItem>((r) => ({
       kind: "receipt",
+      tx_kind: "expense",
       id: r.id,
       title: r.merchant ?? "(без названия)",
       amount: Number(r.total),
@@ -167,6 +173,7 @@ Deno.serve(async (req: Request) => {
     })),
     ...solos.map<FeedItem>((e) => ({
       kind: "expense",
+      tx_kind: e.kind ?? "expense",
       id: e.id,
       title: e.name,
       amount: Number(e.amount),

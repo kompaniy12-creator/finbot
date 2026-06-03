@@ -19,12 +19,17 @@ import {
   membersCommand,
   promoteCommand,
   revokeCommand,
+  runAskAndBuildReply,
   startCommand,
   statsCommand,
   subscriptionsCommand,
   unauthorizedReply,
   undoCommand,
+  webCommand,
+  webLogoutCommand,
 } from "./commands.ts";
+import type { AskTurn } from "../_shared/ask_agent.ts";
+import { classifyIntent } from "../_shared/intent.ts";
 import { formatReply, highAmountKeyboard, processTextMessage } from "./text_pipeline.ts";
 import { processVoiceMessage } from "./voice_pipeline.ts";
 import { type PhotoOutcome, processPhotoMessage } from "./photo_pipeline.ts";
@@ -33,6 +38,7 @@ import { startProgress } from "../_shared/progress.ts";
 export interface RouteContext {
   sb: SupabaseClient;
   member: FamilyMember;
+  chatId?: number;
 }
 
 /**
@@ -98,7 +104,7 @@ export async function routeCommand(
     case "me":
       return await meCommand(ctx.sb, ctx.member);
     case "ask":
-      return await askCommand(ctx.sb, args, ctx.member);
+      return await askCommand(ctx.sb, args, ctx.member, ctx.chatId);
     case "undo":
       return await undoCommand(ctx.sb, ctx.member);
     case "members":
@@ -113,6 +119,10 @@ export async function routeCommand(
       return await demoteCommand(ctx.sb, args, ctx.member);
     case "subscriptions":
       return await subscriptionsCommand(ctx.sb, ctx.member);
+    case "web":
+      return await webCommand(ctx.sb, ctx.member);
+    case "web_logout":
+      return await webLogoutCommand(ctx.sb, ctx.member);
     case "recurring":
     case "budget":
       return {
@@ -167,29 +177,87 @@ export async function dispatch(
   const cmd = parseCommand(msg.text);
   if (cmd) {
     const reply = await routeCommand(
-      { sb: input.sb, member: input.member },
+      { sb: input.sb, member: input.member, chatId: msg.chat.id },
       cmd.cmd,
       cmd.args,
     );
     return { chatId: msg.chat.id, reply };
   }
 
-  // Non-command text -> full pipeline (M7).
+  // Conversational /ask: if this is a Telegram reply to a bot message that
+  // belongs to an ask_threads row, route to the agent with prior context
+  // instead of the expense parser. Without this, the follow-up "Как считал?"
+  // hits processTextMessage and gets stored as a 0.01 PLN transaction.
+  if (msg.text && msg.reply_to_message) {
+    const parentId = msg.reply_to_message.message_id;
+    const parentFromBot = msg.reply_to_message.from?.is_bot === true;
+    if (parentFromBot && typeof parentId === "number") {
+      const thread = await input.sb
+        .from("ask_threads")
+        .select("history")
+        .eq("chat_id", msg.chat.id)
+        .eq("bot_message_id", parentId)
+        .gt("expires_at", new Date().toISOString())
+        .maybeSingle();
+      if (thread.data) {
+        const rawHistory = (thread.data as { history: unknown }).history;
+        const priorTurns: AskTurn[] = Array.isArray(rawHistory)
+          ? (rawHistory as unknown[]).flatMap((r) => {
+            if (!r || typeof r !== "object") return [];
+            const o = r as Record<string, unknown>;
+            if (typeof o.question === "string" && typeof o.answer === "string") {
+              return [{ question: o.question, answer: o.answer }];
+            }
+            return [];
+          })
+          : [];
+        const reply = await runAskAndBuildReply({
+          sb: input.sb,
+          viewer: input.member,
+          chatId: msg.chat.id,
+          question: msg.text.slice(0, 500),
+          priorTurns,
+        });
+        return { chatId: msg.chat.id, reply };
+      }
+    }
+  }
+
+  // Non-command text. Classify intent: a question or chitchat goes straight
+  // to the analyst (no /ask needed), so the user can talk to the bot like a
+  // live financial advisor. An expense-shaped message goes to the parser.
+  // If the parser comes back empty, we fall back to the analyst rather than
+  // dead-end with "Не понял что записать".
   if (msg.text) {
+    const intent = classifyIntent(msg.text);
+
+    if (intent === "question") {
+      const reply = await runAskAndBuildReply({
+        sb: input.sb,
+        viewer: input.member,
+        chatId: msg.chat.id,
+        question: msg.text.slice(0, 500),
+      });
+      return { chatId: msg.chat.id, reply };
+    }
+
     const result = await processTextMessage({
       sb: input.sb,
       member: input.member,
       text: msg.text,
       telegramMessageId: msg.message_id,
     });
-    if (!result) {
-      return {
+    if (!result || result.expenses.length === 0) {
+      // Parser saw something expense-shaped but couldn't extract a row.
+      // Hand off to the analyst so the user gets a useful conversational
+      // reply instead of the old dead-end "Не понял что записать".
+      const reply = await runAskAndBuildReply({
+        sb: input.sb,
+        viewer: input.member,
         chatId: msg.chat.id,
-        reply: {
-          text:
-            "Не понял, что записать. Попробуй: «кофе 12 zł» или «бензин 200 zł и продукты 80 zł».",
-        },
-      };
+        question: msg.text.slice(0, 500),
+      });
+      return { chatId: msg.chat.id, reply };
     }
     const kb = highAmountKeyboard(result);
     return {

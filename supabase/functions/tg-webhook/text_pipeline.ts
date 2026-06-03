@@ -23,6 +23,9 @@ const HIGH_AMOUNT_PLN = Number(Deno.env.get("HIGH_AMOUNT_THRESHOLD_PLN") ?? "200
 
 export interface ProcessedExpense {
   id: string;
+  // Optional for backwards-compat with tests + older callers; absence is
+  // treated as "expense" everywhere downstream (formatReply, dashboards).
+  kind?: "expense" | "income";
   name: string;
   amount: number;
   currency: string;
@@ -111,12 +114,15 @@ async function processSingleItem(
   // deno-lint-ignore no-explicit-any
   fallback: any,
 ): Promise<ProcessedExpense | null> {
+  const kind = item.kind ?? "expense";
+
   const cat = await categorize(
     { sb, embedFn, fallback },
     {
       name: item.name,
       nameNormalizedEn: item.name_normalized_en,
       familyMemberId: member.id,
+      kind,
     },
   );
 
@@ -132,6 +138,7 @@ async function processSingleItem(
   const needsConfirmation = amountPln > HIGH_AMOUNT_PLN || cat.confidence !== "high";
 
   const ins = await sb.from("expenses").insert({
+    kind,
     name: item.name,
     name_normalized: item.name_normalized_en,
     expense_date: item.expense_date,
@@ -161,6 +168,7 @@ async function processSingleItem(
 
   return {
     id: (ins.data as { id: string }).id,
+    kind,
     name: item.name,
     amount: item.amount,
     currency: item.currency,
@@ -188,22 +196,50 @@ export function formatReply(result: PipelineResult): string {
         tag = " (категория не точно)";
       }
     }
-    return `- ${e.amount} ${e.currency} ${e.name} -> ${e.category_name}${tag}`;
+    // ➕ green plus for income, plain "-" bullet for expense, so a glance at
+    // the bubble tells you "money in" vs "money out" without reading.
+    const bullet = e.kind === "income" ? "➕" : "-";
+    const sign = e.kind === "income" ? "+" : "";
+    return `${bullet} ${sign}${e.amount} ${e.currency} ${e.name} -> ${e.category_name}${tag}`;
   });
-  const head = result.expenses.length === 1 ? "Записал:" : `Записал ${result.expenses.length}:`;
+
+  // Header reflects whether the message was all income, all expense, or mixed.
+  const hasIncome = result.expenses.some((e) => e.kind === "income");
+  const hasExpense = result.expenses.some((e) => e.kind !== "income");
+  const n = result.expenses.length;
+  let head: string;
+  if (hasIncome && !hasExpense) {
+    head = n === 1 ? "💰 Доход:" : `💰 ${n} дохода:`;
+  } else if (hasIncome && hasExpense) {
+    head = `Записал ${n} (доход + расход):`;
+  } else {
+    head = n === 1 ? "Записал:" : `Записал ${n}:`;
+  }
 
   // Show the total in the SOURCE currency when all items share one (so "3*400 лек"
   // sums to "1200 ALL", not "1200 PLN"). When the message mixes currencies, fall
-  // back to the PLN normalization.
+  // back to the PLN normalization. For mixed kinds we split the total.
   const currencies = new Set(result.expenses.map((e) => e.currency));
-  let totalLine: string;
-  if (currencies.size === 1) {
+  let totalLine = "";
+  if (hasIncome && hasExpense) {
+    const inSum = result.expenses
+      .filter((e) => e.kind === "income")
+      .reduce((acc, e) => acc + e.amount_pln, 0);
+    const outSum = result.expenses
+      .filter((e) => e.kind !== "income")
+      .reduce((acc, e) => acc + e.amount_pln, 0);
+    totalLine = `\nДоход: +${inSum.toFixed(2)} PLN\nРасход: -${outSum.toFixed(2)} PLN`;
+  } else if (currencies.size === 1) {
     const cur = result.expenses[0]!.currency;
     const sourceTotal = result.expenses.reduce((acc, e) => acc + Number(e.amount), 0);
-    totalLine = `\nВсего: ${sourceTotal.toFixed(2)} ${cur}`;
+    const sign = hasIncome ? "+" : "";
+    const label = hasIncome ? "Получил" : "Всего";
+    totalLine = `\n${label}: ${sign}${sourceTotal.toFixed(2)} ${cur}`;
   } else {
     const totalPln = result.expenses.reduce((acc, e) => acc + e.amount_pln, 0);
-    totalLine = `\nВсего: ${totalPln.toFixed(2)} PLN (смешанные валюты)`;
+    const sign = hasIncome ? "+" : "";
+    const label = hasIncome ? "Получил" : "Всего";
+    totalLine = `\n${label}: ${sign}${totalPln.toFixed(2)} PLN (смешанные валюты)`;
   }
 
   // Heads-up if any row was dated outside the current Warsaw month (the

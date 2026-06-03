@@ -65,8 +65,74 @@ function periodQuery() {
 
 const $ = (sel) => document.querySelector(sel);
 
+// --- Browser session (magic link flow) ---
+// SPEC §0 originally banned localStorage; the magic-link desktop path needs
+// somewhere durable to keep the session token across navigations, and an
+// httpOnly cookie would require server-side Set-Cookie wiring that we don't
+// yet have. localStorage is acceptable here because (a) the token is opaque
+// and short-lived (24h), (b) /web_logout invalidates it server-side, and
+// (c) it's only set on desktop browsers, never inside the Telegram WebView.
+const WEB_SESSION_KEY = "finbot_web_session";
+
+function getWebSession() {
+  try {
+    const raw = localStorage.getItem(WEB_SESSION_KEY);
+    if (!raw) return null;
+    const obj = JSON.parse(raw);
+    if (!obj || !obj.token || !obj.expires_at) return null;
+    if (new Date(obj.expires_at) <= new Date()) {
+      localStorage.removeItem(WEB_SESSION_KEY);
+      return null;
+    }
+    return obj;
+  } catch {
+    return null;
+  }
+}
+
+function setWebSession(token, expires_at) {
+  try {
+    localStorage.setItem(WEB_SESSION_KEY, JSON.stringify({ token, expires_at }));
+  } catch (_) { /* private mode */ }
+}
+
+function clearWebSession() {
+  try {
+    localStorage.removeItem(WEB_SESSION_KEY);
+  } catch (_) { /* private mode */ }
+}
+
+// Exchange ?magic=<token> in the URL for a durable session. Runs once at
+// page load. Always clears the URL afterwards so the magic doesn't leak
+// into bookmarks or share-with-friends.
+async function bootstrapMagic() {
+  const params = new URLSearchParams(location.search);
+  const magic = params.get("magic");
+  if (!magic) return;
+  try {
+    const r = await fetch(API_BASE + "/api-web-exchange", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ magic }),
+    });
+    if (r.ok) {
+      const j = await r.json();
+      if (j && j.session && j.expires_at) {
+        setWebSession(j.session, j.expires_at);
+      }
+    }
+  } catch (_) { /* network failure - user will see gate */ }
+  // Strip ?magic= from the URL whether the exchange worked or not.
+  params.delete("magic");
+  const cleanQuery = params.toString();
+  const cleanUrl = location.pathname + (cleanQuery ? "?" + cleanQuery : "");
+  history.replaceState({}, "", cleanUrl);
+}
+
 function gateOrApp() {
-  if (!window.TG || !TG.isReady) {
+  const tgReady = window.TG && TG.isReady;
+  const webSession = getWebSession();
+  if (!tgReady && !webSession) {
     $("#gate").classList.remove("hidden");
     $("#app").classList.add("hidden");
     return false;
@@ -83,16 +149,28 @@ let sessionAlertShown = false;
 
 async function api(path, opts = {}) {
   const url = API_BASE + path;
-  const headers = Object.assign({}, opts.headers, {
-    "Authorization": "tma " + TG.initData,
-    "X-Telegram-Init-Data": TG.initData,
-  });
+  const ws = getWebSession();
+  const headers = Object.assign({}, opts.headers);
+  if (ws) {
+    headers["Authorization"] = "Bearer " + ws.token;
+  } else if (window.TG && TG.isReady) {
+    headers["Authorization"] = "tma " + TG.initData;
+    headers["X-Telegram-Init-Data"] = TG.initData;
+  }
   const resp = await fetch(url, Object.assign({}, opts, { headers }));
   if (resp.status === 401) {
     if (!sessionAlertShown) {
       sessionAlertShown = true;
-      TG.showAlert("Срок сессии истёк. Закрой Mini App и открой заново через бота.");
+      const msg = ws
+        ? "Сессия в браузере истекла. Попроси у бота новую ссылку командой /web."
+        : "Срок сессии истёк. Закрой Mini App и открой заново через бота.";
+      if (window.TG && TG.showAlert && TG.isReady) {
+        TG.showAlert(msg);
+      } else {
+        alert(msg);
+      }
     }
+    if (ws) clearWebSession();
     throw SESSION_EXPIRED;
   }
   return resp;
@@ -129,6 +207,30 @@ async function loadKpis() {
     pct: r.prev_count > 0 ? ((r.count - r.prev_count) / r.prev_count) * 100 : null,
     abs: r.delta_count,
     unit: "",
+    higherIsWorse: false,
+  });
+
+  // Income + Net KPIs (added when income tracking shipped). Older
+  // api-stats versions don't return r.income; fall back to zero so the
+  // tiles render "0.00 EUR" instead of "undefined".
+  const incomeTotal = Number(r.income?.total_eur ?? 0);
+  const incomePrev = Number(r.income?.prev_total_eur ?? 0);
+  $("#kpi-income").textContent = incomeTotal.toFixed(2) + " EUR";
+  renderDelta($("#kpi-income-delta"), {
+    pct: incomePrev > 0 ? ((incomeTotal - incomePrev) / incomePrev) * 100 : null,
+    abs: incomeTotal - incomePrev,
+    unit: "EUR",
+    higherIsWorse: false, // more income = good
+  });
+  const net = Number(r.net_eur ?? (incomeTotal - (r.total_eur ?? 0)));
+  const prevNet = Number(r.prev_net_eur ?? 0);
+  const netEl = $("#kpi-net");
+  netEl.textContent = (net >= 0 ? "+" : "") + net.toFixed(2) + " EUR";
+  netEl.className = net >= 0 ? "tone-good" : "tone-bad";
+  renderDelta($("#kpi-net-delta"), {
+    pct: prevNet !== 0 ? ((net - prevNet) / Math.abs(prevNet)) * 100 : null,
+    abs: net - prevNet,
+    unit: "EUR",
     higherIsWorse: false,
   });
   // Month-end forecast (only meaningful for month-to-date view).
@@ -485,13 +587,16 @@ function renderTransactions() {
         }
       }
     } else {
+      const isIncome = t.tx_kind === "income";
+      if (isIncome) li.classList.add("tx-income");
       const metaPrefix = `${t.expense_date} | `;
       const metaSuffix = fm ? ` | ${escapeHtml(fm.name)}` : "";
+      const sign = isIncome ? "+" : "";
       li.innerHTML =
         `<div class="name">${escapeHtml(t.title)}<div class="meta">${metaPrefix}${
           categoryMetaHtml(t.category_id)
         }${metaSuffix}</div></div>` +
-        `<div class="amt">${Number(t.amount).toFixed(2)} ${t.currency}</div>` +
+        `<div class="amt">${sign}${Number(t.amount).toFixed(2)} ${t.currency}</div>` +
         `<button class="tx-del" type="button" title="Удалить" aria-label="Удалить">×</button>`;
       li.querySelector(".tx-del").addEventListener("click", (ev) => {
         ev.stopPropagation();
@@ -945,6 +1050,10 @@ async function refresh() {
 }
 
 async function main() {
+  // Magic-link exchange must run before gate check so the URL token is
+  // converted into a stored session in time for gateOrApp() to see it.
+  await bootstrapMagic();
+
   if (!gateOrApp()) return;
   if (TG.themeAttach) TG.themeAttach();
 
