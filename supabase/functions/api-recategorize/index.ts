@@ -32,12 +32,13 @@ Deno.serve(async (req: Request) => {
   }
 
   const expRes = await sb.from("expenses")
-    .select("id, family_member_id, category_id, archived")
+    .select("id, kind, family_member_id, category_id, archived")
     .eq("id", body.expense_id)
     .maybeSingle();
   if (expRes.error) return json(req, { error: expRes.error.message }, 500);
   const exp = expRes.data as {
     id: string;
+    kind: "expense" | "income";
     family_member_id: string;
     category_id: string;
     archived: boolean;
@@ -47,12 +48,19 @@ Deno.serve(async (req: Request) => {
   if (exp.archived) return json(req, { error: "archived" }, 409);
 
   const catRes = await sb.from("categories")
-    .select("id, name")
+    .select("id, name, kind")
     .eq("id", body.category_id)
     .maybeSingle();
   if (catRes.error) return json(req, { error: catRes.error.message }, 500);
-  const cat = catRes.data as { id: string; name: string } | null;
+  const cat = catRes.data as { id: string; name: string; kind: "expense" | "income" } | null;
   if (!cat) return json(req, { error: "category_not_found" }, 404);
+  // Cross-kind recategorization is forbidden: moving an income row to an
+  // expense category (or vice versa) would silently flip its sign in
+  // dashboards and corrupt the income/net KPIs. The UI already filters the
+  // picker by kind; this is the server-side belt to the client-side braces.
+  if (cat.kind !== exp.kind) {
+    return json(req, { error: "kind_mismatch" }, 409);
+  }
 
   if (exp.category_id === cat.id) {
     return json(req, { ok: true, category_id: cat.id, category_name: cat.name, unchanged: true });
