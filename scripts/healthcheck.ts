@@ -51,7 +51,6 @@ const tables = [
 ];
 for (const t of tables) {
   try {
-    const n = await count(`${t}?archived=is.null,archived=eq.false`);
     // The archived filter doesn't exist on all tables, so use a no-op fallback
     const total = await count(`${t}?id=not.is.null`);
     ok(`${t}: ${total} rows`);
