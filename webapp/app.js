@@ -132,14 +132,70 @@ async function bootstrapMagic() {
 function gateOrApp() {
   const tgReady = window.TG && TG.isReady;
   const webSession = getWebSession();
+  const nav = $("#bottom-nav");
   if (!tgReady && !webSession) {
     $("#gate").classList.remove("hidden");
     $("#app").classList.add("hidden");
+    if (nav) nav.classList.add("hidden");
     return false;
   }
   $("#gate").classList.add("hidden");
   $("#app").classList.remove("hidden");
+  if (nav) nav.classList.remove("hidden");
   return true;
+}
+
+// --- Bottom-nav tabs ----------------------------------------------------
+// `tab-only` sections are gated by CSS rules tied to a body class. The
+// selected tab also drives a runtime filter on the transaction feed so
+// "Доходы"/"Расходы" show only matching rows; "Дашборд" shows everything.
+const VALID_TABS = ["dashboard", "income", "expense", "settings"];
+state.tab = "dashboard";
+
+function setActiveTab(tab) {
+  if (!VALID_TABS.includes(tab)) tab = "dashboard";
+  state.tab = tab;
+  // Body class drives CSS visibility for all `.tab-only` sections.
+  for (const t of VALID_TABS) document.body.classList.remove("tab-" + t);
+  document.body.classList.add("tab-" + tab);
+  // Highlight the nav button.
+  const buttons = document.querySelectorAll("#bottom-nav .nav-btn");
+  for (const b of buttons) {
+    b.classList.toggle("active", b.dataset.tab === tab);
+  }
+  // Re-render the tx list with the kind filter applied.
+  if (typeof renderTransactions === "function") renderTransactions();
+  // Persist in URL hash so a refresh keeps the tab.
+  try {
+    history.replaceState({}, "", location.pathname + location.search + "#" + tab);
+  } catch (_) { /* ignore */ }
+}
+
+function bindNav() {
+  for (const btn of document.querySelectorAll("#bottom-nav .nav-btn")) {
+    btn.addEventListener("click", () => setActiveTab(btn.dataset.tab));
+  }
+  const initial = (location.hash || "").replace("#", "");
+  setActiveTab(VALID_TABS.includes(initial) ? initial : "dashboard");
+}
+
+// Hook the settings "Отозвать сессии" button into api-* surface.
+async function bindSettings() {
+  const btn = $("#settings-web-logout");
+  if (!btn) return;
+  btn.addEventListener("click", async () => {
+    const status = $("#settings-web-logout-status");
+    status.textContent = "...";
+    status.className = "settings-status";
+    try {
+      // No dedicated API yet; we rely on the bot command. Show instructions.
+      status.textContent = "В Telegram: /web_logout";
+      status.className = "settings-status tone-good";
+    } catch (e) {
+      status.textContent = "Ошибка: " + ((e && e.message) || e);
+      status.className = "settings-status tone-bad";
+    }
+  });
 }
 
 // Reuse a single rejection for stale-session so callers' catch blocks can
@@ -515,7 +571,15 @@ function categoryMetaHtml(catId) {
 function renderTransactions() {
   const ul = $("#tx-list");
   ul.innerHTML = "";
-  for (const t of state.txItems) {
+  // Active tab restricts the feed: "income" → only income rows, "expense" →
+  // only expense rows, "dashboard" → mixed. Receipts have tx_kind='expense'
+  // by definition (you don't photograph a paycheck).
+  const tabFilter = state.tab === "income"
+    ? (t) => t.tx_kind === "income"
+    : state.tab === "expense"
+    ? (t) => t.tx_kind !== "income"
+    : () => true;
+  for (const t of state.txItems.filter(tabFilter)) {
     const li = document.createElement("li");
     li.className = "tx-row " + (t.kind === "receipt" ? "tx-receipt" : "tx-expense");
     const fm = state.family.get(t.family_member_id);
@@ -1058,6 +1122,9 @@ async function main() {
   if (TG.themeAttach) TG.themeAttach();
 
   if (TG.user && TG.user.first_name) $("#hello").textContent = "FinBot, " + TG.user.first_name;
+
+  bindNav();
+  bindSettings();
 
   await loadCategoriesAndFamily();
   await refresh();

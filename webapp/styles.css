@@ -807,3 +807,114 @@ footer {
 .cat-link {
   border-bottom: 1px dotted var(--hint);
 }
+
+/* ---- Bottom navigation (4 tabs) ----------------------------------- */
+.bottom-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  background: var(--secondary-bg);
+  border-top: 1px solid var(--line);
+  padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
+  z-index: 100;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+.bottom-nav.hidden {
+  display: none;
+}
+.bottom-nav .nav-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  background: transparent;
+  border: none;
+  color: var(--hint);
+  font-size: 11px;
+  padding: 6px 2px;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+.bottom-nav .nav-btn .nav-icon {
+  font-size: 20px;
+  line-height: 1;
+}
+.bottom-nav .nav-btn .nav-label {
+  font-weight: 500;
+}
+.bottom-nav .nav-btn.active {
+  color: var(--neon-blue);
+  background: color-mix(in srgb, var(--neon-blue) 12%, transparent);
+}
+
+/* Lift main content above the fixed nav so the last section isn't covered. */
+.app {
+  padding-bottom: calc(72px + env(safe-area-inset-bottom));
+}
+
+/* Tab visibility: each .tab-only is hidden by default, then revealed by the
+   corresponding body class. */
+.tab-only {
+  display: none;
+}
+body.tab-dashboard .tab-only.show-on-dashboard,
+body.tab-income .tab-only.show-on-income,
+body.tab-expense .tab-only.show-on-expense,
+body.tab-settings .tab-only.show-on-settings {
+  display: block;
+}
+/* Grid/flex containers need their original display value, not block. */
+body.tab-dashboard .tab-only.show-on-dashboard.kpi,
+body.tab-income .tab-only.show-on-income.kpi,
+body.tab-expense .tab-only.show-on-expense.kpi {
+  display: block;
+}
+
+/* ---- Settings panel ------------------------------------------------ */
+.settings-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.settings-list li {
+  background: var(--secondary-bg);
+  padding: 14px;
+  border-radius: 10px;
+  margin-bottom: 10px;
+}
+.settings-list strong {
+  display: block;
+  margin-bottom: 4px;
+  font-size: 15px;
+}
+.settings-list p {
+  margin: 0 0 10px;
+  color: var(--hint);
+  font-size: 13px;
+}
+.settings-list button {
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+}
+.settings-status {
+  display: inline-block;
+  margin-left: 10px;
+  font-size: 12px;
+  color: var(--hint);
+}
+.settings-status.tone-good {
+  color: #20c997;
+}
+.settings-status.tone-bad {
+  color: #ff6b6b;
+}

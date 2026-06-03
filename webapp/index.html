@@ -6,7 +6,7 @@
     <title>FinBot Dashboard</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
-    <link rel="stylesheet" href="./styles.css?v=20260604a" />
+    <link rel="stylesheet" href="./styles.css?v=20260604b" />
   </head>
   <body>
     <div id="gate" class="gate">
@@ -21,9 +21,9 @@
     </div>
 
     <main id="app" class="app hidden">
-      <header>
+      <header class="app-header">
         <h1 id="hello">FinBot</h1>
-        <div class="period-tabs">
+        <div class="period-tabs tab-only show-on-dashboard show-on-income show-on-expense">
           <button data-period="day">День</button>
           <button data-period="week">Неделя</button>
           <button class="active" data-period="month">Месяц</button>
@@ -41,32 +41,34 @@
       </header>
 
       <section class="kpis">
-        <div class="kpi kpi-net">
+        <div class="kpi kpi-net tab-only show-on-dashboard">
           <label>Нетто</label>
           <strong id="kpi-net">- EUR</strong>
           <div id="kpi-net-delta" class="kpi-delta"></div>
         </div>
-        <div class="kpi kpi-total">
+        <div class="kpi kpi-total tab-only show-on-dashboard show-on-expense">
           <label>Расход</label>
           <strong id="kpi-total">- EUR</strong>
           <div id="kpi-total-delta" class="kpi-delta"></div>
           <div id="kpi-forecast" class="kpi-forecast"></div>
           <ul id="kpi-by-currency" class="kpi-currency-list"></ul>
         </div>
-        <div class="kpi kpi-income">
+        <div class="kpi kpi-income tab-only show-on-dashboard show-on-income">
           <label>Доход</label>
           <strong id="kpi-income">- EUR</strong>
           <div id="kpi-income-delta" class="kpi-delta"></div>
         </div>
-        <div class="kpi">
+        <div class="kpi tab-only show-on-dashboard show-on-expense">
           <label>Записей</label>
           <strong id="kpi-count">-</strong>
           <div id="kpi-count-delta" class="kpi-delta"></div>
         </div>
-        <div class="kpi"><label>Топ-категория</label><strong id="kpi-top">-</strong></div>
+        <div class="kpi tab-only show-on-dashboard show-on-expense">
+          <label>Топ-категория</label><strong id="kpi-top">-</strong>
+        </div>
       </section>
 
-      <section class="chart-row">
+      <section class="chart-row tab-only show-on-dashboard show-on-expense">
         <div class="chart-card chart-card-donut">
           <div class="chart-head">
             <h3>По категориям</h3>
@@ -83,7 +85,7 @@
         </div>
       </section>
 
-      <section class="chart-card chart-card-wide">
+      <section class="chart-card chart-card-wide tab-only show-on-dashboard show-on-expense">
         <div class="chart-head">
           <h3>Топ-5</h3>
           <span>главные категории</span>
@@ -91,7 +93,7 @@
         <canvas id="bar"></canvas>
       </section>
 
-      <section class="chart-card chart-card-wide heatmap-card">
+      <section class="chart-card chart-card-wide heatmap-card tab-only show-on-dashboard show-on-expense">
         <div class="chart-head">
           <h3>Активность по дням</h3>
           <span>ярче ячейка = больше расход</span>
@@ -117,7 +119,7 @@
         </div>
       </section>
 
-      <section class="categories">
+      <section class="categories tab-only show-on-dashboard show-on-settings">
         <header class="categories-head">
           <h3>Все категории</h3>
           <button id="cat-add-btn" type="button" style="display: none">+ Добавить</button>
@@ -125,7 +127,7 @@
         <ul id="cat-list" class="cat-list"></ul>
       </section>
 
-      <section class="transactions">
+      <section class="transactions tab-only show-on-dashboard show-on-income show-on-expense">
         <header class="tx-header">
           <h3>Транзакции</h3>
           <input id="search" type="search" placeholder="поиск" />
@@ -152,8 +154,45 @@
         </div>
       </section>
 
-      <footer><small id="version">FinBot v1.0</small></footer>
+      <section id="settings-panel" class="tab-only show-on-settings">
+        <header class="categories-head">
+          <h3>Настройки</h3>
+        </header>
+        <ul class="settings-list">
+          <li>
+            <strong>Веб-сессии</strong>
+            <p>Отозвать все активные браузерные сессии (на других устройствах).</p>
+            <button id="settings-web-logout" type="button">Отозвать сессии</button>
+            <span id="settings-web-logout-status" class="settings-status"></span>
+          </li>
+          <li>
+            <strong>Версия</strong>
+            <p id="settings-version">FinBot v1.1</p>
+          </li>
+        </ul>
+      </section>
+
+      <footer><small id="version">FinBot v1.1</small></footer>
     </main>
+
+    <nav id="bottom-nav" class="bottom-nav hidden">
+      <button class="nav-btn active" data-tab="dashboard">
+        <span class="nav-icon">📊</span>
+        <span class="nav-label">Дашборд</span>
+      </button>
+      <button class="nav-btn" data-tab="income">
+        <span class="nav-icon">💰</span>
+        <span class="nav-label">Доходы</span>
+      </button>
+      <button class="nav-btn" data-tab="expense">
+        <span class="nav-icon">💸</span>
+        <span class="nav-label">Расходы</span>
+      </button>
+      <button class="nav-btn" data-tab="settings">
+        <span class="nav-icon">⚙️</span>
+        <span class="nav-label">Настройки</span>
+      </button>
+    </nav>
 
     <div id="cat-modal" class="modal hidden" role="dialog" aria-modal="true">
       <div class="modal-backdrop"></div>
@@ -211,7 +250,7 @@
       </div>
     </div>
 
-    <script src="./tg-webapp.js?v=20260531b"></script>
-    <script src="./app.js?v=20260531b"></script>
+    <script src="./tg-webapp.js?v=20260604b"></script>
+    <script src="./app.js?v=20260604b"></script>
   </body>
 </html>

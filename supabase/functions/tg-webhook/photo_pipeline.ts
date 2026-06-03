@@ -158,13 +158,19 @@ export async function processPhotoMessage(args: {
 
   // Preload categories so Vision can assign one per item in a single call.
   // This collapses the old N-item Claude-fallback loop into 0 extra calls.
+  // Receipts are always expenses, so restrict the candidate list to expense
+  // categories. Otherwise Vision can (and did) pick an income category like
+  // "Зарплата" for a salary screenshot, producing a row with kind='expense'
+  // but category.kind='income' - which then shows nowhere coherent in the
+  // dashboard.
   const catRows = await args.sb
     .from("categories")
-    .select("id, name, is_fallback")
+    .select("id, name, kind, is_fallback")
+    .eq("kind", "expense")
     .order("is_fallback", { ascending: true })
     .order("name", { ascending: true });
   const categories = (catRows.data ?? []) as Array<
-    { id: string; name: string; is_fallback: boolean }
+    { id: string; name: string; kind: string; is_fallback: boolean }
   >;
   const catById = new Map(categories.map((c) => [c.id, c]));
   const fallbackCatId = categories.find((c) => c.is_fallback)?.id ?? categories[0]?.id ?? null;
