@@ -105,16 +105,26 @@ Deno.serve(async (req: Request) => {
     }>;
   }
 
-  // Line counts per receipt (single round-trip).
+  // Line counts AND aggregate kind per receipt (single round-trip). The
+  // receipt's kind is derived from its children - a receipt with any income
+  // line item is treated as income overall (in practice all lines share
+  // kind, so this is robust to the common case). Without this, salary-photo
+  // screenshots fall into the "expense" feed because receipts hard-code
+  // tx_kind='expense' and ignore the underlying rows.
   const receiptIds = receipts.map((r) => r.id);
   const countMap = new Map<string, number>();
+  const receiptKindMap = new Map<string, "expense" | "income">();
   if (receiptIds.length > 0) {
-    const cnt = await sb.from("expenses").select("receipt_id").in("receipt_id", receiptIds).eq(
-      "archived",
-      false,
-    );
-    for (const row of (cnt.data ?? []) as Array<{ receipt_id: string }>) {
+    const cnt = await sb.from("expenses").select("receipt_id, kind").in(
+      "receipt_id",
+      receiptIds,
+    ).eq("archived", false);
+    for (const row of (cnt.data ?? []) as Array<{ receipt_id: string; kind: string | null }>) {
       countMap.set(row.receipt_id, (countMap.get(row.receipt_id) ?? 0) + 1);
+      if (row.kind === "income") receiptKindMap.set(row.receipt_id, "income");
+      else if (!receiptKindMap.has(row.receipt_id)) {
+        receiptKindMap.set(row.receipt_id, "expense");
+      }
     }
   }
 
@@ -155,7 +165,7 @@ Deno.serve(async (req: Request) => {
   const merged: FeedItem[] = [
     ...receipts.map<FeedItem>((r) => ({
       kind: "receipt",
-      tx_kind: "expense",
+      tx_kind: receiptKindMap.get(r.id) ?? "expense",
       id: r.id,
       title: r.merchant ?? "(без названия)",
       amount: Number(r.total),

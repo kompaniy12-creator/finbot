@@ -581,20 +581,23 @@ function renderTransactions() {
     : () => true;
   for (const t of state.txItems.filter(tabFilter)) {
     const li = document.createElement("li");
-    li.className = "tx-row " + (t.kind === "receipt" ? "tx-receipt" : "tx-expense");
+    const isIncome = t.tx_kind === "income";
+    li.className = "tx-row " + (t.kind === "receipt" ? "tx-receipt" : "tx-expense") +
+      (isIncome ? " tx-income" : "");
     const fm = state.family.get(t.family_member_id);
     if (t.kind === "receipt") {
       const expanded = state.expandedReceipts.has(t.id);
       const caret = expanded ? "▾" : "▸";
       const meta = `${t.expense_date} | чек, ${t.item_count} поз.` +
         (fm ? ` | ${escapeHtml(fm.name)}` : "");
+      const sign = isIncome ? "+" : "";
       li.innerHTML =
         `<div class="name"><span class="caret">${caret}</span> ${
           escapeHtml(t.title)
         } <button class="tx-photo" type="button" data-id="${t.id}" data-title="${
           escapeHtml(t.title)
         }" title="Открыть фото чека">🖼</button><div class="meta">${meta}</div></div>` +
-        `<div class="amt">${Number(t.amount).toFixed(2)} ${t.currency}</div>` +
+        `<div class="amt">${sign}${Number(t.amount).toFixed(2)} ${t.currency}</div>` +
         `<button class="tx-del" type="button" title="Удалить" aria-label="Удалить">×</button>`;
       li.style.cursor = "pointer";
       li.addEventListener("click", (ev) => {
