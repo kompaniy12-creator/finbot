@@ -39,7 +39,8 @@ const CURRENCY_MARKERS = new RegExp(
 
 // A small whitelist of greetings / acknowledgements that should not get
 // parsed as an expense even if some weird heuristic flips.
-const GREETING = /^(привет|здаров|здравствуй|hi|hello|hey|cześć|witaj|вітаю|спасибо|спс|thanks|thx|ок|ok|понятно|ясно)\b/i;
+const GREETING =
+  /^(привет|здаров|здравствуй|hi|hello|hey|cześć|witaj|вітаю|спасибо|спс|thanks|thx|ок|ok|понятно|ясно)\b/i;
 
 /**
  * Classify a free-form user message. See module docs for failure-mode notes.

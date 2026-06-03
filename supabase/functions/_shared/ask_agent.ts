@@ -316,9 +316,9 @@ export async function runAskAgent(args: {
   // and what was answered.
   const priorBlock = (priorTurns && priorTurns.length > 0)
     ? "Предыдущая беседа (для контекста, не повторяй):\n" +
-      priorTurns.map((t, i) =>
-        `[Тур ${i + 1}]\nВопрос: ${t.question}\nОтвет: ${t.answer}`
-      ).join("\n\n") + "\n\n"
+      priorTurns.map((t, i) => `[Тур ${i + 1}]\nВопрос: ${t.question}\nОтвет: ${t.answer}`).join(
+        "\n\n",
+      ) + "\n\n"
     : "";
 
   // Conversation state. We carry the assistant turns + tool results back

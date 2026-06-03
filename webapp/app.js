@@ -378,9 +378,7 @@ function renderSettingsCategoryList(kind, ulSelector) {
     const fallbackTag = c.is_fallback
       ? `<small style="color: var(--hint);"> (fallback)</small>`
       : "";
-    const meta = c.usage_count
-      ? `использована ${c.usage_count} раз`
-      : "ещё не использована";
+    const meta = c.usage_count ? `использована ${c.usage_count} раз` : "ещё не использована";
     const adminBtns = admin
       ? `<button class="cat-edit" type="button" data-id="${c.id}" title="Изменить">✏️</button>` +
         (c.is_fallback
@@ -406,7 +404,9 @@ function renderSettingsCategoryList(kind, ulSelector) {
     });
   }
   // Hide the per-kind + button for non-admins.
-  const addBtn = document.querySelector(kind === "income" ? "#settings-add-income" : "#settings-add-expense");
+  const addBtn = document.querySelector(
+    kind === "income" ? "#settings-add-income" : "#settings-add-expense",
+  );
   if (addBtn) addBtn.style.display = admin ? "" : "none";
 }
 
@@ -751,8 +751,9 @@ function openCategoryPicker(expense, receiptId) {
   }
   if (!rowKind) rowKind = "expense";
   const kindLabel = rowKind === "income" ? "дохода" : "расхода";
-  $("#cat-modal-title").textContent =
-    `Категория ${kindLabel} для: ${expense.name || expense.title || "запись"}`;
+  $("#cat-modal-title").textContent = `Категория ${kindLabel} для: ${
+    expense.name || expense.title || "запись"
+  }`;
   list.innerHTML = "";
   const sorted = [...state.categories.values()]
     .filter((c) => (c.kind || "expense") === rowKind)

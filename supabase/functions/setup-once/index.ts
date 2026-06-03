@@ -142,26 +142,22 @@ const CATEGORIES = [
   },
   {
     name: "Темки",
-    description:
-      "Side gigs, hustles, one-off deals, ad-hoc opportunities, informal earnings",
+    description: "Side gigs, hustles, one-off deals, ad-hoc opportunities, informal earnings",
     kind: "income",
   },
   {
     name: "Подарок",
-    description:
-      "Gifts received, monetary presents from family or friends, birthday money",
+    description: "Gifts received, monetary presents from family or friends, birthday money",
     kind: "income",
   },
   {
     name: "Возврат долгов",
-    description:
-      "Loan repayments received, money returned, debts repaid back to me",
+    description: "Loan repayments received, money returned, debts repaid back to me",
     kind: "income",
   },
   {
     name: "Прочий",
-    description:
-      "Other income, miscellaneous earnings, unclassified positive cash flow",
+    description: "Other income, miscellaneous earnings, unclassified positive cash flow",
     kind: "income",
     isFallback: true,
   },
@@ -230,7 +226,8 @@ Deno.serve(async (req: Request) => {
       const row = existing as { id: string; embedding: unknown; kind: string | null };
       const emb = row.embedding as number[] | string | null;
       // pgvector serialises to "[0,0,...]" over JSON; both shapes possible.
-      const isPlaceholder = (typeof emb === "string" && /^\[\s*0(\.0+)?(\s*,\s*0(\.0+)?)*\s*\]$/.test(emb)) ||
+      const isPlaceholder =
+        (typeof emb === "string" && /^\[\s*0(\.0+)?(\s*,\s*0(\.0+)?)*\s*\]$/.test(emb)) ||
         (Array.isArray(emb) && emb.every((v) => v === 0));
       if (isPlaceholder) {
         const embedding = await session.run(cat.description, {
