@@ -53,6 +53,10 @@ const CreateSchema = z.object({
   // automatically create a debt row from `borrowed_for` to me.
   borrowed_for: z.string().max(120).nullable().optional(),
   auto_create_debt: z.boolean().default(false),
+  // Pattern-based match for variable-amount credits (e.g. mBank
+  // overdraft interest 'ROZL. OPROC. UJEMN.'). Case-insensitive
+  // substring match against expense.name.
+  name_pattern: z.string().max(200).nullable().optional(),
 });
 
 const UpdateSchema = CreateSchema.partial().extend({
@@ -100,7 +104,7 @@ Deno.serve(async (req: Request) => {
   if (req.method === "GET") {
     const statusFilter = url.searchParams.get("status") ?? "active";
     let q = sb.from("credits").select(
-      "id, family_member_id, name, type, lender, principal, currency, interest_rate, start_date, term_months, monthly_payment, payment_day, remaining_balance, status, notes, borrowed_for, auto_create_debt, created_at",
+      "id, family_member_id, name, type, lender, principal, currency, interest_rate, start_date, term_months, monthly_payment, payment_day, remaining_balance, status, notes, borrowed_for, auto_create_debt, name_pattern, created_at",
     ).order("created_at", { ascending: false });
     if (statusFilter !== "all") q = q.eq("status", statusFilter);
     const res = await q;
@@ -152,7 +156,7 @@ Deno.serve(async (req: Request) => {
     const id = url.searchParams.get("id");
     if (!id || !/^[0-9a-f-]{36}$/i.test(id)) return json(req, { error: "id_required" }, 400);
     const c = await sb.from("credits").select(
-      "id, family_member_id, currency, monthly_payment, borrowed_for, auto_create_debt, name, status",
+      "id, family_member_id, currency, monthly_payment, borrowed_for, auto_create_debt, name, status, name_pattern",
     ).eq("id", id).maybeSingle();
     if (!c.data) return json(req, { error: "not_found" }, 404);
     const cr = c.data as {
@@ -164,29 +168,41 @@ Deno.serve(async (req: Request) => {
       auto_create_debt: boolean;
       name: string;
       status: string;
+      name_pattern: string | null;
     };
     if (cr.family_member_id !== me.id && me.role !== "admin") return forbidden(req);
-    if (!cr.borrowed_for || !cr.monthly_payment) {
+    if (!cr.borrowed_for || (!cr.monthly_payment && !cr.name_pattern)) {
       return json(req, { error: "credit_not_configured_for_debt" }, 400);
     }
 
     const sixMonthsAgo = new Date(Date.now() - 180 * 86_400_000).toISOString().slice(0, 10);
-    const mp = Number(cr.monthly_payment);
-    const tol = Math.max(0.05, 0.05 * mp);
-    const expRes = await sb.from("expenses")
-      .select("id, amount, expense_date")
-      .eq("family_member_id", cr.family_member_id)
-      .eq("kind", "expense")
-      .eq("archived", false)
-      .eq("currency", cr.currency)
-      .gte("expense_date", sixMonthsAgo)
-      .gte("amount", mp - tol)
-      .lte("amount", mp + tol);
-    const exps = (expRes.data ?? []) as Array<{
-      id: string;
-      amount: number;
-      expense_date: string;
-    }>;
+    // Pattern match (variable amount) takes precedence over amount range.
+    let exps: Array<{ id: string; amount: number; expense_date: string }>;
+    if (cr.name_pattern && cr.name_pattern.trim().length > 0) {
+      const pat = `%${cr.name_pattern.trim().replace(/[%_]/g, "\\$&")}%`;
+      const expRes = await sb.from("expenses")
+        .select("id, amount, expense_date")
+        .eq("family_member_id", cr.family_member_id)
+        .eq("kind", "expense")
+        .eq("archived", false)
+        .eq("currency", cr.currency)
+        .gte("expense_date", sixMonthsAgo)
+        .ilike("name", pat);
+      exps = (expRes.data ?? []) as typeof exps;
+    } else {
+      const mp = Number(cr.monthly_payment!);
+      const tol = Math.max(0.05, 0.05 * mp);
+      const expRes = await sb.from("expenses")
+        .select("id, amount, expense_date")
+        .eq("family_member_id", cr.family_member_id)
+        .eq("kind", "expense")
+        .eq("archived", false)
+        .eq("currency", cr.currency)
+        .gte("expense_date", sixMonthsAgo)
+        .gte("amount", mp - tol)
+        .lte("amount", mp + tol);
+      exps = (expRes.data ?? []) as typeof exps;
+    }
 
     if (exps.length === 0) {
       return json(req, { ok: true, created: 0, scanned: 0 });
@@ -346,6 +362,7 @@ Deno.serve(async (req: Request) => {
       notes: body.notes ?? null,
       borrowed_for: body.borrowed_for ?? null,
       auto_create_debt: body.auto_create_debt,
+      name_pattern: body.name_pattern ?? null,
     }).select("id").maybeSingle();
     if (ins.error) return json(req, { error: ins.error.message }, 500);
     log("info", "credit_created", { id: (ins.data as { id: string }).id });
