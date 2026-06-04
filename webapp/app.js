@@ -20,6 +20,8 @@ const state = {
   txFilterCategory: "",
   txFilterMember: "",
   txFilterSource: "",
+  // "Только сверённые" toggle in the transactions filter bar.
+  filterReconciled: false,
   txItems: [], // mixed feed: kind=receipt|expense
   expandedReceipts: new Map(), // receipt_id -> [line items], lazy-loaded
   categories: new Map(),
@@ -902,7 +904,12 @@ function renderTransactions() {
     : state.tab === "expense"
     ? (t) => t.tx_kind !== "income"
     : () => true;
-  for (const t of state.txItems.filter(tabFilter)) {
+  // "Только сверённые" toggle (state.filterReconciled). When true, only
+  // rows the bot matched against a PDF bank statement are shown.
+  const baseItems = state.filterReconciled
+    ? state.txItems.filter((t) => t.reconciled)
+    : state.txItems;
+  for (const t of baseItems.filter(tabFilter)) {
     const li = document.createElement("li");
     const isIncome = t.tx_kind === "income";
     // Payment-method glyph next to the amount: 💳 card / 💵 cash / 🏦
@@ -911,6 +918,12 @@ function renderTransactions() {
     const pm = t.payment_method || "unknown";
     const pmIcon = pm === "card" ? "💳" : pm === "cash" ? "💵" : pm === "transfer" ? "🏦" : "";
     const recIcon = t.reconciled ? " <span class='tx-rec' title='Сверено с банком'>✓</span>" : "";
+    // Human-readable reconciliation date for the meta line.
+    const recDate = t.reconciled && t.reconciled_at
+      ? ` · сверено ${formatRecDate(t.reconciled_at)}`
+      : t.reconciled
+      ? " · сверено"
+      : "";
     li.className = "tx-row " + (t.kind === "receipt" ? "tx-receipt" : "tx-expense") +
       (isIncome ? " tx-income" : "") +
       (t.reconciled ? " tx-reconciled" : "");
@@ -919,7 +932,7 @@ function renderTransactions() {
       const expanded = state.expandedReceipts.has(t.id);
       const caret = expanded ? "▾" : "▸";
       const meta = `${t.expense_date} | чек, ${t.item_count} поз.` +
-        (fm ? ` | ${escapeHtml(fm.name)}` : "");
+        (fm ? ` | ${escapeHtml(fm.name)}` : "") + recDate;
       const sign = isIncome ? "+" : "";
       li.innerHTML =
         `<div class="name"><span class="caret">${caret}</span> ${
@@ -988,7 +1001,7 @@ function renderTransactions() {
     } else {
       // isIncome / pmIcon / recIcon already computed up top.
       const metaPrefix = `${t.expense_date} | `;
-      const metaSuffix = fm ? ` | ${escapeHtml(fm.name)}` : "";
+      const metaSuffix = (fm ? ` | ${escapeHtml(fm.name)}` : "") + recDate;
       const sign = isIncome ? "+" : "";
       li.innerHTML =
         `<div class="name">${escapeHtml(t.title)}<div class="meta">${metaPrefix}${
@@ -1152,6 +1165,16 @@ function escapeHtml(s) {
     /[&<>"']/g,
     (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]),
   );
+}
+
+// Short "сверено 03.06" style date label for the meta line. Strips the
+// year + time so the meta stays compact.
+function formatRecDate(iso) {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  const dd = String(d.getUTCDate()).padStart(2, "0");
+  const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+  return `${dd}.${mm}`;
 }
 
 const CHART_PALETTE = [
@@ -1530,11 +1553,24 @@ async function main() {
     state.txFilterCategory = "";
     state.txFilterMember = "";
     state.txFilterSource = "";
+    state.filterReconciled = false;
     if (filterCat) filterCat.value = "";
     if (filterMem) filterMem.value = "";
     if (filterSrc) filterSrc.value = "";
+    const recBtn = $("#filter-reconciled");
+    if (recBtn) recBtn.classList.remove("active");
     loadTransactions(true);
   });
+
+  const recBtn = $("#filter-reconciled");
+  if (recBtn) {
+    recBtn.addEventListener("click", () => {
+      state.filterReconciled = !state.filterReconciled;
+      recBtn.classList.toggle("active", state.filterReconciled);
+      // Re-render in place - we already have the data, just filter client-side.
+      renderTransactions();
+    });
+  }
 
   // Photo-modal close
   $("#photo-modal-close").addEventListener("click", closePhotoModal);

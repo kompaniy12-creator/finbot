@@ -35,6 +35,7 @@ interface FeedItem {
   // Payment + reconciliation (added with bank-statement import).
   payment_method: "card" | "cash" | "transfer" | "unknown";
   reconciled: boolean;
+  reconciled_at: string | null;
 }
 
 Deno.serve(async (req: Request) => {
@@ -189,6 +190,7 @@ Deno.serve(async (req: Request) => {
       // Real value comes from the underlying expense rows when reconciled.
       payment_method: "card",
       reconciled: false,
+      reconciled_at: null,
     })),
     ...solos.map<FeedItem>((e) => ({
       kind: "expense",
@@ -209,8 +211,39 @@ Deno.serve(async (req: Request) => {
       created_at: e.created_at,
       payment_method: e.payment_method ?? "unknown",
       reconciled: e.reconciled_at != null,
+      reconciled_at: e.reconciled_at,
     })),
   ];
+
+  // For receipts, derive reconciled state from underlying children.
+  // (Done after the merge so we have access to receiptIds.)
+  if (receiptIds.length > 0) {
+    const childRes = await sb.from("expenses")
+      .select("receipt_id, reconciled_at, payment_method")
+      .in("receipt_id", receiptIds);
+    const byReceipt = new Map<string, { reconciled: boolean; pm: string }>();
+    for (
+      const r of (childRes.data ?? []) as Array<{
+        receipt_id: string;
+        reconciled_at: string | null;
+        payment_method: string;
+      }>
+    ) {
+      const cur = byReceipt.get(r.receipt_id) ?? { reconciled: false, pm: "unknown" };
+      if (r.reconciled_at) cur.reconciled = true;
+      if (r.payment_method && r.payment_method !== "unknown") cur.pm = r.payment_method;
+      byReceipt.set(r.receipt_id, cur);
+    }
+    for (const item of merged) {
+      if (item.kind === "receipt") {
+        const info = byReceipt.get(item.id);
+        if (info) {
+          item.reconciled = info.reconciled;
+          item.payment_method = info.pm as FeedItem["payment_method"];
+        }
+      }
+    }
+  }
 
   merged.sort((a, b) => a.created_at < b.created_at ? 1 : a.created_at > b.created_at ? -1 : 0);
   const page = merged.slice(offset, offset + limit);

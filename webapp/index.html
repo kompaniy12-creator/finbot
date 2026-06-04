@@ -6,7 +6,7 @@
     <title>FinBot Dashboard</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
-    <link rel="stylesheet" href="./styles.css?v=20260604h" />
+    <link rel="stylesheet" href="./styles.css?v=20260604i" />
   </head>
   <body>
     <div id="gate" class="gate">
@@ -149,6 +149,14 @@
             <option value="voice">голос</option>
           </select>
           <button id="filter-reset" type="button" title="Сбросить фильтры">↺</button>
+          <button
+            id="filter-reconciled"
+            type="button"
+            class="tx-filter-rec"
+            title="Только сверённые с банком"
+          >
+            ✓ сверённые
+          </button>
         </div>
         <ul id="tx-list" class="tx-list"></ul>
         <div class="tx-pagination">
@@ -350,7 +358,7 @@
       </div>
     </div>
 
-    <script src="./tg-webapp.js?v=20260604h"></script>
-    <script src="./app.js?v=20260604h"></script>
+    <script src="./tg-webapp.js?v=20260604i"></script>
+    <script src="./app.js?v=20260604i"></script>
   </body>
 </html>

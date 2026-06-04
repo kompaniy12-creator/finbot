@@ -1121,9 +1121,28 @@ body.theme-dark {
 .tx-row .tx-rec {
   display: inline-block;
   margin-left: 6px;
-  padding: 0 5px;
-  border-radius: 4px;
+  padding: 1px 7px;
+  border-radius: 999px;
   font-size: 11px;
+  font-weight: 600;
   background: color-mix(in srgb, #20c997 22%, transparent);
   color: #20c997;
+}
+
+/* Whole-row treatment for reconciled transactions: green left edge so a
+   glance shows which rows have been confirmed by the bank. */
+.tx-row.tx-reconciled {
+  border-left: 3px solid #20c997;
+  padding-left: 9px; /* compensate the new border so content doesn't shift */
+}
+.tx-row.tx-reconciled .meta {
+  /* faint green tint so "сверено DD.MM" stands out without dominating */
+  color: color-mix(in srgb, #20c997 65%, var(--hint));
+}
+
+/* Filter chip in the tx filter bar: when "сверено-only" is on. */
+.tx-filter-rec.active {
+  background: color-mix(in srgb, #20c997 22%, transparent);
+  color: #20c997;
+  border-color: #20c997;
 }
