@@ -42,6 +42,25 @@ const CURRENCY_MARKERS = new RegExp(
 const GREETING =
   /^(привет|здаров|здравствуй|hi|hello|hey|cześć|witaj|вітаю|спасибо|спс|thanks|thx|ок|ok|понятно|ясно)\b/i;
 
+// Strong analyst triggers. When the message contains any of these tokens,
+// it goes to the analyst even if it also has digits/currency markers - so
+// "Отметь овощи 18.45 PLN как card" doesn't get eaten by the expense
+// parser. These describe ACTIONS over existing data, not new entries.
+const ANALYST_OVERRIDES = new RegExp(
+  "(^|[^\\p{L}])(" +
+    // mark / reconcile / merge / consolidate
+    "отметь|пометь|пометить|сверь|сверить|сверка|сверки|сопоставь|сопоставить|" +
+    "сравни|сравнить|объедини|объединить|объединить|" +
+    // bank-statement related
+    "выписк|банк|кредитк|картой|наличными|" +
+    // delete / change requests on existing data
+    "удали|удалить|перенеси|поменяй|измени|" +
+    // English analogues
+    "reconcile|match|mark|merge|delete|change" +
+    ")([^\\p{L}]|$)",
+  "iu",
+);
+
 /**
  * Classify a free-form user message. See module docs for failure-mode notes.
  *
@@ -55,6 +74,10 @@ const GREETING =
 export function classifyIntent(text: string): Intent {
   const t = text.trim();
   if (!t) return "question";
+  // Strong analyst override BEFORE the digit/currency rule: an explicit
+  // "отметь / сверь / выписка / удали" request must not be eaten by the
+  // expense parser just because it happens to contain a number.
+  if (ANALYST_OVERRIDES.test(t)) return "question";
   if (t.endsWith("?")) return "question";
   if (QUESTION_WORDS.test(t)) return "question";
   if (GREETING.test(t)) return "question";

@@ -875,6 +875,21 @@ async function doAskApply(
         const updRec = await sb.from("receipts").update({ archived: true }).eq("id", id);
         if (updRec.error) throw new Error(updRec.error.message);
         applied++;
+      } else if (kind === "mark_reconciled") {
+        const id = String(a.expense_id);
+        const pm = String(a.payment_method);
+        const override = typeof a.amount_pln_override === "number" &&
+            a.amount_pln_override > 0
+          ? a.amount_pln_override
+          : null;
+        const patch: Record<string, unknown> = {
+          reconciled_at: new Date().toISOString(),
+          payment_method: pm,
+        };
+        if (override !== null) patch.amount_pln = override;
+        const upd = await sb.from("expenses").update(patch).eq("id", id);
+        if (upd.error) throw new Error(upd.error.message);
+        applied++;
       } else {
         throw new Error(`unknown action: ${kind}`);
       }

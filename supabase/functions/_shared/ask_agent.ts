@@ -48,7 +48,16 @@ type ProposedAction =
     new_category_id: string;
     summary?: string;
   }
-  | { kind: "delete_receipt"; receipt_id: string; summary?: string };
+  | { kind: "delete_receipt"; receipt_id: string; summary?: string }
+  | {
+    kind: "mark_reconciled";
+    expense_id: string;
+    /** card / cash / transfer - what the bank statement says it was. */
+    payment_method: "card" | "cash" | "transfer";
+    /** Optional: the real PLN amount from the bank (e.g. 18.45 instead of our NBP-estimated 17.16). */
+    amount_pln_override?: number;
+    summary?: string;
+  };
 
 interface ProposeChangesInput {
   human_summary: string;
@@ -160,6 +169,23 @@ function validateActions(raw: unknown): ProposedAction[] {
         receipt_id: obj.receipt_id,
         summary: typeof obj.summary === "string" ? obj.summary : undefined,
       });
+    } else if (
+      obj.kind === "mark_reconciled" &&
+      typeof obj.expense_id === "string" && UUID.test(obj.expense_id) &&
+      (obj.payment_method === "card" || obj.payment_method === "cash" ||
+        obj.payment_method === "transfer")
+    ) {
+      const override = typeof obj.amount_pln_override === "number" &&
+          obj.amount_pln_override > 0
+        ? obj.amount_pln_override
+        : undefined;
+      out.push({
+        kind: "mark_reconciled",
+        expense_id: obj.expense_id,
+        payment_method: obj.payment_method,
+        amount_pln_override: override,
+        summary: typeof obj.summary === "string" ? obj.summary : undefined,
+      });
     }
   }
   return out;
@@ -243,13 +269,29 @@ const TOOLS: Anthropic.Messages.Tool[] = [
             properties: {
               kind: {
                 type: "string",
-                enum: ["delete_expense", "recategorize_expense", "delete_receipt"],
+                enum: [
+                  "delete_expense",
+                  "recategorize_expense",
+                  "delete_receipt",
+                  "mark_reconciled",
+                ],
               },
               expense_id: { type: "string", description: "UUID, required for expense actions" },
               receipt_id: { type: "string", description: "UUID, required for delete_receipt" },
               new_category_id: {
                 type: "string",
                 description: "UUID, required for recategorize_expense",
+              },
+              payment_method: {
+                type: "string",
+                enum: ["card", "cash", "transfer"],
+                description:
+                  "REQUIRED for mark_reconciled. The bank-confirmed method: card, cash, or transfer (BLIK/SEPA).",
+              },
+              amount_pln_override: {
+                type: "number",
+                description:
+                  "Optional, for mark_reconciled. The exact PLN amount the bank charged - use this when the user explicitly states a bank-PLN value (e.g. 'в выписке 18.45 PLN' means the row's amount_pln should be updated to 18.45, replacing the NBP estimate).",
               },
               summary: {
                 type: "string",
@@ -293,6 +335,13 @@ const SYSTEM_RULES =
   - delete_expense - архивирует одну трату ИЛИ доход (по expense_id) - механика та же, table одна
   - recategorize_expense - меняет категорию (expense_id + new_category_id). ВАЖНО: новая категория должна быть того же kind (доходная-у-доходной, расходная-у-расходной)
   - delete_receipt - архивирует чек + все его строки (receipt_id)
+  - mark_reconciled - помечает запись как сверённую с банком: payment_method=card/cash/transfer, reconciled_at=now, опционально amount_pln_override (точная PLN-сумма из выписки). Используй когда юзер говорит "куплено картой / наличными", "в выписке X PLN", "сверь с банком", "отметь", "это позиция X в выписке".
+
+ПРИМЕРЫ mark_reconciled:
+- "Отметь овощи 18.45 PLN как карту" → найди "овощи" через query_expenses, propose mark_reconciled с payment_method='card' и amount_pln_override=18.45.
+- "Парковка наличными" → найди "Парковка", propose mark_reconciled с payment_method='cash' (без amount_pln_override - сумма в БД уже верная).
+- "В выписке 38 PLN это SPAR за вчера, картой" → найди SPAR-чек или solo "SPAR" расход на ту дату, propose mark_reconciled с payment_method='card', amount_pln_override=38.
+- Если строка не одна (несколько кандидатов под сумму) - сначала уточни через query_expenses, потом предложи 1-2 варианта.
 
 ФОРМАТИРОВАНИЕ ОТВЕТА:
 - Plain text, никакого Markdown (без двойных звёздочек, одинарных звёздочек, подчёркиваний, обратных кавычек, решёток).
