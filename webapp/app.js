@@ -2272,7 +2272,8 @@ const CREDIT_TYPES = {
 };
 
 const credits = {
-  items: [],
+  all: [], // unfiltered from the API
+  items: [], // filtered for display
   filter: "active",
   editingId: null,
   // Reset every time the form opens.
@@ -2290,17 +2291,113 @@ function annuityPayment(principal, annualRatePct, months) {
 }
 
 async function loadCredits() {
+  // Always fetch all so the stats card can run on the full active set
+  // regardless of which filter chip the user has selected.
   try {
-    const r = await api("/api-credits?status=" + credits.filter).then((x) => x.json());
-    credits.items = r.items || [];
+    const r = await api("/api-credits?status=all").then((x) => x.json());
+    credits.all = r.items || [];
   } catch (e) {
     if (isSessionExpired(e)) return;
-    credits.items = [];
+    credits.all = [];
   }
+  applyCreditsFilter();
+}
+
+function applyCreditsFilter() {
+  credits.items = credits.filter === "all"
+    ? credits.all
+    : credits.all.filter((c) => c.status === credits.filter);
   renderCredits();
 }
 
+function renderCreditsStats() {
+  const box = $("#credits-stats");
+  if (!box) return;
+  box.innerHTML = "";
+  const active = credits.all.filter((c) => c.status === "active");
+  if (active.length === 0) return;
+
+  // Group by currency so a mixed PLN+EUR+USD portfolio renders one card per ccy.
+  const byCcy = new Map();
+  for (const c of active) {
+    const cur = byCcy.get(c.currency) ?? {
+      count: 0,
+      principal: 0,
+      remaining: 0,
+      monthly: 0,
+    };
+    cur.count++;
+    cur.principal += Number(c.principal) || 0;
+    cur.remaining += Number(c.remaining_balance) || 0;
+    cur.monthly += Number(c.monthly_payment) || 0;
+    byCcy.set(c.currency, cur);
+  }
+
+  for (const [ccy, s] of byCcy) {
+    const paid = Math.max(0, s.principal - s.remaining);
+    const pct = s.principal > 0 ? Math.round((paid / s.principal) * 100) : 0;
+    const card = document.createElement("div");
+    card.className = "cs-card";
+
+    const top = document.createElement("div");
+    top.className = "cs-top";
+    const left = document.createElement("div");
+    left.innerHTML = `<span class="cs-num">${s.count}</span> активных в ${ccy}`;
+    const right = document.createElement("div");
+    right.className = "cs-monthly";
+    right.textContent = `${formatNumber(s.monthly)} ${ccy}/мес`;
+    top.appendChild(left);
+    top.appendChild(right);
+
+    const remain = document.createElement("div");
+    remain.className = "cs-remain";
+    remain.innerHTML = `Остаток: <strong>${formatNumber(s.remaining)} ${ccy}</strong>`;
+
+    const paidEl = document.createElement("div");
+    paidEl.className = "cs-paid";
+    paidEl.textContent = `Выплачено ${formatNumber(paid)} из ${
+      formatNumber(s.principal)
+    } ${ccy} (${pct}%)`;
+
+    const bar = document.createElement("div");
+    bar.className = "cs-bar";
+    const fill = document.createElement("div");
+    fill.className = "cs-bar-fill";
+    fill.style.width = pct + "%";
+    bar.appendChild(fill);
+
+    card.appendChild(top);
+    card.appendChild(remain);
+    card.appendChild(paidEl);
+    card.appendChild(bar);
+    box.appendChild(card);
+  }
+
+  // Nearest upcoming payment across all active credits.
+  let next = null;
+  for (const c of active) {
+    if (!c.next_payment_date || !c.monthly_payment) continue;
+    if (!next || c.next_payment_date < next.date) {
+      next = {
+        date: c.next_payment_date,
+        amount: Number(c.monthly_payment),
+        currency: c.currency,
+        name: c.name,
+      };
+    }
+  }
+  if (next) {
+    const row = document.createElement("div");
+    row.className = "cs-next";
+    row.innerHTML = `Ближайший платёж: <strong>${formatPlanDate(next.date)}</strong> · ${
+      formatNumber(next.amount)
+    } ${next.currency} (${next.name})`;
+    box.appendChild(row);
+  }
+}
+
 function renderCredits() {
+  renderCreditsStats();
   const list = $("#credits-list");
   if (!list) return;
   list.innerHTML = "";
@@ -2589,7 +2686,9 @@ function bindCredits() {
       for (const b of document.querySelectorAll(".credits-filter")) {
         b.classList.toggle("active", b === f);
       }
-      loadCredits();
+      // Stats stay the same across filter changes - they always reflect
+      // the active subset - so just re-filter and re-render the list.
+      applyCreditsFilter();
     });
   }
   const close = $("#credit-form-close");
