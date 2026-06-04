@@ -37,8 +37,15 @@ export async function processBankStatement(args: {
   sb: SupabaseClient;
   member: FamilyMember;
   statementId: string;
+  /**
+   * 'pdf' for documents/file_path PDFs, 'image' for bank-app screenshots
+   * (Telegram photo or image-MIME document). Affects the Claude content
+   * block - documents go via {type: document}, images via {type: image}.
+   */
+  mediaType?: "pdf" | "image";
+  mimeType?: string; // for image: image/png, image/jpeg, etc.
 }): Promise<BankPipelineOutcome> {
-  const { sb, member, statementId } = args;
+  const { sb, member, statementId, mediaType = "pdf", mimeType } = args;
 
   // 1. Load statement row + extract Telegram file_id stashed in raw_text.
   const stmtRes = await sb
@@ -56,9 +63,9 @@ export async function processBankStatement(args: {
     return { kind: "no_file", statement_id: statementId };
   }
 
-  // 2. Download PDF.
-  const pdfBytes = await downloadTelegramFile(fileId);
-  if (!pdfBytes) {
+  // 2. Download file bytes.
+  const fileBytes = await downloadTelegramFile(fileId);
+  if (!fileBytes) {
     await sb.from("bank_statements").update({
       status: "failed",
       error: "telegram_download_failed",
@@ -66,10 +73,38 @@ export async function processBankStatement(args: {
     return { kind: "download_failed", statement_id: statementId };
   }
 
-  // 3. Claude Sonnet (vision/document) parse.
-  const base64 = bytesToBase64(pdfBytes);
+  // 3. Claude Sonnet vision/document parse. Same tool schema works for both
+  // PDF documents and screenshot images - the difference is only the content
+  // block envelope.
+  const base64 = bytesToBase64(fileBytes);
   const { system, tools } = buildBankStatementPrompt();
   const model = Deno.env.get("CLAUDE_MODEL_VISION") ?? "claude-sonnet-4-6";
+
+  const contentBlock = mediaType === "image"
+    ? {
+      type: "image" as const,
+      source: {
+        type: "base64" as const,
+        media_type: (mimeType ?? "image/jpeg") as
+          | "image/jpeg"
+          | "image/png"
+          | "image/gif"
+          | "image/webp",
+        data: base64,
+      },
+    }
+    : {
+      type: "document" as const,
+      source: {
+        type: "base64" as const,
+        media_type: "application/pdf" as const,
+        data: base64,
+      },
+    };
+
+  const promptText = mediaType === "image"
+    ? "Parse this BANK APP SCREENSHOT (mBank mobile app history view). Each visible row is one transaction. Read the merchant name on the left, the amount on the right (e.g. '-29,81 PLN' or '+650,50 PLN'). Sign of the amount determines kind: '-' = expense, no minus = income. The category text below merchant name (e.g. 'Żywność i chemia domowa') is mBank's auto-category - ignore it, just capture the transaction. Date: each row's date is typically shown above as a separator like '3 czerwca' (3 June). Use that grouping date. Method: card if it has the card icon (rectangle/credit card), transfer for arrow icons. Emit one tool call covering every visible row."
+    : "Parse this bank statement. Emit one tool call covering every transaction.";
 
   let resp;
   try {
@@ -84,14 +119,8 @@ export async function processBankStatement(args: {
       messages: [{
         role: "user",
         content: [
-          {
-            type: "document",
-            source: { type: "base64", media_type: "application/pdf", data: base64 },
-          },
-          {
-            type: "text",
-            text: "Parse this bank statement. Emit one tool call covering every transaction.",
-          },
+          contentBlock,
+          { type: "text", text: promptText },
         ],
       }],
     });

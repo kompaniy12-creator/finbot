@@ -325,6 +325,45 @@ export async function dispatch(
       return null; // ack already sent (if at all); cron-sweep will edit it
     }
 
+    // Caption-triggered bank-app screenshot path. If the user explicitly
+    // tells us this is a bank screenshot, we parse it like a PDF statement
+    // (extract lines, reconcile) instead of treating it as a store receipt.
+    if (msg.caption && isBankScreenshotCaption(msg.caption)) {
+      const prog = await startProgress(msg.chat.id, "📱 Распознаю выписку из приложения банка...");
+      const ins = await input.sb.from("bank_statements").insert({
+        family_member_id: input.member.id,
+        source: "other",
+        filename: `screenshot_${msg.message_id}.jpg`,
+        status: "parsing",
+        raw_text: `TG_FILE_ID:${largest.file_id}`,
+      }).select("id").maybeSingle();
+      const stmtId = (ins.data as { id: string } | null)?.id;
+      if (!stmtId) {
+        return {
+          chatId: msg.chat.id,
+          reply: { text: `Не смог зарегистрировать скриншот выписки.` },
+        };
+      }
+      let summaryText: string;
+      try {
+        const outcome = await processBankStatement({
+          sb: input.sb,
+          member: input.member,
+          statementId: stmtId,
+          mediaType: "image",
+          mimeType: "image/jpeg",
+        });
+        summaryText = formatBankReply(outcome, "скриншот выписки");
+      } catch (err) {
+        summaryText = `Ошибка распознавания выписки: ${(err as Error).message}`;
+      }
+      if (prog) {
+        await prog.update(summaryText);
+        return null;
+      }
+      return { chatId: msg.chat.id, reply: { text: summaryText } };
+    }
+
     const prog = await startProgress(msg.chat.id, "📸 Принимаю фото...");
     let text: string;
     try {
@@ -398,6 +437,24 @@ export async function dispatch(
   }
 
   return { chatId: msg.chat.id, reply: unauthorizedReply() };
+}
+
+// Detect "this photo is a bank-app screenshot, not a store receipt" via the
+// caption. Conservative: requires an explicit keyword so we don't redirect
+// every random Vodafone-receipt photo into the bank pipeline.
+function isBankScreenshotCaption(caption: string): boolean {
+  const c = caption.toLowerCase();
+  return (
+    c.includes("выписк") ||
+    c.includes("выпис") ||
+    c.includes("банк") ||
+    c.includes("mbank") ||
+    c.includes("santander") ||
+    c.includes("revolut") ||
+    c.includes("statement") ||
+    c.includes("historia") ||
+    c.includes("history")
+  );
 }
 
 function formatBankReply(outcome: BankPipelineOutcome, filename: string): string {
