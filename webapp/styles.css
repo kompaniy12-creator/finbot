@@ -1593,7 +1593,8 @@ body.theme-dark {
   padding: 0;
 }
 body.tab-planning .plan-fab,
-body.tab-credits .plan-fab {
+body.tab-credits .plan-fab,
+body.tab-debts .plan-fab {
   display: flex;
 }
 
@@ -1849,4 +1850,60 @@ body.tab-credits .plan-fab {
 }
 .credit-row.status-closed .credit-progress-fill {
   background: var(--neon-green);
+}
+
+/* === Debts tab ====================================================== */
+.debts-panel {
+  background: var(--secondary-bg);
+  border-radius: 12px;
+  padding: 14px;
+}
+.debts-filter {
+  flex: 1;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--text);
+  border-radius: 999px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.debts-filter.active {
+  background: var(--button);
+  color: var(--button-text);
+  border-color: var(--button);
+}
+
+/* Reuse credit-row shape; debts add a directional accent: red for
+   "Должен я" (money out), green for "Должны мне" (money in). */
+.credit-row.debt-i_owe {
+  border-left-color: #e85d75;
+}
+.credit-row.debt-owed_to_me {
+  border-left-color: var(--neon-green);
+}
+.credit-row.debt-i_owe.is-overdue,
+.credit-row.debt-owed_to_me.is-overdue {
+  border-left-color: #ff4fd8;
+  background: color-mix(in srgb, #e85d75 7%, var(--card-bg));
+}
+.credit-row.debt-i_owe .credit-progress-fill {
+  background: linear-gradient(90deg, #e85d75, #ff9500);
+}
+.credit-row.debt-owed_to_me .credit-progress-fill {
+  background: linear-gradient(90deg, var(--neon-green), var(--neon-cyan));
+}
+.debt-dir-btn {
+  flex: 1;
+  padding: 8px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.debt-dir-btn.active {
+  background: var(--button);
+  color: var(--button-text);
 }

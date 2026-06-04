@@ -13,7 +13,7 @@
     <title>FinBot Dashboard</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
-    <link rel="stylesheet" href="./styles.css?v=20260604r" />
+    <link rel="stylesheet" href="./styles.css?v=20260604s" />
   </head>
   <body>
     <div id="gate" class="gate">
@@ -306,9 +306,19 @@
         </button>
       </section>
 
-      <section class="placeholder-panel tab-only show-on-debts">
-        <header class="categories-head"><h3>🤝 Долги</h3></header>
-        <p class="settings-hint">Раздел в разработке. Кто должен мне, кому должен я.</p>
+      <section class="debts-panel tab-only show-on-debts">
+        <header class="credits-head">
+          <h3>🤝 Долги</h3>
+        </header>
+        <div class="credits-filters">
+          <button class="debts-filter active" data-filter="all" type="button">Все</button>
+          <button class="debts-filter" data-filter="i_owe" type="button">Должен я</button>
+          <button class="debts-filter" data-filter="owed_to_me" type="button">Должны мне</button>
+        </div>
+        <ul id="debts-list" class="credits-list"></ul>
+        <button id="debt-add-btn" type="button" class="plan-fab" aria-label="Добавить долг">
+          +
+        </button>
       </section>
 
       <section class="credits-panel tab-only show-on-credits">
@@ -792,7 +802,136 @@
       </div>
     </div>
 
-    <script src="./tg-webapp.js?v=20260604r"></script>
-    <script src="./app.js?v=20260604r"></script>
+    <div id="debt-form-modal" class="modal hidden" role="dialog" aria-modal="true">
+      <div class="modal-backdrop"></div>
+      <div class="modal-card plan-form-card">
+        <header class="modal-head">
+          <h3 id="debt-form-title">Новый долг</h3>
+          <button id="debt-form-close" type="button" aria-label="Закрыть">×</button>
+        </header>
+        <div class="cat-form plan-form">
+          <input type="hidden" id="debt-form-id" />
+
+          <div class="plan-kind-toggle">
+            <button type="button" class="debt-dir-btn active" data-dir="i_owe">Должен я</button>
+            <button type="button" class="debt-dir-btn" data-dir="owed_to_me">Должны мне</button>
+          </div>
+
+          <div class="plan-amount-row">
+            <input
+              type="number"
+              id="debt-form-amount"
+              step="0.01"
+              min="0"
+              placeholder="0.00"
+              inputmode="decimal"
+            />
+            <select id="debt-form-currency">
+              <option value="PLN">PLN</option>
+              <option value="EUR">EUR</option>
+              <option value="ALL">ALL</option>
+              <option value="USD">USD</option>
+            </select>
+          </div>
+
+          <h4 class="plan-section-title">Контрагент</h4>
+          <label id="debt-form-cp-label">Кому должен
+            <input
+              type="text"
+              id="debt-form-counterparty"
+              maxlength="120"
+              placeholder="Имя или название"
+            />
+          </label>
+
+          <h4 class="plan-section-title">Сроки</h4>
+          <label>Дата сделки
+            <input type="date" id="debt-form-borrowed" />
+          </label>
+          <label>Срок возврата
+            <input type="date" id="debt-form-due" />
+          </label>
+
+          <h4 class="plan-section-title">Текущий остаток</h4>
+          <label>Остаток
+            <input
+              type="number"
+              id="debt-form-remaining"
+              step="0.01"
+              min="0"
+              placeholder="по умолчанию = сумма"
+              inputmode="decimal"
+            />
+          </label>
+          <label>Заметка
+            <textarea id="debt-form-notes" maxlength="500" rows="2"></textarea>
+          </label>
+
+          <h4 class="plan-section-title">Напоминания</h4>
+          <label class="plan-row-toggle">
+            <span>За 3 дня до срока</span>
+            <input type="checkbox" id="debt-form-notify-3d" checked />
+          </label>
+          <label class="plan-row-toggle">
+            <span>В день срока</span>
+            <input type="checkbox" id="debt-form-notify-due" checked />
+          </label>
+          <label class="plan-row-toggle">
+            <span>После просрочки</span>
+            <input type="checkbox" id="debt-form-notify-overdue" checked />
+          </label>
+
+          <div class="cat-form-actions">
+            <button id="debt-form-delete" type="button" class="danger hidden">Удалить</button>
+            <button id="debt-form-pay" type="button" class="hidden">
+              Зафиксировать платёж
+            </button>
+            <button id="debt-form-cancel" type="button">Отмена</button>
+            <button id="debt-form-save" type="button" class="primary">Сохранить</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="debt-pay-modal" class="modal hidden" role="dialog" aria-modal="true">
+      <div class="modal-backdrop"></div>
+      <div class="modal-card">
+        <header class="modal-head">
+          <h3 id="debt-pay-title">Зафиксировать платёж</h3>
+          <button id="debt-pay-close" type="button" aria-label="Закрыть">×</button>
+        </header>
+        <div class="cat-form">
+          <label>Сумма
+            <input
+              type="number"
+              id="debt-pay-amount"
+              step="0.01"
+              min="0"
+              inputmode="decimal"
+            />
+          </label>
+          <label>Дата
+            <input type="date" id="debt-pay-date" />
+          </label>
+          <label>Способ
+            <select id="debt-pay-method">
+              <option value="transfer">Перевод</option>
+              <option value="cash">Наличные</option>
+              <option value="card">Карта</option>
+            </select>
+          </label>
+          <p class="settings-hint" id="debt-pay-hint">
+            Создастся запись расхода и уменьшится остаток по этому долгу.
+          </p>
+          <div class="cat-form-actions">
+            <button id="debt-pay-cancel" type="button">Отмена</button>
+            <button id="debt-pay-save" type="button" class="primary">Зафиксировать</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="./tg-webapp.js?v=20260604s"></script>
+    <script src="./app.js?v=20260604s"></script>
   </body>
 </html>

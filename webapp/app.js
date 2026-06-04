@@ -175,8 +175,9 @@ function setActiveTab(tab) {
   }
   // Re-render the tx list with the kind filter applied.
   if (typeof renderTransactions === "function") renderTransactions();
-  // Lazy-load credits on entry to the tab.
+  // Lazy-load credits / debts on entry to their tabs.
   if (tab === "credits" && typeof loadCredits === "function") loadCredits();
+  if (tab === "debts" && typeof loadDebts === "function") loadDebts();
   // Persist in URL hash so a refresh keeps the tab.
   try {
     history.replaceState({}, "", location.pathname + location.search + "#" + tab);
@@ -2369,6 +2370,301 @@ function bindCredits() {
   if (psave) psave.addEventListener("click", saveCreditPay);
 }
 
+// --- Debts ("🤝 Долги" tab) ------------------------------------------
+// Two-directional debt tracking with payment recording that auto-
+// creates the matching expense (when i_owe) or income (when owed_to_me)
+// row.
+
+const debts = {
+  items: [],
+  filter: "all", // all | i_owe | owed_to_me
+  editingId: null,
+  direction: "i_owe",
+  payTarget: null,
+};
+
+async function loadDebts() {
+  try {
+    const params = debts.filter === "all" ? "?status=all" : `?direction=${debts.filter}&status=all`;
+    const r = await api("/api-debts" + params).then((x) => x.json());
+    debts.items = r.items || [];
+  } catch (e) {
+    if (isSessionExpired(e)) return;
+    debts.items = [];
+  }
+  renderDebts();
+}
+
+function renderDebts() {
+  const list = $("#debts-list");
+  if (!list) return;
+  list.innerHTML = "";
+  if (debts.items.length === 0) {
+    const li = document.createElement("li");
+    li.className = "credits-empty";
+    li.textContent = "Долгов пока нет.";
+    list.appendChild(li);
+    return;
+  }
+  for (const d of debts.items) {
+    const li = document.createElement("li");
+    li.className = "credit-row debt-" + d.direction;
+    if (d.status === "closed") li.classList.add("status-closed");
+    if (d.is_overdue || d.status === "overdue") li.classList.add("is-overdue");
+    li.dataset.id = d.id;
+
+    const head = document.createElement("div");
+    head.className = "credit-row-head";
+    const name = document.createElement("div");
+    name.className = "credit-row-name";
+    name.textContent = (d.direction === "i_owe" ? "Кому: " : "От кого: ") + d.counterparty;
+    const tag = document.createElement("div");
+    tag.className = "credit-row-type";
+    tag.textContent = d.direction === "i_owe" ? "ДОЛЖЕН Я" : "ДОЛЖНЫ МНЕ";
+    head.appendChild(name);
+    head.appendChild(tag);
+
+    const money = document.createElement("div");
+    money.className = "credit-row-money";
+    const amt = document.createElement("div");
+    amt.className = "credit-amount";
+    amt.textContent = `${formatNumber(d.remaining_balance)} / ${
+      formatNumber(d.amount)
+    } ${d.currency}`;
+    const pct = document.createElement("div");
+    pct.className = "credit-pct";
+    pct.textContent = d.status === "closed" ? "погашено" : `${d.paid_pct}% возвращено`;
+    money.appendChild(amt);
+    money.appendChild(pct);
+
+    const bar = document.createElement("div");
+    bar.className = "credit-progress";
+    const fill = document.createElement("div");
+    fill.className = "credit-progress-fill";
+    fill.style.width = d.paid_pct + "%";
+    bar.appendChild(fill);
+
+    const meta = document.createElement("div");
+    meta.className = "credit-row-meta";
+    const bits = [];
+    if (d.due_date) {
+      if (d.is_overdue) bits.push(`просрочено: ${d.due_date}`);
+      else if (d.days_to_due === 0) bits.push("срок сегодня");
+      else if (d.days_to_due > 0) bits.push(`до срока: ${d.days_to_due} дн.`);
+    }
+    bits.push("взято: " + d.borrowed_at);
+    meta.textContent = bits.join(" · ");
+
+    li.appendChild(head);
+    li.appendChild(money);
+    li.appendChild(bar);
+    li.appendChild(meta);
+
+    li.addEventListener("click", () => openDebtForm(d));
+    list.appendChild(li);
+  }
+}
+
+function setDebtDirection(dir) {
+  debts.direction = dir;
+  for (const b of document.querySelectorAll(".debt-dir-btn")) {
+    b.classList.toggle("active", b.dataset.dir === dir);
+  }
+  const lbl = $("#debt-form-cp-label");
+  if (lbl) {
+    lbl.firstChild.textContent = dir === "i_owe" ? "Кому должен" : "Кто должен";
+  }
+}
+
+function openDebtForm(item) {
+  const modal = $("#debt-form-modal");
+  if (!modal) return;
+  debts.editingId = item ? item.id : null;
+  setDebtDirection(item ? item.direction : "i_owe");
+
+  $("#debt-form-title").textContent = item ? "Редактировать долг" : "Новый долг";
+  $("#debt-form-amount").value = item ? item.amount : "";
+  $("#debt-form-currency").value = item ? item.currency : "PLN";
+  $("#debt-form-counterparty").value = item ? item.counterparty : "";
+  $("#debt-form-borrowed").value = item ? item.borrowed_at : new Date().toISOString().slice(0, 10);
+  $("#debt-form-due").value = item && item.due_date ? item.due_date : "";
+  $("#debt-form-remaining").value = item ? item.remaining_balance : "";
+  $("#debt-form-notes").value = item && item.notes ? item.notes : "";
+  $("#debt-form-notify-3d").checked = item ? !!item.notify_3d_before : true;
+  $("#debt-form-notify-due").checked = item ? !!item.notify_on_due : true;
+  $("#debt-form-notify-overdue").checked = item ? !!item.notify_overdue : true;
+
+  $("#debt-form-delete").classList.toggle("hidden", !item);
+  $("#debt-form-pay").classList.toggle("hidden", !item || item.status === "closed");
+  modal.classList.remove("hidden");
+}
+
+function closeDebtForm() {
+  $("#debt-form-modal").classList.add("hidden");
+  debts.editingId = null;
+}
+
+async function saveDebtForm() {
+  const counterparty = $("#debt-form-counterparty").value.trim();
+  const amount = parseFloat($("#debt-form-amount").value);
+  if (!counterparty || !(amount > 0)) {
+    alert("Укажи контрагента и сумму > 0.");
+    return;
+  }
+  const remaining = parseFloat($("#debt-form-remaining").value);
+  const due = $("#debt-form-due").value || null;
+  const payload = {
+    direction: debts.direction,
+    counterparty,
+    amount,
+    currency: $("#debt-form-currency").value,
+    remaining_balance: Number.isFinite(remaining) ? remaining : undefined,
+    borrowed_at: $("#debt-form-borrowed").value,
+    due_date: due,
+    notify_3d_before: $("#debt-form-notify-3d").checked,
+    notify_on_due: $("#debt-form-notify-due").checked,
+    notify_overdue: $("#debt-form-notify-overdue").checked,
+    notes: $("#debt-form-notes").value.trim() || null,
+  };
+  try {
+    let resp;
+    if (debts.editingId) {
+      resp = await api("/api-debts?id=" + debts.editingId, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+    } else {
+      resp = await api("/api-debts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+    }
+    const data = await resp.json();
+    if (!resp.ok || data.error) {
+      alert("Ошибка: " + (data.error || resp.status));
+      return;
+    }
+    closeDebtForm();
+    await loadDebts();
+  } catch (e) {
+    if (!isSessionExpired(e)) alert("Сеть недоступна.");
+  }
+}
+
+async function deleteDebtForm() {
+  if (!debts.editingId) return;
+  if (!confirm("Удалить этот долг и историю платежей?")) return;
+  try {
+    const resp = await api("/api-debts?id=" + debts.editingId, { method: "DELETE" });
+    const data = await resp.json();
+    if (!resp.ok || data.error) {
+      alert("Ошибка: " + (data.error || resp.status));
+      return;
+    }
+    closeDebtForm();
+    await loadDebts();
+  } catch (e) {
+    if (!isSessionExpired(e)) alert("Сеть недоступна.");
+  }
+}
+
+function openDebtPay() {
+  if (!debts.editingId) return;
+  const d = debts.items.find((x) => x.id === debts.editingId);
+  if (!d) return;
+  debts.payTarget = d.id;
+  $("#debt-pay-title").textContent = d.direction === "i_owe"
+    ? "Зафиксировать выплату"
+    : "Зафиксировать возврат";
+  $("#debt-pay-hint").textContent = d.direction === "i_owe"
+    ? "Создастся запись расхода в счёт долга и уменьшится остаток."
+    : "Создастся запись дохода (возврат долга) и уменьшится остаток.";
+  $("#debt-pay-amount").value = d.remaining_balance;
+  $("#debt-pay-date").value = new Date().toISOString().slice(0, 10);
+  $("#debt-pay-method").value = "transfer";
+  $("#debt-pay-modal").classList.remove("hidden");
+}
+
+function closeDebtPay() {
+  $("#debt-pay-modal").classList.add("hidden");
+  debts.payTarget = null;
+}
+
+async function saveDebtPay() {
+  if (!debts.payTarget) return;
+  const amount = parseFloat($("#debt-pay-amount").value);
+  if (!(amount > 0)) {
+    alert("Сумма должна быть > 0.");
+    return;
+  }
+  const payload = {
+    amount,
+    paid_at: $("#debt-pay-date").value,
+    payment_method: $("#debt-pay-method").value,
+  };
+  try {
+    const resp = await api(
+      "/api-debts?id=" + debts.payTarget + "&action=payment",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      },
+    );
+    const data = await resp.json();
+    if (!resp.ok || data.error) {
+      alert("Ошибка: " + (data.error || resp.status));
+      return;
+    }
+    closeDebtPay();
+    closeDebtForm();
+    await loadDebts();
+    if (typeof refresh === "function") await refresh();
+  } catch (e) {
+    if (!isSessionExpired(e)) alert("Сеть недоступна.");
+  }
+}
+
+function bindDebts() {
+  const add = $("#debt-add-btn");
+  if (add) add.addEventListener("click", () => openDebtForm(null));
+  for (const f of document.querySelectorAll(".debts-filter")) {
+    f.addEventListener("click", () => {
+      debts.filter = f.dataset.filter;
+      for (const b of document.querySelectorAll(".debts-filter")) {
+        b.classList.toggle("active", b === f);
+      }
+      loadDebts();
+    });
+  }
+  for (const b of document.querySelectorAll(".debt-dir-btn")) {
+    b.addEventListener("click", () => setDebtDirection(b.dataset.dir));
+  }
+  const close = $("#debt-form-close");
+  if (close) close.addEventListener("click", closeDebtForm);
+  const bd = document.querySelector("#debt-form-modal .modal-backdrop");
+  if (bd) bd.addEventListener("click", closeDebtForm);
+  const cancel = $("#debt-form-cancel");
+  if (cancel) cancel.addEventListener("click", closeDebtForm);
+  const save = $("#debt-form-save");
+  if (save) save.addEventListener("click", saveDebtForm);
+  const del = $("#debt-form-delete");
+  if (del) del.addEventListener("click", deleteDebtForm);
+  const pay = $("#debt-form-pay");
+  if (pay) pay.addEventListener("click", openDebtPay);
+
+  const pclose = $("#debt-pay-close");
+  if (pclose) pclose.addEventListener("click", closeDebtPay);
+  const pbd = document.querySelector("#debt-pay-modal .modal-backdrop");
+  if (pbd) pbd.addEventListener("click", closeDebtPay);
+  const pcancel = $("#debt-pay-cancel");
+  if (pcancel) pcancel.addEventListener("click", closeDebtPay);
+  const psave = $("#debt-pay-save");
+  if (psave) psave.addEventListener("click", saveDebtPay);
+}
+
 async function main() {
   // Magic-link exchange must run before gate check so the URL token is
   // converted into a stored session in time for gateOrApp() to see it.
@@ -2383,6 +2679,7 @@ async function main() {
   bindSettings();
   bindPlanning();
   bindCredits();
+  bindDebts();
 
   await loadCategoriesAndFamily();
   await refresh();
