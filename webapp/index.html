@@ -13,7 +13,7 @@
     <title>FinBot Dashboard</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
-    <link rel="stylesheet" href="./styles.css?v=20260604p" />
+    <link rel="stylesheet" href="./styles.css?v=20260604q" />
   </head>
   <body>
     <div id="gate" class="gate">
@@ -587,8 +587,13 @@
             </select>
           </label>
 
-          <h4 class="plan-section-title">Категории</h4>
-          <div id="budget-form-categories" class="budget-cat-picker"></div>
+          <details id="budget-form-cat-details" class="budget-cat-details">
+            <summary>
+              <span>Категории</span>
+              <span class="budget-cat-count" id="budget-form-cat-count">0</span>
+            </summary>
+            <div id="budget-form-categories" class="budget-cat-picker"></div>
+          </details>
 
           <h4 class="plan-section-title">Уведомления</h4>
           <label class="plan-row-toggle">
@@ -609,7 +614,7 @@
       </div>
     </div>
 
-    <script src="./tg-webapp.js?v=20260604p"></script>
-    <script src="./app.js?v=20260604p"></script>
+    <script src="./tg-webapp.js?v=20260604q"></script>
+    <script src="./app.js?v=20260604q"></script>
   </body>
 </html>

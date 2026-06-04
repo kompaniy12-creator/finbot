@@ -1396,12 +1396,68 @@ body.theme-dark {
   font-size: 13px;
 }
 
+/* Budget form category picker: a <details>/<summary> row that collapses
+   the chip grid by default. Summary shows the selected count and a
+   chevron; tapping expands the picker inline. */
+.budget-cat-details {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--bg);
+  margin-bottom: 8px;
+}
+.budget-cat-details > summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--text);
+  position: relative;
+  padding-right: 32px;
+}
+.budget-cat-details > summary::-webkit-details-marker {
+  display: none;
+}
+.budget-cat-details > summary::after {
+  content: "›";
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%) rotate(90deg);
+  color: var(--hint);
+  font-size: 16px;
+  transition: transform 0.2s ease;
+}
+.budget-cat-details[open] > summary::after {
+  transform: translateY(-50%) rotate(-90deg);
+}
+.budget-cat-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--button);
+  color: var(--button-text);
+  font-size: 12px;
+  font-weight: 600;
+}
+.budget-cat-count.empty {
+  background: var(--secondary-bg);
+  color: var(--hint);
+}
+
 /* Budget form category picker: chip-style toggles, one per category. */
 .budget-cat-picker {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
-  margin-top: 4px;
+  padding: 6px 12px 12px;
 }
 .budget-cat-chip {
   border: 1px solid var(--line);

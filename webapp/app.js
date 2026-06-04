@@ -1901,6 +1901,14 @@ function formatNumber(n) {
   return v.toFixed(2).replace(/\.00$/, "").replace(/(\d)(?=(\d{3})+(?!\d))/g, "$1 ");
 }
 
+function refreshBudgetCatCount() {
+  const el = $("#budget-form-cat-count");
+  if (!el) return;
+  const n = budgetsState.selectedCats.size;
+  el.textContent = String(n);
+  el.classList.toggle("empty", n === 0);
+}
+
 function fillBudgetCategoryChips() {
   const box = $("#budget-form-categories");
   if (!box) return;
@@ -1926,9 +1934,11 @@ function fillBudgetCategoryChips() {
         budgetsState.selectedCats.add(c.id);
         btn.classList.add("active");
       }
+      refreshBudgetCatCount();
     });
     box.appendChild(btn);
   }
+  refreshBudgetCatCount();
 }
 
 function openBudgetForm(item) {
@@ -1946,6 +1956,8 @@ function openBudgetForm(item) {
   $("#budget-form-notify-75").checked = item ? !!item.notify_at_75 : true;
 
   fillBudgetCategoryChips();
+  const det = $("#budget-form-cat-details");
+  if (det) det.open = false;
   $("#budget-form-delete").classList.toggle("hidden", !item);
   modal.classList.remove("hidden");
 }
