@@ -1507,7 +1507,16 @@ const planning = {
   filter: "all", // all | income | expense
   editingId: null,
   kind: "expense",
+  subview: "hub", // hub | planned | budgets
 };
+
+function setPlanningSubview(sub) {
+  planning.subview = sub;
+  const panel = document.querySelector(".planning-panel");
+  if (panel) panel.dataset.sub = sub;
+  if (sub === "planned") loadPlannedPayments();
+  if (sub === "budgets") loadBudgets();
+}
 
 function formatPlanAmount(item) {
   const sign = item.kind === "income" ? "+" : "-";
@@ -1751,8 +1760,26 @@ async function deletePlanForm() {
 }
 
 function bindPlanning() {
+  // Hub navigation
+  for (const card of document.querySelectorAll(".planning-hub-card")) {
+    card.addEventListener("click", () => setPlanningSubview(card.dataset.go));
+  }
+  for (const back of document.querySelectorAll(".planning-sub-head [data-back]")) {
+    back.addEventListener("click", () => setPlanningSubview("hub"));
+  }
+  // Start on hub
+  setPlanningSubview("hub");
+
+  // FAB: action depends on subview
   const addBtn = $("#plan-add-btn");
-  if (addBtn) addBtn.addEventListener("click", () => openPlanForm(null));
+  if (addBtn) {
+    addBtn.addEventListener("click", () => {
+      if (planning.subview === "planned") openPlanForm(null);
+      else if (planning.subview === "budgets") openBudgetForm(null);
+    });
+  }
+
+  // Planned-payments filters
   for (const f of document.querySelectorAll(".plan-filter")) {
     f.addEventListener("click", () => {
       planning.filter = f.dataset.filter;
@@ -1762,6 +1789,8 @@ function bindPlanning() {
       renderPlannedPayments();
     });
   }
+
+  // Planned-payments form
   const closeBtn = $("#plan-form-close");
   if (closeBtn) closeBtn.addEventListener("click", closePlanForm);
   const backdrop = document.querySelector("#plan-form-modal .modal-backdrop");
@@ -1774,6 +1803,223 @@ function bindPlanning() {
   if (del) del.addEventListener("click", deletePlanForm);
   for (const b of document.querySelectorAll(".plan-kind-btn")) {
     b.addEventListener("click", () => setPlanFormKind(b.dataset.kind));
+  }
+
+  // Budget form
+  const bClose = $("#budget-form-close");
+  if (bClose) bClose.addEventListener("click", closeBudgetForm);
+  const bBackdrop = document.querySelector("#budget-form-modal .modal-backdrop");
+  if (bBackdrop) bBackdrop.addEventListener("click", closeBudgetForm);
+  const bCancel = $("#budget-form-cancel");
+  if (bCancel) bCancel.addEventListener("click", closeBudgetForm);
+  const bSave = $("#budget-form-save");
+  if (bSave) bSave.addEventListener("click", saveBudgetForm);
+  const bDel = $("#budget-form-delete");
+  if (bDel) bDel.addEventListener("click", deleteBudgetForm);
+}
+
+// --- Budgets ("Бюджеты" sub-view of Planning) -------------------------
+const budgetsState = {
+  items: [],
+  editingId: null,
+  selectedCats: new Set(),
+};
+
+async function loadBudgets() {
+  try {
+    const r = await api("/api-budgets").then((x) => x.json());
+    budgetsState.items = r.items || [];
+  } catch (e) {
+    if (isSessionExpired(e)) return;
+    budgetsState.items = [];
+  }
+  renderBudgets();
+}
+
+function periodShortLabel(p) {
+  return { weekly: "ЕЖЕНЕДЕЛЬНО", monthly: "ЕЖЕМЕСЯЧНО", yearly: "ЕЖЕГОДНО" }[p] || p;
+}
+
+function renderBudgets() {
+  const list = $("#budgets-list");
+  if (!list) return;
+  list.innerHTML = "";
+  if (budgetsState.items.length === 0) {
+    const li = document.createElement("li");
+    li.className = "budgets-empty";
+    li.textContent = "Бюджетов пока нет.";
+    list.appendChild(li);
+    return;
+  }
+  for (const b of budgetsState.items) {
+    const li = document.createElement("li");
+    li.className = "budget-row";
+    li.dataset.id = b.id;
+
+    const head = document.createElement("div");
+    head.className = "budget-row-head";
+    const name = document.createElement("div");
+    name.className = "budget-row-name";
+    name.textContent = b.name;
+    const period = document.createElement("div");
+    period.className = "budget-row-period";
+    period.textContent = periodShortLabel(b.period);
+    head.appendChild(name);
+    head.appendChild(period);
+
+    const meta = document.createElement("div");
+    meta.className = "budget-row-meta";
+    const amt = document.createElement("div");
+    amt.className = "budget-row-amount";
+    amt.textContent = `${formatNumber(b.spent_amount)} / ${formatNumber(b.amount)} ${b.currency}`;
+    const pct = document.createElement("div");
+    pct.className = "budget-row-pct";
+    pct.textContent = `${b.spent_pct}%`;
+    meta.appendChild(amt);
+    meta.appendChild(pct);
+
+    const bar = document.createElement("div");
+    bar.className = "budget-progress";
+    const fill = document.createElement("div");
+    fill.className = "budget-progress-fill";
+    if (b.spent_pct >= 100) fill.classList.add("over");
+    else if (b.spent_pct >= 75) fill.classList.add("warn");
+    fill.style.width = Math.min(100, b.spent_pct) + "%";
+    bar.appendChild(fill);
+
+    li.appendChild(head);
+    li.appendChild(meta);
+    li.appendChild(bar);
+
+    li.addEventListener("click", () => openBudgetForm(b));
+    list.appendChild(li);
+  }
+}
+
+function formatNumber(n) {
+  const v = Number(n) || 0;
+  return v.toFixed(2).replace(/\.00$/, "").replace(/(\d)(?=(\d{3})+(?!\d))/g, "$1 ");
+}
+
+function fillBudgetCategoryChips() {
+  const box = $("#budget-form-categories");
+  if (!box) return;
+  box.innerHTML = "";
+  const cats = [...state.categories.values()]
+    .filter((c) => (c.kind || "expense") === "expense")
+    .sort((a, b) => {
+      if (a.is_fallback !== b.is_fallback) return a.is_fallback ? 1 : -1;
+      return a.name.localeCompare(b.name, "ru");
+    });
+  for (const c of cats) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "budget-cat-chip";
+    btn.dataset.id = c.id;
+    btn.textContent = c.name;
+    if (budgetsState.selectedCats.has(c.id)) btn.classList.add("active");
+    btn.addEventListener("click", () => {
+      if (budgetsState.selectedCats.has(c.id)) {
+        budgetsState.selectedCats.delete(c.id);
+        btn.classList.remove("active");
+      } else {
+        budgetsState.selectedCats.add(c.id);
+        btn.classList.add("active");
+      }
+    });
+    box.appendChild(btn);
+  }
+}
+
+function openBudgetForm(item) {
+  const modal = $("#budget-form-modal");
+  if (!modal) return;
+  budgetsState.editingId = item ? item.id : null;
+  budgetsState.selectedCats = new Set(item?.category_ids || []);
+
+  $("#budget-form-title").textContent = item ? "Редактировать бюджет" : "Добавить бюджет";
+  $("#budget-form-amount").value = item ? item.amount : "";
+  $("#budget-form-currency").value = item ? item.currency : "EUR";
+  $("#budget-form-name").value = item ? item.name : "";
+  $("#budget-form-period").value = item ? item.period : "monthly";
+  $("#budget-form-notify-exceed").checked = item ? !!item.notify_on_exceed : true;
+  $("#budget-form-notify-75").checked = item ? !!item.notify_at_75 : true;
+
+  fillBudgetCategoryChips();
+  $("#budget-form-delete").classList.toggle("hidden", !item);
+  modal.classList.remove("hidden");
+}
+
+function closeBudgetForm() {
+  const modal = $("#budget-form-modal");
+  if (modal) modal.classList.add("hidden");
+  budgetsState.editingId = null;
+  budgetsState.selectedCats = new Set();
+}
+
+async function saveBudgetForm() {
+  const amount = parseFloat($("#budget-form-amount").value);
+  const name = $("#budget-form-name").value.trim();
+  if (!name || !(amount > 0)) {
+    alert("Укажи название и сумму > 0.");
+    return;
+  }
+  if (budgetsState.selectedCats.size === 0) {
+    alert("Выбери хотя бы одну категорию.");
+    return;
+  }
+  const payload = {
+    name,
+    amount,
+    currency: $("#budget-form-currency").value,
+    period: $("#budget-form-period").value,
+    category_ids: [...budgetsState.selectedCats],
+    notify_on_exceed: $("#budget-form-notify-exceed").checked,
+    notify_at_75: $("#budget-form-notify-75").checked,
+  };
+  try {
+    let resp;
+    if (budgetsState.editingId) {
+      resp = await api("/api-budgets?id=" + budgetsState.editingId, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+    } else {
+      resp = await api("/api-budgets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+    }
+    const data = await resp.json();
+    if (!resp.ok || data.error) {
+      alert("Ошибка: " + (data.error || resp.status));
+      return;
+    }
+    closeBudgetForm();
+    await loadBudgets();
+  } catch (e) {
+    if (!isSessionExpired(e)) alert("Сеть недоступна.");
+  }
+}
+
+async function deleteBudgetForm() {
+  if (!budgetsState.editingId) return;
+  if (!confirm("Удалить этот бюджет?")) return;
+  try {
+    const resp = await api("/api-budgets?id=" + budgetsState.editingId, {
+      method: "DELETE",
+    });
+    const data = await resp.json();
+    if (!resp.ok || data.error) {
+      alert("Ошибка: " + (data.error || resp.status));
+      return;
+    }
+    closeBudgetForm();
+    await loadBudgets();
+  } catch (e) {
+    if (!isSessionExpired(e)) alert("Сеть недоступна.");
   }
 }
 
@@ -1793,7 +2039,6 @@ async function main() {
 
   await loadCategoriesAndFamily();
   await refresh();
-  await loadPlannedPayments();
 
   // Category-picker modal close handlers
   $("#cat-modal-close").addEventListener("click", closeCategoryPicker);

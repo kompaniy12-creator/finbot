@@ -1227,6 +1227,196 @@ body.theme-dark {
   margin: 0;
   font-size: 16px;
 }
+
+/* Hub view (default landing inside the Планирование tab): two large
+   cards for the two sub-features, plus a header title. */
+.planning-title {
+  margin: 4px 0 16px;
+  font-size: 26px;
+  font-weight: 700;
+}
+.planning-hub {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.planning-hub-card {
+  background: var(--card-bg);
+  border: none;
+  border-radius: 14px;
+  padding: 16px 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+  text-align: left;
+  color: var(--text);
+  width: 100%;
+}
+.planning-hub-text strong {
+  display: block;
+  font-size: 16px;
+  margin-bottom: 4px;
+}
+.planning-hub-text span {
+  color: var(--hint);
+  font-size: 13px;
+}
+.planning-hub-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  flex-shrink: 0;
+}
+.planning-hub-icon.icon-orange {
+  background: #ff9500;
+}
+.planning-hub-icon.icon-blue {
+  background: #2481cc;
+}
+
+/* Sub-views: hidden by default; shown when planning.subview matches */
+.planning-sub {
+  display: none;
+}
+.planning-panel[data-sub="planned"] .planning-hub,
+.planning-panel[data-sub="budgets"] .planning-hub {
+  display: none;
+}
+.planning-panel[data-sub="planned"] .planning-planned {
+  display: block;
+}
+.planning-panel[data-sub="budgets"] .planning-budgets {
+  display: block;
+}
+.planning-sub-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+.planning-sub-head h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+}
+.planning-back {
+  background: var(--secondary-bg);
+  border: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  font-size: 20px;
+  line-height: 1;
+  color: var(--text);
+  cursor: pointer;
+  padding: 0;
+}
+
+/* FAB only shows inside a sub-view, not on the hub */
+.planning-panel[data-sub="hub"] .plan-fab,
+.planning-panel:not([data-sub]) .plan-fab {
+  display: none !important;
+}
+
+/* Budgets list */
+.budgets-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.budget-row {
+  background: var(--card-bg);
+  border-radius: 12px;
+  padding: 12px 14px;
+  cursor: pointer;
+}
+.budget-row-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.budget-row-name {
+  font-weight: 600;
+  font-size: 14px;
+}
+.budget-row-period {
+  font-size: 11px;
+  color: var(--hint);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+.budget-row-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin: 6px 0 8px;
+  font-size: 13px;
+}
+.budget-row-meta .budget-row-amount {
+  font-weight: 700;
+  font-size: 15px;
+}
+.budget-row-meta .budget-row-pct {
+  color: var(--hint);
+  font-size: 12px;
+}
+.budget-progress {
+  height: 8px;
+  background: var(--secondary-bg);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.budget-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--neon-green), var(--neon-cyan));
+  border-radius: 999px;
+  transition: width 0.3s ease;
+}
+.budget-progress-fill.warn {
+  background: linear-gradient(90deg, #f4b84e, #ff9500);
+}
+.budget-progress-fill.over {
+  background: linear-gradient(90deg, #e85d75, #ff4fd8);
+}
+.budgets-empty {
+  text-align: center;
+  color: var(--hint);
+  padding: 24px 0;
+  font-size: 13px;
+}
+
+/* Budget form category picker: chip-style toggles, one per category. */
+.budget-cat-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+.budget-cat-chip {
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--text);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.budget-cat-chip.active {
+  background: var(--button);
+  color: var(--button-text);
+  border-color: var(--button);
+}
 .plan-filters {
   display: flex;
   gap: 8px;
