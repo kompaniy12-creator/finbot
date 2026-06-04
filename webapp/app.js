@@ -151,7 +151,15 @@ function gateOrApp() {
 // `tab-only` sections are gated by CSS rules tied to a body class. The
 // selected tab also drives a runtime filter on the transaction feed so
 // "Доходы"/"Расходы" show only matching rows; "Дашборд" shows everything.
-const VALID_TABS = ["dashboard", "income", "expense", "settings"];
+const VALID_TABS = [
+  "dashboard",
+  "income",
+  "expense",
+  "planning",
+  "debts",
+  "credits",
+  "settings",
+];
 state.tab = "dashboard";
 
 function setActiveTab(tab) {

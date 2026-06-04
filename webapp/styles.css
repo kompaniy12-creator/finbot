@@ -808,17 +808,19 @@ footer {
   border-bottom: 1px dotted var(--hint);
 }
 
-/* ---- Bottom navigation (4 tabs) ----------------------------------- */
+/* ---- Bottom navigation (7 tabs) ----------------------------------- */
 .bottom-nav {
   position: fixed;
   bottom: 0;
   left: 0;
   right: 0;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  /* 7 tabs in one row. On narrow phones each column gets ~13-14% which is
+     enough for an icon + a short label. */
+  grid-template-columns: repeat(7, 1fr);
   background: var(--secondary-bg);
   border-top: 1px solid var(--line);
-  padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
+  padding: 6px 2px calc(6px + env(safe-area-inset-bottom));
   z-index: 100;
   backdrop-filter: blur(10px);
   -webkit-backdrop-filter: blur(10px);
@@ -834,18 +836,23 @@ footer {
   background: transparent;
   border: none;
   color: var(--hint);
-  font-size: 11px;
-  padding: 6px 2px;
+  font-size: 10px;
+  padding: 6px 1px;
   cursor: pointer;
   border-radius: 8px;
   transition: color 0.15s ease, background 0.15s ease;
+  min-width: 0; /* allow grid cells to shrink without overflow */
 }
 .bottom-nav .nav-btn .nav-icon {
-  font-size: 20px;
+  font-size: 18px;
   line-height: 1;
 }
 .bottom-nav .nav-btn .nav-label {
   font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
 }
 .bottom-nav .nav-btn.active {
   color: var(--neon-blue);
@@ -865,7 +872,10 @@ footer {
 body.tab-dashboard .tab-only.show-on-dashboard,
 body.tab-income .tab-only.show-on-income,
 body.tab-expense .tab-only.show-on-expense,
-body.tab-settings .tab-only.show-on-settings {
+body.tab-settings .tab-only.show-on-settings,
+body.tab-planning .tab-only.show-on-planning,
+body.tab-debts .tab-only.show-on-debts,
+body.tab-credits .tab-only.show-on-credits {
   display: block;
 }
 /* Grid/flex containers need their original display value, not block. */
@@ -1174,4 +1184,16 @@ body.theme-dark {
   background: color-mix(in srgb, #20c997 22%, transparent);
   color: #20c997;
   border-color: #20c997;
+}
+
+/* Empty placeholder panels for tabs in development. */
+.placeholder-panel {
+  background: var(--secondary-bg);
+  border-radius: 10px;
+  padding: 20px;
+  text-align: center;
+}
+.placeholder-panel h3 {
+  margin: 0 0 8px;
+  font-size: 16px;
 }

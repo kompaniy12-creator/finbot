@@ -6,7 +6,7 @@
     <title>FinBot Dashboard</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
-    <link rel="stylesheet" href="./styles.css?v=20260604k" />
+    <link rel="stylesheet" href="./styles.css?v=20260604l" />
   </head>
   <body>
     <div id="gate" class="gate">
@@ -249,6 +249,25 @@
         </div>
       </section>
 
+      <section class="placeholder-panel tab-only show-on-planning">
+        <header class="categories-head"><h3>📅 Планирование</h3></header>
+        <p class="settings-hint">
+          Раздел в разработке. Здесь будут планы бюджета, цели и подписки.
+        </p>
+      </section>
+
+      <section class="placeholder-panel tab-only show-on-debts">
+        <header class="categories-head"><h3>🤝 Долги</h3></header>
+        <p class="settings-hint">Раздел в разработке. Кто должен мне, кому должен я.</p>
+      </section>
+
+      <section class="placeholder-panel tab-only show-on-credits">
+        <header class="categories-head"><h3>🏦 Кредиты</h3></header>
+        <p class="settings-hint">
+          Раздел в разработке. Активные кредиты, графики платежей, остатки.
+        </p>
+      </section>
+
       <footer><small id="version">FinBot v1.2</small></footer>
     </main>
 
@@ -265,9 +284,21 @@
         <span class="nav-icon">💸</span>
         <span class="nav-label">Расходы</span>
       </button>
+      <button class="nav-btn" data-tab="planning">
+        <span class="nav-icon">📅</span>
+        <span class="nav-label">План</span>
+      </button>
+      <button class="nav-btn" data-tab="debts">
+        <span class="nav-icon">🤝</span>
+        <span class="nav-label">Долги</span>
+      </button>
+      <button class="nav-btn" data-tab="credits">
+        <span class="nav-icon">🏦</span>
+        <span class="nav-label">Кредит</span>
+      </button>
       <button class="nav-btn" data-tab="settings">
         <span class="nav-icon">⚙️</span>
-        <span class="nav-label">Настройки</span>
+        <span class="nav-label">Настр.</span>
       </button>
     </nav>
 
@@ -366,7 +397,7 @@
       </div>
     </div>
 
-    <script src="./tg-webapp.js?v=20260604k"></script>
-    <script src="./app.js?v=20260604k"></script>
+    <script src="./tg-webapp.js?v=20260604l"></script>
+    <script src="./app.js?v=20260604l"></script>
   </body>
 </html>
