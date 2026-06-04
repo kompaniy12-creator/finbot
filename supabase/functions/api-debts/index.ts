@@ -67,7 +67,7 @@ Deno.serve(async (req: Request) => {
     const direction = url.searchParams.get("direction") ?? "all";
     const statusFilter = url.searchParams.get("status") ?? "active";
     let q = sb.from("debts").select(
-      "id, family_member_id, direction, counterparty, amount, currency, remaining_balance, borrowed_at, due_date, notify_3d_before, notify_on_due, notify_overdue, status, notes, created_at",
+      "id, family_member_id, direction, counterparty, amount, currency, remaining_balance, borrowed_at, due_date, notify_3d_before, notify_on_due, notify_overdue, status, notes, source_credit_id, source_expense_id, created_at",
     ).order("created_at", { ascending: false });
     if (direction !== "all") q = q.eq("direction", direction);
     if (statusFilter !== "all") q = q.eq("status", statusFilter);
@@ -80,13 +80,27 @@ Deno.serve(async (req: Request) => {
       due_date: string | null;
       status: string;
     }>;
+    // Hydrate linked credit names so the Mini App can show "Дополнительно
+    // уменьшит остаток по кредиту <name>" hint in the payment modal.
+    const allRows = (res.data ?? []) as Array<{ source_credit_id: string | null }>;
+    const creditIds = [
+      ...new Set(
+        allRows.map((r) => r.source_credit_id).filter((x): x is string => !!x),
+      ),
+    ];
+    const creditNames = new Map<string, string>();
+    if (creditIds.length > 0) {
+      const cr = await sb.from("credits").select("id, name").in("id", creditIds);
+      for (const c of (cr.data ?? []) as Array<{ id: string; name: string }>) {
+        creditNames.set(c.id, c.name);
+      }
+    }
     const items = rows.map((d) => {
       const paid = Number(d.amount) - Number(d.remaining_balance);
       const pct = d.amount > 0 ? Math.round((paid / Number(d.amount)) * 100) : 0;
-      // Overdue is computed at read time so the user always sees the
-      // current truth even before a cron run flips status='overdue'.
       const isOverdue = d.status === "active" && d.due_date !== null &&
         d.due_date < today;
+      const rowFull = d as typeof d & { source_credit_id: string | null };
       return {
         ...d,
         paid_amount: Math.round(paid * 100) / 100,
@@ -97,6 +111,9 @@ Deno.serve(async (req: Request) => {
             (new Date(d.due_date + "T00:00:00Z").getTime() -
               new Date(today + "T00:00:00Z").getTime()) / 86_400_000,
           )
+          : null,
+        source_credit_name: rowFull.source_credit_id
+          ? (creditNames.get(rowFull.source_credit_id) ?? null)
           : null,
       };
     });
@@ -114,7 +131,7 @@ Deno.serve(async (req: Request) => {
     }
     const dr = await sb.from("debts")
       .select(
-        "id, family_member_id, direction, counterparty, currency, remaining_balance, status",
+        "id, family_member_id, direction, counterparty, currency, remaining_balance, status, source_credit_id",
       )
       .eq("id", id).maybeSingle();
     if (!dr.data) return json(req, { error: "not_found" }, 404);
@@ -126,6 +143,7 @@ Deno.serve(async (req: Request) => {
       currency: string;
       remaining_balance: number;
       status: string;
+      source_credit_id: string | null;
     };
     if (d.family_member_id !== me.id && me.role !== "admin") return forbidden(req);
     if (d.status === "closed") return json(req, { error: "debt_closed" }, 409);
@@ -182,16 +200,68 @@ Deno.serve(async (req: Request) => {
     }).eq("id", id);
     if (upd.error) return json(req, { error: upd.error.message }, 500);
 
+    // If this debt traces back to a credit (e.g. an mBank overdraft
+    // charge for a friend who owes us), Denis's return also pays down
+    // that credit's principal directly - the cash hits the same bank
+    // account the credit lives on. No second expense row: that would
+    // double-count, since the original credit interest debit is
+    // already in expenses.
+    let creditApplied: {
+      id: string;
+      new_balance: number;
+      new_status: string;
+    } | null = null;
+    if (d.direction === "owed_to_me" && d.source_credit_id) {
+      const cr = await sb.from("credits")
+        .select("id, remaining_balance, status, currency")
+        .eq("id", d.source_credit_id).maybeSingle();
+      if (cr.data) {
+        const c = cr.data as {
+          id: string;
+          remaining_balance: number;
+          status: string;
+          currency: string;
+        };
+        // Only apply if currencies line up - otherwise we'd silently
+        // subtract PLN from a EUR credit. Cross-currency repayment is
+        // a rare edge case the user can do manually for now.
+        if (c.currency === d.currency && c.status !== "closed") {
+          const newCreditBal = Math.max(0, Number(c.remaining_balance) - body.amount);
+          const newCreditStatus = newCreditBal <= 0 ? "closed" : c.status;
+          const cu = await sb.from("credits").update({
+            remaining_balance: newCreditBal,
+            status: newCreditStatus,
+            updated_at: new Date().toISOString(),
+          }).eq("id", c.id);
+          if (!cu.error) {
+            creditApplied = {
+              id: c.id,
+              new_balance: newCreditBal,
+              new_status: newCreditStatus,
+            };
+          } else {
+            log("warn", "credit_apply_failed", {
+              debt_id: id,
+              credit_id: c.id,
+              error: cu.error.message,
+            });
+          }
+        }
+      }
+    }
+
     log("info", "debt_payment_recorded", {
       debt_id: id,
       direction: d.direction,
       expense_id: expenseId,
       new_balance: newBalance,
       new_status: newStatus,
+      credit_applied: creditApplied,
     });
     return json(req, {
       ok: true,
       expense_id: expenseId,
+      credit_applied: creditApplied,
       remaining_balance: newBalance,
       status: newStatus,
     });

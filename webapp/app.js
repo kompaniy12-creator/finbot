@@ -2931,9 +2931,13 @@ function openDebtPay() {
   $("#debt-pay-title").textContent = d.direction === "i_owe"
     ? "Зафиксировать выплату"
     : "Зафиксировать возврат";
-  $("#debt-pay-hint").textContent = d.direction === "i_owe"
+  let hint = d.direction === "i_owe"
     ? "Создастся запись расхода в счёт долга и уменьшится остаток."
     : "Создастся запись дохода (возврат долга) и уменьшится остаток.";
+  if (d.direction === "owed_to_me" && d.source_credit_name) {
+    hint += ` Также уменьшится остаток по кредиту "${d.source_credit_name}" на ту же сумму.`;
+  }
+  $("#debt-pay-hint").textContent = hint;
   $("#debt-pay-amount").value = d.remaining_balance;
   $("#debt-pay-date").value = new Date().toISOString().slice(0, 10);
   $("#debt-pay-method").value = "transfer";
@@ -2974,6 +2978,11 @@ async function saveDebtPay() {
     closeDebtPay();
     closeDebtForm();
     await loadDebts();
+    // Credit balance might have been auto-reduced if the debt traced
+    // back to a credit; refresh the credits list cache so it shows up.
+    if (data.credit_applied && typeof loadCredits === "function") {
+      await loadCredits();
+    }
     if (typeof refresh === "function") await refresh();
   } catch (e) {
     if (!isSessionExpired(e)) alert("Сеть недоступна.");
