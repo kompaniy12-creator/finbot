@@ -1519,6 +1519,7 @@ function setPlanningSubview(sub) {
   if (panel) panel.dataset.sub = sub;
   if (sub === "planned") loadPlannedPayments();
   if (sub === "budgets") loadBudgets();
+  if (sub === "calendar") loadPaymentCalendar();
 }
 
 function formatPlanAmount(item) {
@@ -2035,6 +2036,222 @@ async function deleteBudgetForm() {
     await loadBudgets();
   } catch (e) {
     if (!isSessionExpired(e)) alert("Сеть недоступна.");
+  }
+}
+
+// --- Payment calendar ("📅 Платёжный календарь" sub-view) ------------
+// Merges planned_payments, credits (projected monthly), and debts (with
+// due_date) into a single month grid. Tapping a day shows that day's
+// events in a list below the grid.
+
+const paymentCalendar = {
+  monthStart: null, // ISO "YYYY-MM-01" of the visible month
+  items: [], // raw events from api
+  byDay: new Map(), // 'YYYY-MM-DD' -> [event...]
+  selectedDate: null,
+};
+
+function isoDate(d) {
+  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()))
+    .toISOString().slice(0, 10);
+}
+
+function monthLabel(iso) {
+  const [y, m] = iso.split("-").map(Number);
+  const months = [
+    "Январь",
+    "Февраль",
+    "Март",
+    "Апрель",
+    "Май",
+    "Июнь",
+    "Июль",
+    "Август",
+    "Сентябрь",
+    "Октябрь",
+    "Ноябрь",
+    "Декабрь",
+  ];
+  return `${months[m - 1]} ${y}`;
+}
+
+function shiftMonth(iso, delta) {
+  const [y, m] = iso.split("-").map(Number);
+  let ny = y, nm = m + delta;
+  while (nm < 1) {
+    nm += 12;
+    ny--;
+  }
+  while (nm > 12) {
+    nm -= 12;
+    ny++;
+  }
+  return `${ny}-${String(nm).padStart(2, "0")}-01`;
+}
+
+function monthEnd(iso) {
+  const [y, m] = iso.split("-").map(Number);
+  const dim = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  return `${y}-${String(m).padStart(2, "0")}-${String(dim).padStart(2, "0")}`;
+}
+
+async function loadPaymentCalendar() {
+  if (!paymentCalendar.monthStart) {
+    const today = new Date();
+    paymentCalendar.monthStart = `${today.getFullYear()}-${
+      String(today.getMonth() + 1).padStart(2, "0")
+    }-01`;
+    paymentCalendar.selectedDate = isoDate(today);
+  }
+  const from = paymentCalendar.monthStart;
+  const to = monthEnd(from);
+  try {
+    const r = await api(`/api-payment-calendar?from=${from}&to=${to}`).then((x) => x.json());
+    paymentCalendar.items = r.items || [];
+  } catch (e) {
+    if (isSessionExpired(e)) return;
+    paymentCalendar.items = [];
+  }
+  paymentCalendar.byDay = new Map();
+  for (const ev of paymentCalendar.items) {
+    const arr = paymentCalendar.byDay.get(ev.date) ?? [];
+    arr.push(ev);
+    paymentCalendar.byDay.set(ev.date, arr);
+  }
+  renderPaymentCalendar();
+}
+
+function renderPaymentCalendar() {
+  $("#cal-month-label").textContent = monthLabel(paymentCalendar.monthStart);
+  const grid = $("#cal-grid");
+  grid.innerHTML = "";
+
+  const [y, m] = paymentCalendar.monthStart.split("-").map(Number);
+  const firstDow = (new Date(Date.UTC(y, m - 1, 1)).getUTCDay() + 6) % 7; // Mon=0
+  const dim = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const todayIso = isoDate(new Date());
+
+  // Lead-in days from prev month (greyed)
+  const prev = shiftMonth(paymentCalendar.monthStart, -1);
+  const [py, pm] = prev.split("-").map(Number);
+  const prevDim = new Date(Date.UTC(py, pm, 0)).getUTCDate();
+  for (let i = 0; i < firstDow; i++) {
+    const day = prevDim - firstDow + 1 + i;
+    const cell = document.createElement("div");
+    cell.className = "cal-cell out";
+    cell.textContent = day;
+    grid.appendChild(cell);
+  }
+
+  // Current month days
+  for (let d = 1; d <= dim; d++) {
+    const iso = `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+    const cell = document.createElement("div");
+    cell.className = "cal-cell";
+    if (iso === todayIso) cell.classList.add("today");
+    if (iso === paymentCalendar.selectedDate) cell.classList.add("selected");
+
+    const num = document.createElement("div");
+    num.className = "cal-day-num";
+    num.textContent = d;
+    cell.appendChild(num);
+
+    const dots = document.createElement("div");
+    dots.className = "cal-dots";
+    const events = paymentCalendar.byDay.get(iso) ?? [];
+    const sourcesSeen = new Set();
+    for (const ev of events) {
+      const key = ev.source + ":" + (ev.kind || "");
+      if (sourcesSeen.has(key)) continue;
+      sourcesSeen.add(key);
+      const dot = document.createElement("span");
+      dot.className = "cal-dot src-" + ev.source +
+        (ev.source === "planned" && ev.kind === "income" ? " kind-income" : "");
+      dots.appendChild(dot);
+    }
+    cell.appendChild(dots);
+    cell.addEventListener("click", () => {
+      paymentCalendar.selectedDate = iso;
+      renderPaymentCalendar();
+    });
+    grid.appendChild(cell);
+  }
+
+  // Tail-out from next month so grid keeps 6 rows when applicable
+  const total = firstDow + dim;
+  const tail = total <= 35 ? 35 - total : 42 - total;
+  for (let i = 1; i <= tail; i++) {
+    const cell = document.createElement("div");
+    cell.className = "cal-cell out";
+    cell.textContent = i;
+    grid.appendChild(cell);
+  }
+
+  renderCalendarDayList();
+}
+
+function renderCalendarDayList() {
+  const list = $("#cal-day-list");
+  const title = $("#cal-day-title");
+  list.innerHTML = "";
+  const sel = paymentCalendar.selectedDate;
+  if (!sel) {
+    title.textContent = "Выберите день";
+    return;
+  }
+  title.textContent = formatPlanDate(sel);
+  const events = paymentCalendar.byDay.get(sel) ?? [];
+  if (events.length === 0) {
+    const li = document.createElement("li");
+    li.className = "cal-day-empty";
+    li.textContent = "В этот день платежей нет.";
+    list.appendChild(li);
+    return;
+  }
+  for (const ev of events) {
+    const li = document.createElement("li");
+    li.className = "src-" + ev.source + " " + (ev.kind || "expense");
+    const left = document.createElement("div");
+    const name = document.createElement("div");
+    name.className = "ev-name";
+    name.textContent = ev.name;
+    const meta = document.createElement("div");
+    meta.className = "ev-meta";
+    const bits = [];
+    if (ev.source === "credit") bits.push("кредит");
+    if (ev.source === "debt") bits.push("долг");
+    if (ev.source === "planned") bits.push(ev.kind === "income" ? "доход (план)" : "расход (план)");
+    if (ev.category_name) bits.push(ev.category_name);
+    if (ev.meta === "авто") bits.push("авто");
+    meta.textContent = bits.join(" · ");
+    left.appendChild(name);
+    left.appendChild(meta);
+    const amt = document.createElement("div");
+    amt.className = "ev-amount " + (ev.kind === "income" ? "income" : "expense");
+    const sign = ev.kind === "income" ? "+" : "-";
+    amt.textContent = `${sign}${formatNumber(ev.amount)} ${ev.currency}`;
+    li.appendChild(left);
+    li.appendChild(amt);
+    list.appendChild(li);
+  }
+}
+
+function bindPaymentCalendar() {
+  const prev = $("#cal-prev");
+  const next = $("#cal-next");
+  if (prev) {
+    prev.addEventListener("click", () => {
+      paymentCalendar.monthStart = shiftMonth(paymentCalendar.monthStart, -1);
+      paymentCalendar.selectedDate = paymentCalendar.monthStart;
+      loadPaymentCalendar();
+    });
+  }
+  if (next) {
+    next.addEventListener("click", () => {
+      paymentCalendar.monthStart = shiftMonth(paymentCalendar.monthStart, 1);
+      paymentCalendar.selectedDate = paymentCalendar.monthStart;
+      loadPaymentCalendar();
+    });
   }
 }
 
@@ -2715,6 +2932,7 @@ async function main() {
   bindNav();
   bindSettings();
   bindPlanning();
+  bindPaymentCalendar();
   bindCredits();
   bindDebts();
 

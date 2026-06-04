@@ -13,7 +13,7 @@
     <title>FinBot Dashboard</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
-    <link rel="stylesheet" href="./styles.css?v=20260604u" />
+    <link rel="stylesheet" href="./styles.css?v=20260604v" />
   </head>
   <body>
     <div id="gate" class="gate">
@@ -273,6 +273,13 @@
             </div>
             <span class="planning-hub-icon icon-blue">💰</span>
           </button>
+          <button class="planning-hub-card" data-go="calendar" type="button">
+            <div class="planning-hub-text">
+              <strong>Платёжный календарь</strong>
+              <span>Все платежи на месяц вперёд</span>
+            </div>
+            <span class="planning-hub-icon icon-green">📅</span>
+          </button>
         </div>
 
         <div class="planning-sub planning-planned" data-subview="planned">
@@ -294,6 +301,35 @@
             <h3>Бюджеты</h3>
           </header>
           <ul id="budgets-list" class="budgets-list"></ul>
+        </div>
+
+        <div class="planning-sub planning-calendar" data-subview="calendar">
+          <header class="planning-sub-head">
+            <button class="planning-back" data-back type="button" aria-label="Назад">‹</button>
+            <h3>Платёжный календарь</h3>
+          </header>
+          <div class="cal-month-nav">
+            <button id="cal-prev" type="button" aria-label="Предыдущий">‹</button>
+            <span id="cal-month-label">-</span>
+            <button id="cal-next" type="button" aria-label="Следующий">›</button>
+          </div>
+          <div class="cal-dow-row">
+            <div>пн</div>
+            <div>вт</div>
+            <div>ср</div>
+            <div>чт</div>
+            <div>пт</div>
+            <div>сб</div>
+            <div>вс</div>
+          </div>
+          <div id="cal-grid" class="cal-grid"></div>
+          <div class="cal-legend">
+            <span class="cal-dot src-credit"></span>кредит
+            <span class="cal-dot src-debt"></span>долг
+            <span class="cal-dot src-planned"></span>план
+          </div>
+          <h4 id="cal-day-title" class="cal-day-title">События</h4>
+          <ul id="cal-day-list" class="cal-day-list"></ul>
         </div>
 
         <button
@@ -956,7 +992,7 @@
       </div>
     </div>
 
-    <script src="./tg-webapp.js?v=20260604u"></script>
-    <script src="./app.js?v=20260604u"></script>
+    <script src="./tg-webapp.js?v=20260604v"></script>
+    <script src="./app.js?v=20260604v"></script>
   </body>
 </html>

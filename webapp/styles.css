@@ -1290,6 +1290,9 @@ body.theme-dark {
 .planning-hub-icon.icon-blue {
   background: #2481cc;
 }
+.planning-hub-icon.icon-green {
+  background: #20c997;
+}
 
 /* Sub-views: hidden by default; shown when planning.subview matches */
 .planning-sub {
@@ -1303,6 +1306,12 @@ body.theme-dark {
   display: block;
 }
 .planning-panel[data-sub="budgets"] .planning-budgets {
+  display: block;
+}
+.planning-panel[data-sub="calendar"] .planning-hub {
+  display: none;
+}
+.planning-panel[data-sub="calendar"] .planning-calendar {
   display: block;
 }
 .planning-sub-head {
@@ -1329,8 +1338,10 @@ body.theme-dark {
   padding: 0;
 }
 
-/* FAB only shows inside a sub-view, not on the hub */
+/* FAB only shows inside a sub-view that has an "add" action.
+   Calendar is read-only (sum of plans + credits + debts), so no FAB. */
 .planning-panel[data-sub="hub"] .plan-fab,
+.planning-panel[data-sub="calendar"] .plan-fab,
 .planning-panel:not([data-sub]) .plan-fab {
   display: none !important;
 }
@@ -1933,4 +1944,175 @@ body.tab-debts .plan-fab {
 }
 .credit-link-past-btn.hidden {
   display: none;
+}
+
+/* === Payment calendar sub-view ====================================== */
+.cal-month-nav {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  font-weight: 600;
+  font-size: 15px;
+}
+.cal-month-nav button {
+  background: var(--secondary-bg);
+  border: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  font-size: 18px;
+  color: var(--text);
+  cursor: pointer;
+  padding: 0;
+}
+.cal-dow-row {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  font-size: 11px;
+  color: var(--hint);
+  text-align: center;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+}
+.cal-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+  margin-bottom: 12px;
+}
+.cal-cell {
+  aspect-ratio: 1;
+  background: var(--card-bg);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 4px 2px;
+  font-size: 13px;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+.cal-cell.out {
+  opacity: 0.35;
+}
+.cal-cell.today {
+  border-color: var(--button);
+  color: var(--button);
+  font-weight: 700;
+}
+.cal-cell.selected {
+  background: var(--button);
+  color: var(--button-text);
+}
+.cal-cell.selected .cal-dots .cal-dot {
+  outline: 1px solid rgba(255, 255, 255, 0.6);
+}
+.cal-cell .cal-day-num {
+  margin-top: 2px;
+}
+.cal-cell .cal-dots {
+  display: flex;
+  gap: 2px;
+  margin-top: 4px;
+  min-height: 6px;
+}
+.cal-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+.cal-dot.src-credit {
+  background: var(--neon-blue);
+}
+.cal-dot.src-debt {
+  background: #ff9500;
+}
+.cal-dot.src-planned {
+  background: #e85d75;
+}
+.cal-dot.src-planned.kind-income {
+  background: var(--neon-green);
+}
+.cal-legend {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--hint);
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.cal-legend .cal-dot {
+  margin-right: 2px;
+  margin-left: 8px;
+}
+.cal-legend .cal-dot:first-child {
+  margin-left: 0;
+}
+.cal-day-title {
+  margin: 12px 0 6px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--hint);
+}
+.cal-day-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.cal-day-list li {
+  background: var(--card-bg);
+  border-radius: 10px;
+  padding: 10px 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+  border-left: 3px solid var(--line);
+}
+.cal-day-list li.src-credit {
+  border-left-color: var(--neon-blue);
+}
+.cal-day-list li.src-debt {
+  border-left-color: #ff9500;
+}
+.cal-day-list li.src-planned.expense {
+  border-left-color: #e85d75;
+}
+.cal-day-list li.src-planned.income {
+  border-left-color: var(--neon-green);
+}
+.cal-day-list .ev-name {
+  font-weight: 600;
+  font-size: 13px;
+  margin-bottom: 2px;
+}
+.cal-day-list .ev-meta {
+  font-size: 11px;
+  color: var(--hint);
+}
+.cal-day-list .ev-amount {
+  font-weight: 700;
+  font-size: 14px;
+  white-space: nowrap;
+}
+.cal-day-list .ev-amount.income {
+  color: var(--neon-green);
+}
+.cal-day-list .ev-amount.expense {
+  color: #e85d75;
+}
+.cal-day-list .cal-day-empty {
+  text-align: center;
+  color: var(--hint);
+  font-size: 13px;
+  padding: 12px 0;
+  border: none;
+  background: transparent;
 }
