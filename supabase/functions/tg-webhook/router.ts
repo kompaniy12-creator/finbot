@@ -33,6 +33,7 @@ import { classifyIntent } from "../_shared/intent.ts";
 import { formatReply, highAmountKeyboard, processTextMessage } from "./text_pipeline.ts";
 import { processVoiceMessage } from "./voice_pipeline.ts";
 import { type PhotoOutcome, processPhotoMessage } from "./photo_pipeline.ts";
+import { type BankPipelineOutcome, processBankStatement } from "./bank_pipeline.ts";
 import { startProgress } from "../_shared/progress.ts";
 
 export interface RouteContext {
@@ -360,10 +361,7 @@ export async function dispatch(
     return { chatId: msg.chat.id, reply: { text: formatPhotoReply(outcome) } };
   }
 
-  // PDF document → bank statement intake. For now we just register the file
-  // so the dev can pull it via the bot's getFile API and tune the parser
-  // against real mBank / Revolut layouts. Full pipeline lands once the
-  // prompt is tuned.
+  // PDF document → bank statement pipeline (parse + auto-reconcile).
   if (msg.document && msg.document.mime_type === "application/pdf") {
     const filename = msg.document.file_name || "statement.pdf";
     const ins = await input.sb.from("bank_statements").insert({
@@ -371,24 +369,63 @@ export async function dispatch(
       source: "other",
       filename,
       status: "parsing",
+      raw_text: `TG_FILE_ID:${msg.document.file_id}`,
     }).select("id").maybeSingle();
-    const stmtId = (ins.data as { id: string } | null)?.id ?? "?";
-    // Stash the Telegram file_id in raw_text temporarily so we can fetch it
-    // out-of-band while we build the real pipeline.
-    await input.sb.from("bank_statements")
-      .update({ raw_text: `TG_FILE_ID:${msg.document.file_id}` })
-      .eq("id", stmtId);
-    return {
-      chatId: msg.chat.id,
-      reply: {
-        text: `📄 Принял PDF «${filename}» (id=${stmtId.slice(0, 8)}).\n\n` +
-          `Парсер банковских выписок ещё допиливается под mBank/Revolut. ` +
-          `Сейчас PDF просто зарегистрирован, разбор подключу следующим релизом.`,
-      },
-    };
+    const stmtId = (ins.data as { id: string } | null)?.id;
+    if (!stmtId) {
+      return {
+        chatId: msg.chat.id,
+        reply: { text: `Не смог зарегистрировать выписку. Попробуй прислать ещё раз.` },
+      };
+    }
+    const prog = await startProgress(msg.chat.id, "📄 Анализирую выписку...");
+    let summaryText: string;
+    try {
+      const outcome = await processBankStatement({
+        sb: input.sb,
+        member: input.member,
+        statementId: stmtId,
+      });
+      summaryText = formatBankReply(outcome, filename);
+    } catch (err) {
+      summaryText = `Ошибка обработки выписки: ${(err as Error).message}`;
+    }
+    if (prog) {
+      await prog.update(summaryText);
+      return null;
+    }
+    return { chatId: msg.chat.id, reply: { text: summaryText } };
   }
 
   return { chatId: msg.chat.id, reply: unauthorizedReply() };
+}
+
+function formatBankReply(outcome: BankPipelineOutcome, filename: string): string {
+  switch (outcome.kind) {
+    case "no_file":
+      return `Не смог найти файл выписки. Пришли PDF ещё раз.`;
+    case "download_failed":
+      return `Не смог скачать PDF из Telegram. Пришли ещё раз.`;
+    case "parse_failed":
+      return `Не смог разобрать выписку: ${outcome.error.slice(0, 100)}. ` +
+        `Попробуй прислать ещё раз или другим форматом.`;
+    case "ok": {
+      const s = outcome.summary;
+      const head = `📄 «${filename}» - разобрал ${outcome.total_lines} ${
+        outcome.total_lines === 1 ? "операцию" : "операций"
+      } (${outcome.source}).\n\n`;
+      const stats = [
+        `✓ Сверено с чеками: <b>${s.matched}</b>`,
+        s.no_candidate > 0 ? `❓ Не нашёл в базе: <b>${s.no_candidate}</b>` : null,
+        s.ambiguous > 0 ? `⚠ Несколько кандидатов: ${s.ambiguous}` : null,
+        s.skipped > 0 ? `↺ Пропущено (переводы/комиссии): ${s.skipped}` : null,
+      ].filter(Boolean).join("\n");
+      const tail = s.no_candidate > 0
+        ? `\n\n_Несверённые позиции остались для триажа - открой Mini App и проверь._`
+        : `\n\n_Все позиции сверены ✓_`;
+      return head + stats + tail;
+    }
+  }
 }
 
 function formatPhotoReply(outcome: PhotoOutcome): string {
