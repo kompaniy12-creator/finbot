@@ -32,6 +32,9 @@ interface FeedItem {
   receipt_id: string | null;
   item_count: number;
   created_at: string;
+  // Payment + reconciliation (added with bank-statement import).
+  payment_method: "card" | "cash" | "transfer" | "unknown";
+  reconciled: boolean;
 }
 
 Deno.serve(async (req: Request) => {
@@ -131,7 +134,7 @@ Deno.serve(async (req: Request) => {
   // 2. Solo expenses (no receipt_id). Now includes income rows too -
   // they're filed in the same table, distinguished by tx_kind in the FeedItem.
   let eq = sb.from("expenses").select(
-    "id, kind, name, amount, currency, amount_pln, expense_date, category_id, family_member_id, source, needs_review, needs_confirmation, created_at",
+    "id, kind, name, amount, currency, amount_pln, expense_date, category_id, family_member_id, source, needs_review, needs_confirmation, created_at, payment_method, reconciled_at",
   ).eq("archived", false).is("receipt_id", null);
   if (search) eq = eq.ilike("name", `%${search}%`);
   if (validCategory) eq = eq.eq("category_id", validCategory);
@@ -154,6 +157,8 @@ Deno.serve(async (req: Request) => {
     needs_review: boolean;
     needs_confirmation: boolean;
     created_at: string;
+    payment_method: "card" | "cash" | "transfer" | "unknown";
+    reconciled_at: string | null;
   }>;
 
   const dates = [
@@ -180,6 +185,10 @@ Deno.serve(async (req: Request) => {
       receipt_id: r.id,
       item_count: countMap.get(r.id) ?? 0,
       created_at: r.created_at,
+      // Receipts default to card (most photographed receipts are POS / card).
+      // Real value comes from the underlying expense rows when reconciled.
+      payment_method: "card",
+      reconciled: false,
     })),
     ...solos.map<FeedItem>((e) => ({
       kind: "expense",
@@ -198,6 +207,8 @@ Deno.serve(async (req: Request) => {
       receipt_id: null,
       item_count: 1,
       created_at: e.created_at,
+      payment_method: e.payment_method ?? "unknown",
+      reconciled: e.reconciled_at != null,
     })),
   ];
 

@@ -360,6 +360,34 @@ export async function dispatch(
     return { chatId: msg.chat.id, reply: { text: formatPhotoReply(outcome) } };
   }
 
+  // PDF document → bank statement intake. For now we just register the file
+  // so the dev can pull it via the bot's getFile API and tune the parser
+  // against real mBank / Revolut layouts. Full pipeline lands once the
+  // prompt is tuned.
+  if (msg.document && msg.document.mime_type === "application/pdf") {
+    const filename = msg.document.file_name || "statement.pdf";
+    const ins = await input.sb.from("bank_statements").insert({
+      family_member_id: input.member.id,
+      source: "other",
+      filename,
+      status: "parsing",
+    }).select("id").maybeSingle();
+    const stmtId = (ins.data as { id: string } | null)?.id ?? "?";
+    // Stash the Telegram file_id in raw_text temporarily so we can fetch it
+    // out-of-band while we build the real pipeline.
+    await input.sb.from("bank_statements")
+      .update({ raw_text: `TG_FILE_ID:${msg.document.file_id}` })
+      .eq("id", stmtId);
+    return {
+      chatId: msg.chat.id,
+      reply: {
+        text: `📄 Принял PDF «${filename}» (id=${stmtId.slice(0, 8)}).\n\n` +
+          `Парсер банковских выписок ещё допиливается под mBank/Revolut. ` +
+          `Сейчас PDF просто зарегистрирован, разбор подключу следующим релизом.`,
+      },
+    };
+  }
+
   return { chatId: msg.chat.id, reply: unauthorizedReply() };
 }
 

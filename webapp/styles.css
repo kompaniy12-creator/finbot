@@ -1116,3 +1116,14 @@ body.theme-dark {
   --card-bg: #1f1f24;
   --line: rgba(255, 255, 255, 0.1);
 }
+
+/* Reconciled-with-bank marker (✓ next to amount) */
+.tx-row .tx-rec {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 5px;
+  border-radius: 4px;
+  font-size: 11px;
+  background: color-mix(in srgb, #20c997 22%, transparent);
+  color: #20c997;
+}
