@@ -152,6 +152,11 @@ const INCOME_KEYWORDS = [
   "zwrot",
   "prezent",
   "premia",
+  "wynagrodzenie", // "remuneration", common in salary statement lines
+  "wynagrodzeni", // catches inflections
+  "przelew przychodzący", // mBank: "incoming transfer"
+  "przelew wewnętrzny przychodzący", // mBank specific
+  "uznanie", // mBank inflow column heading
 ];
 
 // Pre-canned income category names (Russian, matches seed in migration 0018).
