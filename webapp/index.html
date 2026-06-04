@@ -13,7 +13,7 @@
     <title>FinBot Dashboard</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
-    <link rel="stylesheet" href="./styles.css?v=20260604q" />
+    <link rel="stylesheet" href="./styles.css?v=20260604r" />
   </head>
   <body>
     <div id="gate" class="gate">
@@ -311,11 +311,23 @@
         <p class="settings-hint">Раздел в разработке. Кто должен мне, кому должен я.</p>
       </section>
 
-      <section class="placeholder-panel tab-only show-on-credits">
-        <header class="categories-head"><h3>🏦 Кредиты</h3></header>
-        <p class="settings-hint">
-          Раздел в разработке. Активные кредиты, графики платежей, остатки.
-        </p>
+      <section class="credits-panel tab-only show-on-credits">
+        <header class="credits-head">
+          <h3>🏦 Кредиты</h3>
+        </header>
+        <div class="credits-filters">
+          <button class="credits-filter active" data-filter="active" type="button">
+            Активные
+          </button>
+          <button class="credits-filter" data-filter="closed" type="button">
+            Закрытые
+          </button>
+          <button class="credits-filter" data-filter="all" type="button">Все</button>
+        </div>
+        <ul id="credits-list" class="credits-list"></ul>
+        <button id="credit-add-btn" type="button" class="plan-fab" aria-label="Добавить кредит">
+          +
+        </button>
       </section>
 
       <footer><small id="version">FinBot v1.2</small></footer>
@@ -614,7 +626,173 @@
       </div>
     </div>
 
-    <script src="./tg-webapp.js?v=20260604q"></script>
-    <script src="./app.js?v=20260604q"></script>
+    <div id="credit-form-modal" class="modal hidden" role="dialog" aria-modal="true">
+      <div class="modal-backdrop"></div>
+      <div class="modal-card plan-form-card">
+        <header class="modal-head">
+          <h3 id="credit-form-title">Новый кредит</h3>
+          <button id="credit-form-close" type="button" aria-label="Закрыть">×</button>
+        </header>
+        <div class="cat-form plan-form">
+          <input type="hidden" id="credit-form-id" />
+
+          <label>Тип
+            <select id="credit-form-type">
+              <option value="cash_loan">Денежный кредит</option>
+              <option value="installment">Рассрочка (0%)</option>
+              <option value="credit_card">Кредитная карта</option>
+              <option value="mortgage">Ипотека</option>
+              <option value="auto_loan">Автокредит</option>
+              <option value="pos_credit">POS-кредит</option>
+              <option value="microloan">Микрозайм</option>
+              <option value="overdraft">Овердрафт</option>
+              <option value="other">Прочее</option>
+            </select>
+          </label>
+
+          <label>Название
+            <input
+              type="text"
+              id="credit-form-name"
+              maxlength="160"
+              placeholder="Например: iPhone 17 Pro у Apple"
+            />
+          </label>
+          <label>Кредитор / магазин
+            <input
+              type="text"
+              id="credit-form-lender"
+              maxlength="120"
+              placeholder="Например: PKO BP"
+            />
+          </label>
+
+          <div class="plan-amount-row">
+            <input
+              type="number"
+              id="credit-form-principal"
+              step="0.01"
+              min="0"
+              placeholder="Сумма займа"
+              inputmode="decimal"
+            />
+            <select id="credit-form-currency">
+              <option value="PLN">PLN</option>
+              <option value="EUR">EUR</option>
+              <option value="ALL">ALL</option>
+              <option value="USD">USD</option>
+            </select>
+          </div>
+
+          <h4 class="plan-section-title">Условия</h4>
+          <label class="credit-row-rate">Ставка, % годовых
+            <input
+              type="number"
+              id="credit-form-rate"
+              step="0.01"
+              min="0"
+              placeholder="0"
+              inputmode="decimal"
+            />
+          </label>
+          <label class="credit-row-term">Срок (мес.)
+            <input
+              type="number"
+              id="credit-form-term"
+              min="1"
+              placeholder="12"
+              inputmode="numeric"
+            />
+          </label>
+          <label>Ежемесячный платёж
+            <input
+              type="number"
+              id="credit-form-monthly"
+              step="0.01"
+              min="0"
+              placeholder="расcчитается автоматически"
+              inputmode="decimal"
+            />
+          </label>
+          <label>Дата выдачи
+            <input type="date" id="credit-form-start" />
+          </label>
+          <label class="credit-row-day">День платежа
+            <input
+              type="number"
+              id="credit-form-day"
+              min="1"
+              max="31"
+              placeholder="например: 15"
+              inputmode="numeric"
+            />
+          </label>
+
+          <h4 class="plan-section-title">Текущее состояние</h4>
+          <label>Остаток долга
+            <input
+              type="number"
+              id="credit-form-remaining"
+              step="0.01"
+              min="0"
+              placeholder="по умолчанию = сумма займа"
+              inputmode="decimal"
+            />
+          </label>
+          <label>Заметка
+            <textarea id="credit-form-notes" maxlength="500" rows="2"></textarea>
+          </label>
+
+          <div class="cat-form-actions">
+            <button id="credit-form-delete" type="button" class="danger hidden">Удалить</button>
+            <button id="credit-form-pay" type="button" class="hidden">Зафиксировать платёж</button>
+            <button id="credit-form-cancel" type="button">Отмена</button>
+            <button id="credit-form-save" type="button" class="primary">Сохранить</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="credit-pay-modal" class="modal hidden" role="dialog" aria-modal="true">
+      <div class="modal-backdrop"></div>
+      <div class="modal-card">
+        <header class="modal-head">
+          <h3>Зафиксировать платёж</h3>
+          <button id="credit-pay-close" type="button" aria-label="Закрыть">×</button>
+        </header>
+        <div class="cat-form">
+          <label>Сумма
+            <input
+              type="number"
+              id="credit-pay-amount"
+              step="0.01"
+              min="0"
+              inputmode="decimal"
+            />
+          </label>
+          <label>Дата
+            <input type="date" id="credit-pay-date" />
+          </label>
+          <label>Способ оплаты
+            <select id="credit-pay-method">
+              <option value="transfer">Перевод</option>
+              <option value="card">Карта</option>
+              <option value="cash">Наличные</option>
+            </select>
+          </label>
+          <p class="settings-hint">
+            Создастся запись расхода в категории "Выплаты по кредиту" и уменьшится остаток по этому
+            кредиту.
+          </p>
+          <div class="cat-form-actions">
+            <button id="credit-pay-cancel" type="button">Отмена</button>
+            <button id="credit-pay-save" type="button" class="primary">Зафиксировать</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="./tg-webapp.js?v=20260604r"></script>
+    <script src="./app.js?v=20260604r"></script>
   </body>
 </html>

@@ -175,6 +175,8 @@ function setActiveTab(tab) {
   }
   // Re-render the tx list with the kind filter applied.
   if (typeof renderTransactions === "function") renderTransactions();
+  // Lazy-load credits on entry to the tab.
+  if (tab === "credits" && typeof loadCredits === "function") loadCredits();
   // Persist in URL hash so a refresh keeps the tab.
   try {
     history.replaceState({}, "", location.pathname + location.search + "#" + tab);
@@ -2035,6 +2037,338 @@ async function deleteBudgetForm() {
   }
 }
 
+// --- Credits ("🏦 Кредит" tab) ---------------------------------------
+// Real CRUD against api-credits + a "Зафиксировать платёж" flow that
+// creates the matching expense row and decrements the credit balance.
+
+const CREDIT_TYPES = {
+  cash_loan: "Денежный кредит",
+  installment: "Рассрочка",
+  credit_card: "Кредитка",
+  mortgage: "Ипотека",
+  auto_loan: "Автокредит",
+  pos_credit: "POS-кредит",
+  microloan: "Микрозайм",
+  overdraft: "Овердрафт",
+  other: "Прочее",
+};
+
+const credits = {
+  items: [],
+  filter: "active",
+  editingId: null,
+  // Reset every time the form opens.
+  payTarget: null,
+};
+
+function annuityPayment(principal, annualRatePct, months) {
+  const p = Number(principal) || 0;
+  const n = Number(months) || 0;
+  if (p <= 0 || n <= 0) return null;
+  const r = (Number(annualRatePct) || 0) / 100 / 12;
+  if (r <= 0) return Math.round((p / n) * 100) / 100;
+  const m = (p * r) / (1 - Math.pow(1 + r, -n));
+  return Math.round(m * 100) / 100;
+}
+
+async function loadCredits() {
+  try {
+    const r = await api("/api-credits?status=" + credits.filter).then((x) => x.json());
+    credits.items = r.items || [];
+  } catch (e) {
+    if (isSessionExpired(e)) return;
+    credits.items = [];
+  }
+  renderCredits();
+}
+
+function renderCredits() {
+  const list = $("#credits-list");
+  if (!list) return;
+  list.innerHTML = "";
+  if (credits.items.length === 0) {
+    const li = document.createElement("li");
+    li.className = "credits-empty";
+    li.textContent = "Кредитов пока нет.";
+    list.appendChild(li);
+    return;
+  }
+  for (const c of credits.items) {
+    const li = document.createElement("li");
+    li.className = "credit-row status-" + c.status;
+    li.dataset.id = c.id;
+
+    const head = document.createElement("div");
+    head.className = "credit-row-head";
+    const name = document.createElement("div");
+    name.className = "credit-row-name";
+    name.textContent = c.name;
+    const type = document.createElement("div");
+    type.className = "credit-row-type";
+    type.textContent = CREDIT_TYPES[c.type] || c.type;
+    head.appendChild(name);
+    head.appendChild(type);
+
+    const lender = document.createElement("div");
+    lender.className = "credit-row-lender";
+    lender.textContent = c.lender || "";
+
+    const money = document.createElement("div");
+    money.className = "credit-row-money";
+    const amt = document.createElement("div");
+    amt.className = "credit-amount";
+    amt.textContent = `${formatNumber(c.remaining_balance)} / ${
+      formatNumber(c.principal)
+    } ${c.currency}`;
+    const pct = document.createElement("div");
+    pct.className = "credit-pct";
+    pct.textContent = `${c.paid_pct}% выплачено`;
+    money.appendChild(amt);
+    money.appendChild(pct);
+
+    const bar = document.createElement("div");
+    bar.className = "credit-progress";
+    const fill = document.createElement("div");
+    fill.className = "credit-progress-fill";
+    fill.style.width = c.paid_pct + "%";
+    bar.appendChild(fill);
+
+    const meta = document.createElement("div");
+    meta.className = "credit-row-meta";
+    const bits = [];
+    if (c.monthly_payment) {
+      bits.push(`платёж ${formatNumber(c.monthly_payment)} ${c.currency}/мес`);
+    }
+    if (c.interest_rate && Number(c.interest_rate) > 0) {
+      bits.push(`${c.interest_rate}% годовых`);
+    }
+    if (c.next_payment_date) bits.push(`след. ${c.next_payment_date}`);
+    meta.textContent = bits.join(" · ");
+
+    li.appendChild(head);
+    if (c.lender) li.appendChild(lender);
+    li.appendChild(money);
+    li.appendChild(bar);
+    if (bits.length) li.appendChild(meta);
+
+    li.addEventListener("click", () => openCreditForm(c));
+    list.appendChild(li);
+  }
+}
+
+function openCreditForm(item) {
+  const modal = $("#credit-form-modal");
+  if (!modal) return;
+  credits.editingId = item ? item.id : null;
+  $("#credit-form-title").textContent = item ? "Редактировать кредит" : "Новый кредит";
+  $("#credit-form-type").value = item ? item.type : "cash_loan";
+  $("#credit-form-name").value = item ? item.name : "";
+  $("#credit-form-lender").value = item ? (item.lender || "") : "";
+  $("#credit-form-principal").value = item ? item.principal : "";
+  $("#credit-form-currency").value = item ? item.currency : "PLN";
+  $("#credit-form-rate").value = item ? item.interest_rate : 0;
+  $("#credit-form-term").value = item ? (item.term_months || "") : "";
+  $("#credit-form-monthly").value = item ? (item.monthly_payment || "") : "";
+  $("#credit-form-start").value = item ? item.start_date : new Date().toISOString().slice(0, 10);
+  $("#credit-form-day").value = item ? (item.payment_day || "") : "";
+  $("#credit-form-remaining").value = item ? item.remaining_balance : "";
+  $("#credit-form-notes").value = item ? (item.notes || "") : "";
+
+  $("#credit-form-delete").classList.toggle("hidden", !item);
+  $("#credit-form-pay").classList.toggle("hidden", !item || item.status === "closed");
+  applyCreditTypeVisibility();
+  modal.classList.remove("hidden");
+}
+
+function applyCreditTypeVisibility() {
+  // Per-type field visibility: installment hides interest, credit_card
+  // and overdraft hide term (open-ended), everything else shows all.
+  const t = $("#credit-form-type").value;
+  const rateLabel = document.querySelector(".credit-row-rate");
+  const termLabel = document.querySelector(".credit-row-term");
+  if (rateLabel) rateLabel.style.display = t === "installment" ? "none" : "";
+  if (termLabel) {
+    termLabel.style.display = (t === "credit_card" || t === "overdraft") ? "none" : "";
+  }
+  // Auto-suggest monthly payment when principal+term (+rate) are filled.
+  const monthly = $("#credit-form-monthly");
+  if (monthly && !monthly.value) {
+    const p = parseFloat($("#credit-form-principal").value);
+    const term = parseInt($("#credit-form-term").value, 10);
+    const rate = t === "installment" ? 0 : parseFloat($("#credit-form-rate").value || "0");
+    const calc = annuityPayment(p, rate, term);
+    if (calc) monthly.placeholder = `≈ ${formatNumber(calc)}`;
+  }
+}
+
+function closeCreditForm() {
+  const modal = $("#credit-form-modal");
+  if (modal) modal.classList.add("hidden");
+  credits.editingId = null;
+}
+
+async function saveCreditForm() {
+  const name = $("#credit-form-name").value.trim();
+  const principal = parseFloat($("#credit-form-principal").value);
+  if (!name || !(principal > 0)) {
+    alert("Укажи название и сумму займа > 0.");
+    return;
+  }
+  const term = parseInt($("#credit-form-term").value, 10);
+  const monthly = parseFloat($("#credit-form-monthly").value);
+  const rate = parseFloat($("#credit-form-rate").value);
+  const day = parseInt($("#credit-form-day").value, 10);
+  const remaining = parseFloat($("#credit-form-remaining").value);
+  const payload = {
+    name,
+    type: $("#credit-form-type").value,
+    lender: $("#credit-form-lender").value.trim() || null,
+    principal,
+    currency: $("#credit-form-currency").value,
+    interest_rate: Number.isFinite(rate) ? rate : 0,
+    start_date: $("#credit-form-start").value,
+    term_months: Number.isFinite(term) ? term : null,
+    monthly_payment: Number.isFinite(monthly) ? monthly : null,
+    payment_day: Number.isFinite(day) ? day : null,
+    remaining_balance: Number.isFinite(remaining) ? remaining : undefined,
+    notes: $("#credit-form-notes").value.trim() || null,
+  };
+  try {
+    let resp;
+    if (credits.editingId) {
+      resp = await api("/api-credits?id=" + credits.editingId, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+    } else {
+      resp = await api("/api-credits", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+    }
+    const data = await resp.json();
+    if (!resp.ok || data.error) {
+      alert("Ошибка: " + (data.error || resp.status));
+      return;
+    }
+    closeCreditForm();
+    await loadCredits();
+  } catch (e) {
+    if (!isSessionExpired(e)) alert("Сеть недоступна.");
+  }
+}
+
+async function deleteCreditForm() {
+  if (!credits.editingId) return;
+  if (!confirm("Удалить этот кредит и его историю платежей?")) return;
+  try {
+    const resp = await api("/api-credits?id=" + credits.editingId, { method: "DELETE" });
+    const data = await resp.json();
+    if (!resp.ok || data.error) {
+      alert("Ошибка: " + (data.error || resp.status));
+      return;
+    }
+    closeCreditForm();
+    await loadCredits();
+  } catch (e) {
+    if (!isSessionExpired(e)) alert("Сеть недоступна.");
+  }
+}
+
+function openCreditPay() {
+  if (!credits.editingId) return;
+  const cred = credits.items.find((c) => c.id === credits.editingId);
+  if (!cred) return;
+  credits.payTarget = cred.id;
+  $("#credit-pay-amount").value = cred.monthly_payment || "";
+  $("#credit-pay-date").value = new Date().toISOString().slice(0, 10);
+  $("#credit-pay-method").value = "transfer";
+  $("#credit-pay-modal").classList.remove("hidden");
+}
+function closeCreditPay() {
+  $("#credit-pay-modal").classList.add("hidden");
+  credits.payTarget = null;
+}
+async function saveCreditPay() {
+  if (!credits.payTarget) return;
+  const amount = parseFloat($("#credit-pay-amount").value);
+  if (!(amount > 0)) {
+    alert("Сумма должна быть > 0.");
+    return;
+  }
+  const payload = {
+    amount,
+    paid_at: $("#credit-pay-date").value,
+    payment_method: $("#credit-pay-method").value,
+  };
+  try {
+    const resp = await api(
+      "/api-credits?id=" + credits.payTarget + "&action=payment",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      },
+    );
+    const data = await resp.json();
+    if (!resp.ok || data.error) {
+      alert("Ошибка: " + (data.error || resp.status));
+      return;
+    }
+    closeCreditPay();
+    closeCreditForm();
+    await loadCredits();
+    // Refresh transactions / KPIs since a new expense was just created.
+    if (typeof refresh === "function") await refresh();
+  } catch (e) {
+    if (!isSessionExpired(e)) alert("Сеть недоступна.");
+  }
+}
+
+function bindCredits() {
+  const add = $("#credit-add-btn");
+  if (add) add.addEventListener("click", () => openCreditForm(null));
+  for (const f of document.querySelectorAll(".credits-filter")) {
+    f.addEventListener("click", () => {
+      credits.filter = f.dataset.filter;
+      for (const b of document.querySelectorAll(".credits-filter")) {
+        b.classList.toggle("active", b === f);
+      }
+      loadCredits();
+    });
+  }
+  const close = $("#credit-form-close");
+  if (close) close.addEventListener("click", closeCreditForm);
+  const bd = document.querySelector("#credit-form-modal .modal-backdrop");
+  if (bd) bd.addEventListener("click", closeCreditForm);
+  const cancel = $("#credit-form-cancel");
+  if (cancel) cancel.addEventListener("click", closeCreditForm);
+  const save = $("#credit-form-save");
+  if (save) save.addEventListener("click", saveCreditForm);
+  const del = $("#credit-form-delete");
+  if (del) del.addEventListener("click", deleteCreditForm);
+  const pay = $("#credit-form-pay");
+  if (pay) pay.addEventListener("click", openCreditPay);
+  const typeSel = $("#credit-form-type");
+  if (typeSel) typeSel.addEventListener("change", applyCreditTypeVisibility);
+  for (const id of ["#credit-form-principal", "#credit-form-term", "#credit-form-rate"]) {
+    const el = $(id);
+    if (el) el.addEventListener("input", applyCreditTypeVisibility);
+  }
+
+  // Payment modal
+  const pclose = $("#credit-pay-close");
+  if (pclose) pclose.addEventListener("click", closeCreditPay);
+  const pbd = document.querySelector("#credit-pay-modal .modal-backdrop");
+  if (pbd) pbd.addEventListener("click", closeCreditPay);
+  const pcancel = $("#credit-pay-cancel");
+  if (pcancel) pcancel.addEventListener("click", closeCreditPay);
+  const psave = $("#credit-pay-save");
+  if (psave) psave.addEventListener("click", saveCreditPay);
+}
+
 async function main() {
   // Magic-link exchange must run before gate check so the URL token is
   // converted into a stored session in time for gateOrApp() to see it.
@@ -2048,6 +2382,7 @@ async function main() {
   bindNav();
   bindSettings();
   bindPlanning();
+  bindCredits();
 
   await loadCategoriesAndFamily();
   await refresh();
