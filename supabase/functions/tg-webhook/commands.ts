@@ -655,11 +655,13 @@ export async function meCommand(
     sb.from("expenses")
       .select("amount, currency, amount_pln, category_id, expense_date")
       .eq("archived", false)
+      .eq("kind", "expense")
       .eq("family_member_id", member.id)
       .gte("expense_date", monthStart),
     sb.from("expenses")
       .select("amount_pln")
       .eq("archived", false)
+      .eq("kind", "expense")
       .gte("expense_date", monthStart),
     sb.from("categories").select("id, name"),
   ]);

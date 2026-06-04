@@ -67,24 +67,41 @@ Deno.serve(async (req: Request) => {
   const monthStart = today.slice(0, 7) + "-01";
 
   // Pull everything we need in one round of queries.
-  const [todayRes, yestRes, monthRes, famRes, catRes] = await Promise.all([
-    sb.from("expenses")
-      .select("amount, currency, amount_pln, category_id, expense_date")
-      .eq("archived", false).eq("expense_date", today),
-    sb.from("expenses")
-      .select("amount_pln, expense_date")
-      .eq("archived", false).eq("expense_date", yesterday),
-    sb.from("expenses")
-      .select("amount_pln, expense_date")
-      .eq("archived", false)
-      .gte("expense_date", monthStart).lte("expense_date", today),
-    sb.from("family_members").select("telegram_id, name, active").eq("active", true),
-    sb.from("categories").select("id, name"),
-  ]);
+  // CRITICAL: filter kind='expense' on every expense aggregate - otherwise
+  // income rows (Зарплата, дивиденды, возврат долгов) inflate totals and
+  // dominate the "top category" line, making the summary nonsense.
+  const [todayRes, yestRes, monthRes, todayIncRes, monthIncRes, famRes, catRes] = await Promise
+    .all([
+      sb.from("expenses")
+        .select("amount, currency, amount_pln, category_id, expense_date")
+        .eq("archived", false).eq("kind", "expense").eq("expense_date", today),
+      sb.from("expenses")
+        .select("amount_pln, expense_date")
+        .eq("archived", false).eq("kind", "expense").eq("expense_date", yesterday),
+      sb.from("expenses")
+        .select("amount_pln, expense_date")
+        .eq("archived", false).eq("kind", "expense")
+        .gte("expense_date", monthStart).lte("expense_date", today),
+      sb.from("expenses")
+        .select("amount_pln, expense_date")
+        .eq("archived", false).eq("kind", "income").eq("expense_date", today),
+      sb.from("expenses")
+        .select("amount_pln, expense_date")
+        .eq("archived", false).eq("kind", "income")
+        .gte("expense_date", monthStart).lte("expense_date", today),
+      sb.from("family_members").select("telegram_id, name, active").eq("active", true),
+      sb.from("categories").select("id, name"),
+    ]);
 
   const todayRows = (todayRes.data ?? []) as ExpRow[];
   const yestRows = (yestRes.data ?? []) as Array<{ amount_pln: number; expense_date: string }>;
   const monthRows = (monthRes.data ?? []) as Array<{ amount_pln: number; expense_date: string }>;
+  const todayIncRows = (todayIncRes.data ?? []) as Array<
+    { amount_pln: number; expense_date: string }
+  >;
+  const monthIncRows = (monthIncRes.data ?? []) as Array<
+    { amount_pln: number; expense_date: string }
+  >;
   const members = (famRes.data ?? []) as Array<
     { telegram_id: number; name: string; active: boolean }
   >;
@@ -96,6 +113,8 @@ Deno.serve(async (req: Request) => {
     ...todayRows.map((r) => r.expense_date),
     ...yestRows.map((r) => r.expense_date),
     ...monthRows.map((r) => r.expense_date),
+    ...todayIncRows.map((r) => r.expense_date),
+    ...monthIncRows.map((r) => r.expense_date),
   ];
   const eurRates = await loadEurRates(sb, dates);
 
@@ -115,10 +134,20 @@ Deno.serve(async (req: Request) => {
   for (const r of monthRows) {
     monthEur += plnToEur(Number(r.amount_pln), r.expense_date, eurRates) ?? 0;
   }
+  let todayIncEur = 0;
+  for (const r of todayIncRows) {
+    todayIncEur += plnToEur(Number(r.amount_pln), r.expense_date, eurRates) ?? 0;
+  }
+  let monthIncEur = 0;
+  for (const r of monthIncRows) {
+    monthIncEur += plnToEur(Number(r.amount_pln), r.expense_date, eurRates) ?? 0;
+  }
 
   todayEur = Math.round(todayEur * 100) / 100;
   yestEur = Math.round(yestEur * 100) / 100;
   monthEur = Math.round(monthEur * 100) / 100;
+  todayIncEur = Math.round(todayIncEur * 100) / 100;
+  monthIncEur = Math.round(monthIncEur * 100) / 100;
 
   const topCat = [...byCat.entries()].sort((a, b) => b[1] - a[1])[0];
   const deltaPct = yestEur > 0 ? Math.round(((todayEur - yestEur) / yestEur) * 1000) / 10 : null;
@@ -130,15 +159,22 @@ Deno.serve(async (req: Request) => {
   // member. Each member sees the same picture as the dashboard.
   const headline = todayRows.length === 0
     ? "📊 Сегодня без трат. Молодцы!"
-    : `📊 Сегодня: ${todayEur.toFixed(2)} EUR за ${todayRows.length} ${
+    : `📊 Сегодня расход: ${todayEur.toFixed(2)} EUR за ${todayRows.length} ${
       todayRows.length === 1 ? "запись" : "записей"
     }${deltaText}`;
+  const incomeLine = todayIncEur > 0 ? `\n💰 Доход сегодня: ${todayIncEur.toFixed(2)} EUR` : "";
   const ccyLine = byCcy.size > 0 ? `\nПо валютам: ${fmtCcy(byCcy)}` : "";
-  const topLine = topCat ? `\nТоп-категория: ${catName.get(topCat[0]) ?? "?"}` : "";
-  const monthLine = `\n\nЗа месяц: ${monthEur.toFixed(2)} EUR за ${monthRows.length} ${
+  const topLine = topCat ? `\nТоп-категория расходов: ${catName.get(topCat[0]) ?? "?"}` : "";
+  const monthExpLine = `\n\nЗа месяц расход: ${monthEur.toFixed(2)} EUR за ${monthRows.length} ${
     monthRows.length === 1 ? "запись" : "записей"
   }`;
-  const text = headline + ccyLine + topLine + monthLine;
+  const monthIncLine = monthIncEur > 0 ? `\nЗа месяц доход: ${monthIncEur.toFixed(2)} EUR` : "";
+  const monthNet = Math.round((monthIncEur - monthEur) * 100) / 100;
+  const monthNetLine = monthIncEur > 0
+    ? `\nНетто за месяц: ${monthNet >= 0 ? "+" : ""}${monthNet.toFixed(2)} EUR`
+    : "";
+  const text = headline + incomeLine + ccyLine + topLine + monthExpLine + monthIncLine +
+    monthNetLine;
 
   let sent = 0;
   for (const m of members) {

@@ -49,15 +49,18 @@ Deno.serve(async (req: Request) => {
   // Window for "prior" comparison (month BEFORE prev)
   const prior = previousMonth(prev.start);
 
-  // Pull rows for both windows in parallel.
+  // Pull rows for both windows in parallel. kind='expense' filter
+  // is critical - the monthly summary is a spending report, not a
+  // net-flow report; including income would dominate top categories
+  // and inflate totals.
   const [prevRowsRes, priorRowsRes, famRes, catRes] = await Promise.all([
     sb.from("expenses")
       .select("amount, currency, amount_pln, category_id, expense_date")
-      .eq("archived", false)
+      .eq("archived", false).eq("kind", "expense")
       .gte("expense_date", prev.start).lte("expense_date", prev.end),
     sb.from("expenses")
       .select("amount_pln, expense_date")
-      .eq("archived", false)
+      .eq("archived", false).eq("kind", "expense")
       .gte("expense_date", prior.start).lte("expense_date", prior.end),
     sb.from("family_members").select("id, telegram_id, active").eq("active", true),
     sb.from("categories").select("id, name"),

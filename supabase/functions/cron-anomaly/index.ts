@@ -26,10 +26,11 @@ Deno.serve(async (req: Request) => {
   const today = todayWarsawIso();
   const weekAgo = addDaysIso(today, -7);
 
-  // 7-day window
+  // 7-day window (expense kind only - income surges shouldn't trip an
+  // "anomalously high spending" alert).
   const win = await sb.from("expenses")
     .select("expense_date, amount_pln")
-    .eq("archived", false)
+    .eq("archived", false).eq("kind", "expense")
     .gte("expense_date", weekAgo)
     .lt("expense_date", today);
   if (win.error) {
@@ -51,7 +52,7 @@ Deno.serve(async (req: Request) => {
   // Today
   const td = await sb.from("expenses")
     .select("amount_pln")
-    .eq("archived", false)
+    .eq("archived", false).eq("kind", "expense")
     .eq("expense_date", today);
   const todayTotal = ((td.data ?? []) as Array<{ amount_pln: number }>)
     .reduce((acc, r) => acc + Number(r.amount_pln), 0);
