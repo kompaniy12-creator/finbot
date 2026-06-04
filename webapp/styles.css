@@ -2121,11 +2121,40 @@ body.tab-debts .plan-fab {
 .credits-stats {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  margin-bottom: 12px;
+  gap: 14px;
+  margin-bottom: 14px;
 }
 .credits-stats:empty {
   display: none;
+}
+.cs-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 12px;
+}
+.cs-section.cs-mine {
+  background: color-mix(in srgb, var(--button) 6%, transparent);
+  border: 1px solid color-mix(in srgb, var(--button) 18%, transparent);
+}
+.cs-section.cs-foreign {
+  background: color-mix(in srgb, #ff9500 5%, transparent);
+  border: 1px solid color-mix(in srgb, #ff9500 20%, transparent);
+}
+.cs-group-head {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--hint);
+  margin-bottom: 2px;
+}
+.cs-mine .cs-group-head {
+  color: var(--button);
+}
+.cs-foreign .cs-group-head {
+  color: #ff9500;
 }
 .cs-card {
   background: var(--card-bg);

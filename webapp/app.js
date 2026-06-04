@@ -2317,82 +2317,123 @@ function renderCreditsStats() {
   const active = credits.all.filter((c) => c.status === "active");
   if (active.length === 0) return;
 
-  // Group by currency so a mixed PLN+EUR+USD portfolio renders one card per ccy.
-  const byCcy = new Map();
+  // Group by responsibility: credits without borrowed_for are mine;
+  // anything with borrowed_for is grouped per borrower so the user can
+  // see at a glance what is actually owed by other people vs themselves.
+  const groups = new Map();
   for (const c of active) {
-    const cur = byCcy.get(c.currency) ?? {
-      count: 0,
-      principal: 0,
-      remaining: 0,
-      monthly: 0,
-    };
-    cur.count++;
-    cur.principal += Number(c.principal) || 0;
-    cur.remaining += Number(c.remaining_balance) || 0;
-    cur.monthly += Number(c.monthly_payment) || 0;
-    byCcy.set(c.currency, cur);
+    const key = (c.borrowed_for && String(c.borrowed_for).trim().length > 0)
+      ? String(c.borrowed_for).trim()
+      : "__mine__";
+    const arr = groups.get(key) ?? [];
+    arr.push(c);
+    groups.set(key, arr);
   }
+  // Mine first, then alphabetical by borrower.
+  const sortedKeys = [...groups.keys()].sort((a, b) => {
+    if (a === "__mine__") return -1;
+    if (b === "__mine__") return 1;
+    return a.localeCompare(b, "ru");
+  });
 
-  for (const [ccy, s] of byCcy) {
-    const paid = Math.max(0, s.principal - s.remaining);
-    const pct = s.principal > 0 ? Math.round((paid / s.principal) * 100) : 0;
-    const card = document.createElement("div");
-    card.className = "cs-card";
+  for (const key of sortedKeys) {
+    const list = groups.get(key);
+    const isMine = key === "__mine__";
 
-    const top = document.createElement("div");
-    top.className = "cs-top";
-    const left = document.createElement("div");
-    left.innerHTML = `<span class="cs-num">${s.count}</span> активных в ${ccy}`;
-    const right = document.createElement("div");
-    right.className = "cs-monthly";
-    right.textContent = `${formatNumber(s.monthly)} ${ccy}/мес`;
-    top.appendChild(left);
-    top.appendChild(right);
+    const section = document.createElement("div");
+    section.className = "cs-section" + (isMine ? " cs-mine" : " cs-foreign");
 
-    const remain = document.createElement("div");
-    remain.className = "cs-remain";
-    remain.innerHTML = `Остаток: <strong>${formatNumber(s.remaining)} ${ccy}</strong>`;
+    const head = document.createElement("div");
+    head.className = "cs-group-head";
+    head.textContent = isMine ? "💼 Мои кредиты" : `🤝 Для: ${key}`;
+    section.appendChild(head);
 
-    const paidEl = document.createElement("div");
-    paidEl.className = "cs-paid";
-    paidEl.textContent = `Выплачено ${formatNumber(paid)} из ${
-      formatNumber(s.principal)
-    } ${ccy} (${pct}%)`;
-
-    const bar = document.createElement("div");
-    bar.className = "cs-bar";
-    const fill = document.createElement("div");
-    fill.className = "cs-bar-fill";
-    fill.style.width = pct + "%";
-    bar.appendChild(fill);
-
-    card.appendChild(top);
-    card.appendChild(remain);
-    card.appendChild(paidEl);
-    card.appendChild(bar);
-    box.appendChild(card);
-  }
-
-  // Nearest upcoming payment across all active credits.
-  let next = null;
-  for (const c of active) {
-    if (!c.next_payment_date || !c.monthly_payment) continue;
-    if (!next || c.next_payment_date < next.date) {
-      next = {
-        date: c.next_payment_date,
-        amount: Number(c.monthly_payment),
-        currency: c.currency,
-        name: c.name,
+    // Per-currency aggregation within this group.
+    const byCcy = new Map();
+    for (const c of list) {
+      const cur = byCcy.get(c.currency) ?? {
+        count: 0,
+        principal: 0,
+        remaining: 0,
+        monthly: 0,
       };
+      cur.count++;
+      cur.principal += Number(c.principal) || 0;
+      cur.remaining += Number(c.remaining_balance) || 0;
+      cur.monthly += Number(c.monthly_payment) || 0;
+      byCcy.set(c.currency, cur);
     }
-  }
-  if (next) {
-    const row = document.createElement("div");
-    row.className = "cs-next";
-    row.innerHTML = `Ближайший платёж: <strong>${formatPlanDate(next.date)}</strong> · ${
-      formatNumber(next.amount)
-    } ${next.currency} (${next.name})`;
-    box.appendChild(row);
+
+    for (const [ccy, s] of byCcy) {
+      const paid = Math.max(0, s.principal - s.remaining);
+      const pct = s.principal > 0 ? Math.round((paid / s.principal) * 100) : 0;
+      const card = document.createElement("div");
+      card.className = "cs-card";
+
+      const top = document.createElement("div");
+      top.className = "cs-top";
+      const left = document.createElement("div");
+      left.innerHTML = `<span class="cs-num">${s.count}</span> активных в ${ccy}`;
+      const right = document.createElement("div");
+      right.className = "cs-monthly";
+      // monthly_payment may be null (variable-amount credits like
+      // overdraft interest) - show '~' marker instead of '0/мес'.
+      right.textContent = s.monthly > 0
+        ? `${formatNumber(s.monthly)} ${ccy}/мес`
+        : "переменная сумма";
+      top.appendChild(left);
+      top.appendChild(right);
+
+      const remain = document.createElement("div");
+      remain.className = "cs-remain";
+      remain.innerHTML = `Остаток: <strong>${formatNumber(s.remaining)} ${ccy}</strong>`;
+
+      const paidEl = document.createElement("div");
+      paidEl.className = "cs-paid";
+      paidEl.textContent = `Выплачено ${formatNumber(paid)} из ${
+        formatNumber(s.principal)
+      } ${ccy} (${pct}%)`;
+
+      const bar = document.createElement("div");
+      bar.className = "cs-bar";
+      const fill = document.createElement("div");
+      fill.className = "cs-bar-fill";
+      fill.style.width = pct + "%";
+      bar.appendChild(fill);
+
+      card.appendChild(top);
+      card.appendChild(remain);
+      card.appendChild(paidEl);
+      card.appendChild(bar);
+      section.appendChild(card);
+    }
+
+    // Nearest upcoming payment within this group.
+    let next = null;
+    for (const c of list) {
+      if (!c.next_payment_date) continue;
+      if (!next || c.next_payment_date < next.date) {
+        next = {
+          date: c.next_payment_date,
+          amount: c.monthly_payment != null ? Number(c.monthly_payment) : null,
+          currency: c.currency,
+          name: c.name,
+        };
+      }
+    }
+    if (next) {
+      const row = document.createElement("div");
+      row.className = "cs-next";
+      const amountTxt = next.amount != null
+        ? `${formatNumber(next.amount)} ${next.currency}`
+        : "переменная сумма";
+      row.innerHTML = `Ближайший платёж: <strong>${
+        formatPlanDate(next.date)
+      }</strong> · ${amountTxt} (${next.name})`;
+      section.appendChild(row);
+    }
+
+    box.appendChild(section);
   }
 }
 
