@@ -49,6 +49,10 @@ const CreateSchema = z.object({
   payment_day: z.number().int().min(1).max(31).nullable().optional(),
   remaining_balance: z.number().min(0).optional(), // defaults to principal on create
   notes: z.string().max(500).nullable().optional(),
+  // "Credit for someone" flow: when set, payments against this credit
+  // automatically create a debt row from `borrowed_for` to me.
+  borrowed_for: z.string().max(120).nullable().optional(),
+  auto_create_debt: z.boolean().default(false),
 });
 
 const UpdateSchema = CreateSchema.partial().extend({
@@ -96,7 +100,7 @@ Deno.serve(async (req: Request) => {
   if (req.method === "GET") {
     const statusFilter = url.searchParams.get("status") ?? "active";
     let q = sb.from("credits").select(
-      "id, family_member_id, name, type, lender, principal, currency, interest_rate, start_date, term_months, monthly_payment, payment_day, remaining_balance, status, notes, created_at",
+      "id, family_member_id, name, type, lender, principal, currency, interest_rate, start_date, term_months, monthly_payment, payment_day, remaining_balance, status, notes, borrowed_for, auto_create_debt, created_at",
     ).order("created_at", { ascending: false });
     if (statusFilter !== "all") q = q.eq("status", statusFilter);
     const res = await q;
@@ -137,6 +141,91 @@ Deno.serve(async (req: Request) => {
       };
     });
     return json(req, { items });
+  }
+
+  if (req.method === "POST" && url.searchParams.get("action") === "link_past_payments") {
+    // Retroactive linking: walk recent expense rows (last 6 months)
+    // in this credit's currency whose amount matches the credit's
+    // monthly_payment ±5%, and for any that don't already have a
+    // source-credit debt, insert one. Used right after the user
+    // configures borrowed_for on an already-active credit.
+    const id = url.searchParams.get("id");
+    if (!id || !/^[0-9a-f-]{36}$/i.test(id)) return json(req, { error: "id_required" }, 400);
+    const c = await sb.from("credits").select(
+      "id, family_member_id, currency, monthly_payment, borrowed_for, auto_create_debt, name, status",
+    ).eq("id", id).maybeSingle();
+    if (!c.data) return json(req, { error: "not_found" }, 404);
+    const cr = c.data as {
+      id: string;
+      family_member_id: string;
+      currency: string;
+      monthly_payment: number | null;
+      borrowed_for: string | null;
+      auto_create_debt: boolean;
+      name: string;
+      status: string;
+    };
+    if (cr.family_member_id !== me.id && me.role !== "admin") return forbidden(req);
+    if (!cr.borrowed_for || !cr.monthly_payment) {
+      return json(req, { error: "credit_not_configured_for_debt" }, 400);
+    }
+
+    const sixMonthsAgo = new Date(Date.now() - 180 * 86_400_000).toISOString().slice(0, 10);
+    const mp = Number(cr.monthly_payment);
+    const tol = Math.max(0.05, 0.05 * mp);
+    const expRes = await sb.from("expenses")
+      .select("id, amount, expense_date")
+      .eq("family_member_id", cr.family_member_id)
+      .eq("kind", "expense")
+      .eq("archived", false)
+      .eq("currency", cr.currency)
+      .gte("expense_date", sixMonthsAgo)
+      .gte("amount", mp - tol)
+      .lte("amount", mp + tol);
+    const exps = (expRes.data ?? []) as Array<{
+      id: string;
+      amount: number;
+      expense_date: string;
+    }>;
+
+    if (exps.length === 0) {
+      return json(req, { ok: true, created: 0, scanned: 0 });
+    }
+
+    // Filter out those that already have a debt row linked.
+    const existing = await sb.from("debts")
+      .select("source_expense_id")
+      .in("source_expense_id", exps.map((e) => e.id));
+    const linked = new Set(
+      ((existing.data ?? []) as Array<{ source_expense_id: string }>)
+        .map((x) => x.source_expense_id),
+    );
+    const toCreate = exps.filter((e) => !linked.has(e.id));
+    if (toCreate.length === 0) {
+      return json(req, { ok: true, created: 0, scanned: exps.length });
+    }
+
+    const rows = toCreate.map((e) => ({
+      family_member_id: cr.family_member_id,
+      direction: "owed_to_me" as const,
+      counterparty: cr.borrowed_for!,
+      amount: e.amount,
+      currency: cr.currency,
+      remaining_balance: e.amount,
+      borrowed_at: e.expense_date,
+      status: "active" as const,
+      notes: `Авто: платёж по кредиту "${cr.name}" (привязка прошлого)`,
+      source_credit_id: cr.id,
+      source_expense_id: e.id,
+    }));
+    const ins = await sb.from("debts").insert(rows);
+    if (ins.error) return json(req, { error: ins.error.message }, 500);
+    log("info", "credit_link_past_payments", {
+      credit_id: cr.id,
+      scanned: exps.length,
+      created: toCreate.length,
+    });
+    return json(req, { ok: true, created: toCreate.length, scanned: exps.length });
   }
 
   if (req.method === "POST" && url.searchParams.get("action") === "payment") {
@@ -255,6 +344,8 @@ Deno.serve(async (req: Request) => {
       payment_day: body.payment_day ?? null,
       remaining_balance: body.remaining_balance ?? body.principal,
       notes: body.notes ?? null,
+      borrowed_for: body.borrowed_for ?? null,
+      auto_create_debt: body.auto_create_debt,
     }).select("id").maybeSingle();
     if (ins.error) return json(req, { error: ins.error.message }, 500);
     log("info", "credit_created", { id: (ins.data as { id: string }).id });

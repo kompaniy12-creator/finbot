@@ -13,7 +13,7 @@
     <title>FinBot Dashboard</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
-    <link rel="stylesheet" href="./styles.css?v=20260604s" />
+    <link rel="stylesheet" href="./styles.css?v=20260604t" />
   </head>
   <body>
     <div id="gate" class="gate">
@@ -753,6 +753,31 @@
             <textarea id="credit-form-notes" maxlength="500" rows="2"></textarea>
           </label>
 
+          <h4 class="plan-section-title">Кредит взят для кого-то</h4>
+          <p class="settings-hint">
+            Если кредит на тебе, но фактически платит другой человек, укажи его. Каждый ежемесячный
+            платёж автоматически создаст долг "Он должен мне" на сумму платежа.
+          </p>
+          <label>Для кого взят
+            <input
+              type="text"
+              id="credit-form-for"
+              maxlength="120"
+              placeholder="например: Денис"
+            />
+          </label>
+          <label class="plan-row-toggle">
+            <span>Автоматически создавать долг</span>
+            <input type="checkbox" id="credit-form-autodebt" />
+          </label>
+          <button
+            id="credit-form-link-past"
+            type="button"
+            class="hidden credit-link-past-btn"
+          >
+            Применить к прошлым платежам
+          </button>
+
           <div class="cat-form-actions">
             <button id="credit-form-delete" type="button" class="danger hidden">Удалить</button>
             <button id="credit-form-pay" type="button" class="hidden">Зафиксировать платёж</button>
@@ -931,7 +956,7 @@
       </div>
     </div>
 
-    <script src="./tg-webapp.js?v=20260604s"></script>
-    <script src="./app.js?v=20260604s"></script>
+    <script src="./tg-webapp.js?v=20260604t"></script>
+    <script src="./app.js?v=20260604t"></script>
   </body>
 </html>

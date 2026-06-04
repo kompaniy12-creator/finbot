@@ -1907,3 +1907,19 @@ body.tab-debts .plan-fab {
   background: var(--button);
   color: var(--button-text);
 }
+
+.credit-link-past-btn {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  padding: 10px;
+  border: 1px dashed var(--button);
+  background: transparent;
+  color: var(--button);
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.credit-link-past-btn.hidden {
+  display: none;
+}

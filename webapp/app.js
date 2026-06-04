@@ -2174,9 +2174,15 @@ function openCreditForm(item) {
   $("#credit-form-day").value = item ? (item.payment_day || "") : "";
   $("#credit-form-remaining").value = item ? item.remaining_balance : "";
   $("#credit-form-notes").value = item ? (item.notes || "") : "";
+  $("#credit-form-for").value = item ? (item.borrowed_for || "") : "";
+  $("#credit-form-autodebt").checked = item ? !!item.auto_create_debt : false;
 
   $("#credit-form-delete").classList.toggle("hidden", !item);
   $("#credit-form-pay").classList.toggle("hidden", !item || item.status === "closed");
+  // "Apply to past payments" is meaningful only after the credit exists
+  // AND has a configured borrowed_for + monthly_payment.
+  const canLinkPast = !!item && !!item.borrowed_for && !!item.monthly_payment;
+  $("#credit-form-link-past").classList.toggle("hidden", !canLinkPast);
   applyCreditTypeVisibility();
   modal.classList.remove("hidden");
 }
@@ -2233,6 +2239,8 @@ async function saveCreditForm() {
     payment_day: Number.isFinite(day) ? day : null,
     remaining_balance: Number.isFinite(remaining) ? remaining : undefined,
     notes: $("#credit-form-notes").value.trim() || null,
+    borrowed_for: $("#credit-form-for").value.trim() || null,
+    auto_create_debt: $("#credit-form-autodebt").checked,
   };
   try {
     let resp;
@@ -2328,6 +2336,33 @@ async function saveCreditPay() {
   }
 }
 
+async function linkCreditPastPayments() {
+  if (!credits.editingId) return;
+  if (
+    !confirm(
+      "Найти прошлые платежи по этому кредиту (за 6 месяцев) и создать долги? Дубликаты не создаются.",
+    )
+  ) return;
+  try {
+    const resp = await api(
+      "/api-credits?id=" + credits.editingId + "&action=link_past_payments",
+      { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" },
+    );
+    const data = await resp.json();
+    if (!resp.ok || data.error) {
+      alert("Ошибка: " + (data.error || resp.status));
+      return;
+    }
+    alert(
+      `Найдено платежей: ${data.scanned}. Создано долгов: ${data.created}.`,
+    );
+    closeCreditForm();
+    await loadCredits();
+  } catch (e) {
+    if (!isSessionExpired(e)) alert("Сеть недоступна.");
+  }
+}
+
 function bindCredits() {
   const add = $("#credit-add-btn");
   if (add) add.addEventListener("click", () => openCreditForm(null));
@@ -2352,6 +2387,8 @@ function bindCredits() {
   if (del) del.addEventListener("click", deleteCreditForm);
   const pay = $("#credit-form-pay");
   if (pay) pay.addEventListener("click", openCreditPay);
+  const linkPast = $("#credit-form-link-past");
+  if (linkPast) linkPast.addEventListener("click", linkCreditPastPayments);
   const typeSel = $("#credit-form-type");
   if (typeSel) typeSel.addEventListener("change", applyCreditTypeVisibility);
   for (const id of ["#credit-form-principal", "#credit-form-term", "#credit-form-rate"]) {
