@@ -10,7 +10,7 @@
     <title>FinBot Dashboard</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
-    <link rel="stylesheet" href="./styles.css?v=20260604l" />
+    <link rel="stylesheet" href="./styles.css?v=20260604m" />
   </head>
   <body>
     <div id="gate" class="gate">
@@ -253,11 +253,17 @@
         </div>
       </section>
 
-      <section class="placeholder-panel tab-only show-on-planning">
-        <header class="categories-head"><h3>📅 Планирование</h3></header>
-        <p class="settings-hint">
-          Раздел в разработке. Здесь будут планы бюджета, цели и подписки.
-        </p>
+      <section class="planning-panel tab-only show-on-planning">
+        <header class="planning-head">
+          <h3>📅 Планирование</h3>
+          <button id="plan-add-btn" type="button" class="primary">+ Добавить</button>
+        </header>
+        <div class="plan-filters">
+          <button class="plan-filter active" data-filter="all" type="button">Все</button>
+          <button class="plan-filter" data-filter="income" type="button">Доход</button>
+          <button class="plan-filter" data-filter="expense" type="button">Расход</button>
+        </div>
+        <ul id="plan-list" class="plan-list"></ul>
       </section>
 
       <section class="placeholder-panel tab-only show-on-debts">
@@ -401,7 +407,103 @@
       </div>
     </div>
 
-    <script src="./tg-webapp.js?v=20260604l"></script>
-    <script src="./app.js?v=20260604l"></script>
+    <div id="plan-form-modal" class="modal hidden" role="dialog" aria-modal="true">
+      <div class="modal-backdrop"></div>
+      <div class="modal-card plan-form-card">
+        <header class="modal-head">
+          <h3 id="plan-form-title">Новый платёж</h3>
+          <button id="plan-form-close" type="button" aria-label="Закрыть">×</button>
+        </header>
+        <div class="cat-form plan-form">
+          <input type="hidden" id="plan-form-id" />
+
+          <div class="plan-kind-toggle">
+            <button type="button" class="plan-kind-btn active" data-kind="expense">Расход</button>
+            <button type="button" class="plan-kind-btn" data-kind="income">Доход</button>
+          </div>
+
+          <div class="plan-amount-row">
+            <input
+              type="number"
+              id="plan-form-amount"
+              step="0.01"
+              min="0"
+              placeholder="0.00"
+              inputmode="decimal"
+            />
+            <select id="plan-form-currency">
+              <option value="PLN">PLN</option>
+              <option value="EUR">EUR</option>
+              <option value="ALL">ALL</option>
+              <option value="USD">USD</option>
+            </select>
+          </div>
+
+          <h4 class="plan-section-title">Общие</h4>
+          <label>Название платежа
+            <input
+              type="text"
+              id="plan-form-name"
+              maxlength="120"
+              placeholder="Например: Аренда квартиры"
+            />
+          </label>
+          <label>Категория
+            <select id="plan-form-category"></select>
+          </label>
+          <label class="plan-row-toggle">
+            <span>Подтверждение</span>
+            <select id="plan-form-confirm">
+              <option value="manual">Вручную</option>
+              <option value="auto">Автоматически</option>
+            </select>
+          </label>
+
+          <h4 class="plan-section-title">Дата и повтор</h4>
+          <label>Дата
+            <input type="date" id="plan-form-date" />
+          </label>
+          <label>Повтор
+            <select id="plan-form-frequency">
+              <option value="once">Без повтора</option>
+              <option value="weekly">Еженедельно</option>
+              <option value="monthly">Ежемесячно</option>
+              <option value="yearly">Ежегодно</option>
+            </select>
+          </label>
+
+          <h4 class="plan-section-title">Подробнее</h4>
+          <label>Тип платежа
+            <select id="plan-form-method">
+              <option value="cash">Наличные</option>
+              <option value="card">Карта</option>
+              <option value="transfer">Перевод</option>
+            </select>
+          </label>
+          <label>Заметка
+            <textarea id="plan-form-note" maxlength="500" rows="2"></textarea>
+          </label>
+
+          <h4 class="plan-section-title">Уведомления</h4>
+          <label class="plan-row-toggle">
+            <span>В день оплаты</span>
+            <input type="checkbox" id="plan-form-notify-on-day" checked />
+          </label>
+          <label class="plan-row-toggle">
+            <span>За 3 дня до даты оплаты</span>
+            <input type="checkbox" id="plan-form-notify-3d" checked />
+          </label>
+
+          <div class="cat-form-actions">
+            <button id="plan-form-delete" type="button" class="danger hidden">Удалить</button>
+            <button id="plan-form-cancel" type="button">Отмена</button>
+            <button id="plan-form-save" type="button" class="primary">Сохранить</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script src="./tg-webapp.js?v=20260604m"></script>
+    <script src="./app.js?v=20260604m"></script>
   </body>
 </html>

@@ -1497,6 +1497,286 @@ async function refresh() {
   await loadCharts();
 }
 
+// --- Planned payments ("📅 План" tab) ---------------------------------
+// CRUD against api-planned-payments. The form mirrors the layout from
+// the reference app but drops the fields we don't have (account, payee
+// book, tags) per user spec.
+
+const planning = {
+  items: [],
+  filter: "all", // all | income | expense
+  editingId: null,
+  kind: "expense",
+};
+
+function formatPlanAmount(item) {
+  const sign = item.kind === "income" ? "+" : "-";
+  const amt = Number(item.amount).toFixed(2).replace(/\.00$/, "");
+  return `${sign}${amt} ${item.currency}`;
+}
+
+function formatPlanDate(d) {
+  if (!d) return "";
+  const [y, m, day] = d.split("-").map(Number);
+  const months = [
+    "янв",
+    "фев",
+    "мар",
+    "апр",
+    "май",
+    "июн",
+    "июл",
+    "авг",
+    "сен",
+    "окт",
+    "ноя",
+    "дек",
+  ];
+  return `${day} ${months[m - 1]} ${y}`;
+}
+
+function frequencyLabel(f) {
+  return {
+    once: "Единовременный",
+    weekly: "Еженедельно",
+    monthly: "Ежемесячно",
+    yearly: "Ежегодно",
+  }[f] || f;
+}
+
+function methodLabel(m) {
+  return { cash: "Наличные", card: "Карта", transfer: "Перевод" }[m] || m;
+}
+
+async function loadPlannedPayments() {
+  try {
+    const r = await api("/api-planned-payments").then((x) => x.json());
+    planning.items = r.items || [];
+  } catch (e) {
+    if (isSessionExpired(e)) return;
+    planning.items = [];
+  }
+  renderPlannedPayments();
+}
+
+function renderPlannedPayments() {
+  const list = $("#plan-list");
+  if (!list) return;
+  list.innerHTML = "";
+
+  const filtered = planning.items.filter((it) => {
+    if (planning.filter === "all") return true;
+    return it.kind === planning.filter;
+  });
+
+  if (filtered.length === 0) {
+    const li = document.createElement("li");
+    li.className = "plan-empty";
+    li.textContent = "Запланированных платежей пока нет.";
+    list.appendChild(li);
+    return;
+  }
+
+  for (const it of filtered) {
+    const li = document.createElement("li");
+    li.className = "plan-row " + (it.kind === "income" ? "plan-income" : "plan-expense");
+    li.dataset.id = it.id;
+
+    const cat = state.categories.get(it.category_id);
+    const catName = cat ? cat.name : (it.kind === "income" ? "Доход" : "Расход");
+
+    const left = document.createElement("div");
+    left.className = "plan-row-left";
+    const title = document.createElement("div");
+    title.className = "plan-row-title";
+    title.textContent = it.name;
+    const meta = document.createElement("div");
+    meta.className = "plan-row-meta";
+    meta.textContent = `${formatPlanDate(it.next_due_date)} · ${frequencyLabel(it.frequency)} · ${
+      methodLabel(it.payment_method)
+    }`;
+    const sub = document.createElement("div");
+    sub.className = "plan-row-sub";
+    sub.textContent = catName + (it.note ? ` · ${it.note}` : "");
+    left.appendChild(title);
+    left.appendChild(meta);
+    left.appendChild(sub);
+
+    const right = document.createElement("div");
+    right.className = "plan-row-right";
+    const amt = document.createElement("div");
+    amt.className = "plan-row-amount";
+    amt.textContent = formatPlanAmount(it);
+    right.appendChild(amt);
+    if (it.auto_confirm) {
+      const badge = document.createElement("div");
+      badge.className = "plan-row-badge";
+      badge.textContent = "авто";
+      right.appendChild(badge);
+    }
+
+    li.appendChild(left);
+    li.appendChild(right);
+
+    li.addEventListener("click", () => openPlanForm(it));
+    list.appendChild(li);
+  }
+}
+
+function fillPlanCategoryOptions(kind) {
+  const sel = $("#plan-form-category");
+  if (!sel) return;
+  const cur = sel.value;
+  sel.innerHTML = "";
+  const cats = [...state.categories.values()]
+    .filter((c) => (c.kind || "expense") === kind)
+    .sort((a, b) => {
+      if (a.is_fallback !== b.is_fallback) return a.is_fallback ? 1 : -1;
+      return a.name.localeCompare(b.name, "ru");
+    });
+  for (const c of cats) {
+    const o = document.createElement("option");
+    o.value = c.id;
+    o.textContent = c.name + (c.is_fallback ? " (fallback)" : "");
+    sel.appendChild(o);
+  }
+  // Try to keep the previous selection if it still matches kind.
+  if (cur && cats.some((c) => c.id === cur)) sel.value = cur;
+}
+
+function setPlanFormKind(kind) {
+  planning.kind = kind;
+  for (const b of document.querySelectorAll(".plan-kind-btn")) {
+    b.classList.toggle("active", b.dataset.kind === kind);
+  }
+  fillPlanCategoryOptions(kind);
+}
+
+function openPlanForm(item) {
+  const modal = $("#plan-form-modal");
+  if (!modal) return;
+  planning.editingId = item ? item.id : null;
+  $("#plan-form-title").textContent = item ? "Редактировать платёж" : "Новый платёж";
+
+  setPlanFormKind(item ? item.kind : "expense");
+
+  $("#plan-form-amount").value = item ? item.amount : "";
+  $("#plan-form-currency").value = item ? item.currency : "PLN";
+  $("#plan-form-name").value = item ? item.name : "";
+  if (item && item.category_id) $("#plan-form-category").value = item.category_id;
+  $("#plan-form-confirm").value = item && item.auto_confirm ? "auto" : "manual";
+  $("#plan-form-date").value = item ? item.next_due_date : new Date().toISOString().slice(0, 10);
+  $("#plan-form-frequency").value = item ? item.frequency : "once";
+  $("#plan-form-method").value = item ? item.payment_method : "cash";
+  $("#plan-form-note").value = item && item.note ? item.note : "";
+  $("#plan-form-notify-on-day").checked = item ? !!item.notify_on_day : true;
+  $("#plan-form-notify-3d").checked = item ? !!item.notify_3d_before : true;
+
+  $("#plan-form-delete").classList.toggle("hidden", !item);
+
+  modal.classList.remove("hidden");
+}
+
+function closePlanForm() {
+  const modal = $("#plan-form-modal");
+  if (modal) modal.classList.add("hidden");
+  planning.editingId = null;
+}
+
+async function savePlanForm() {
+  const amount = parseFloat($("#plan-form-amount").value);
+  const name = $("#plan-form-name").value.trim();
+  if (!name || !(amount > 0)) {
+    alert("Укажи название и сумму > 0.");
+    return;
+  }
+  const payload = {
+    kind: planning.kind,
+    name,
+    amount,
+    currency: $("#plan-form-currency").value,
+    category_id: $("#plan-form-category").value || null,
+    payment_method: $("#plan-form-method").value,
+    frequency: $("#plan-form-frequency").value,
+    next_due_date: $("#plan-form-date").value,
+    auto_confirm: $("#plan-form-confirm").value === "auto",
+    notify_on_day: $("#plan-form-notify-on-day").checked,
+    notify_3d_before: $("#plan-form-notify-3d").checked,
+    note: $("#plan-form-note").value.trim() || null,
+  };
+  try {
+    let resp;
+    if (planning.editingId) {
+      resp = await api("/api-planned-payments?id=" + planning.editingId, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+    } else {
+      resp = await api("/api-planned-payments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+    }
+    const data = await resp.json();
+    if (!resp.ok || data.error) {
+      alert("Ошибка: " + (data.error || resp.status));
+      return;
+    }
+    closePlanForm();
+    await loadPlannedPayments();
+  } catch (e) {
+    if (!isSessionExpired(e)) alert("Сеть недоступна.");
+  }
+}
+
+async function deletePlanForm() {
+  if (!planning.editingId) return;
+  if (!confirm("Удалить этот платёж?")) return;
+  try {
+    const resp = await api("/api-planned-payments?id=" + planning.editingId, {
+      method: "DELETE",
+    });
+    const data = await resp.json();
+    if (!resp.ok || data.error) {
+      alert("Ошибка: " + (data.error || resp.status));
+      return;
+    }
+    closePlanForm();
+    await loadPlannedPayments();
+  } catch (e) {
+    if (!isSessionExpired(e)) alert("Сеть недоступна.");
+  }
+}
+
+function bindPlanning() {
+  const addBtn = $("#plan-add-btn");
+  if (addBtn) addBtn.addEventListener("click", () => openPlanForm(null));
+  for (const f of document.querySelectorAll(".plan-filter")) {
+    f.addEventListener("click", () => {
+      planning.filter = f.dataset.filter;
+      for (const b of document.querySelectorAll(".plan-filter")) {
+        b.classList.toggle("active", b === f);
+      }
+      renderPlannedPayments();
+    });
+  }
+  const closeBtn = $("#plan-form-close");
+  if (closeBtn) closeBtn.addEventListener("click", closePlanForm);
+  const backdrop = document.querySelector("#plan-form-modal .modal-backdrop");
+  if (backdrop) backdrop.addEventListener("click", closePlanForm);
+  const cancel = $("#plan-form-cancel");
+  if (cancel) cancel.addEventListener("click", closePlanForm);
+  const save = $("#plan-form-save");
+  if (save) save.addEventListener("click", savePlanForm);
+  const del = $("#plan-form-delete");
+  if (del) del.addEventListener("click", deletePlanForm);
+  for (const b of document.querySelectorAll(".plan-kind-btn")) {
+    b.addEventListener("click", () => setPlanFormKind(b.dataset.kind));
+  }
+}
+
 async function main() {
   // Magic-link exchange must run before gate check so the URL token is
   // converted into a stored session in time for gateOrApp() to see it.
@@ -1509,9 +1789,11 @@ async function main() {
 
   bindNav();
   bindSettings();
+  bindPlanning();
 
   await loadCategoriesAndFamily();
   await refresh();
+  await loadPlannedPayments();
 
   // Category-picker modal close handlers
   $("#cat-modal-close").addEventListener("click", closeCategoryPicker);

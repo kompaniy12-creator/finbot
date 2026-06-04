@@ -1197,3 +1197,217 @@ body.theme-dark {
   margin: 0 0 8px;
   font-size: 16px;
 }
+
+/* === Planning tab =================================================== */
+.planning-panel {
+  background: var(--secondary-bg);
+  border-radius: 12px;
+  padding: 14px;
+}
+.planning-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.planning-head h3 {
+  margin: 0;
+  font-size: 16px;
+}
+.plan-filters {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.plan-filter {
+  flex: 1;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--text);
+  border-radius: 999px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.plan-filter.active {
+  background: var(--button);
+  color: var(--button-text);
+  border-color: var(--button);
+}
+.plan-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.plan-empty {
+  text-align: center;
+  color: var(--hint);
+  padding: 20px 0;
+  font-size: 13px;
+}
+.plan-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+  background: var(--card-bg);
+  border-radius: 10px;
+  padding: 12px 14px;
+  cursor: pointer;
+  border-left: 4px solid transparent;
+}
+.plan-row.plan-income {
+  border-left-color: var(--neon-green);
+}
+.plan-row.plan-expense {
+  border-left-color: var(--neon-pink);
+}
+.plan-row-left {
+  min-width: 0;
+  flex: 1;
+}
+.plan-row-title {
+  font-weight: 600;
+  font-size: 14px;
+  margin-bottom: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.plan-row-meta,
+.plan-row-sub {
+  font-size: 12px;
+  color: var(--hint);
+  line-height: 1.35;
+}
+.plan-row-right {
+  text-align: right;
+  white-space: nowrap;
+}
+.plan-row.plan-income .plan-row-amount {
+  color: var(--neon-green);
+}
+.plan-row.plan-expense .plan-row-amount {
+  color: #e85d75;
+}
+.plan-row-amount {
+  font-weight: 700;
+  font-size: 14px;
+}
+.plan-row-badge {
+  display: inline-block;
+  margin-top: 4px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--button) 18%, transparent);
+  color: var(--button);
+}
+
+/* Plan form modal */
+.plan-form-card {
+  max-width: 480px;
+}
+.plan-form .plan-kind-toggle {
+  display: flex;
+  border-radius: 999px;
+  padding: 4px;
+  background: var(--secondary-bg);
+  margin-bottom: 8px;
+}
+.plan-form .plan-kind-btn {
+  flex: 1;
+  padding: 8px 12px;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.plan-form .plan-kind-btn.active {
+  background: var(--button);
+  color: var(--button-text);
+}
+.plan-amount-row {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+.plan-amount-row input {
+  flex: 2;
+  font-size: 22px;
+  font-weight: 700;
+  text-align: right;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--text);
+}
+.plan-amount-row select {
+  flex: 1;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--text);
+}
+.plan-section-title {
+  margin: 14px 0 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--hint);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.plan-form label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 12px;
+  color: var(--hint);
+}
+.plan-form label input[type="text"],
+.plan-form label input[type="number"],
+.plan-form label input[type="date"],
+.plan-form label select,
+.plan-form label textarea {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+}
+.plan-row-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 0;
+  font-size: 13px;
+  color: var(--text);
+}
+.plan-row-toggle select {
+  width: auto;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+  color: var(--text);
+}
+.cat-form-actions .danger {
+  background: transparent;
+  color: #e85d75;
+  border: 1px solid #e85d75;
+}
+.cat-form-actions .danger.hidden {
+  display: none;
+}
