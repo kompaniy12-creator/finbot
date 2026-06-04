@@ -19,6 +19,22 @@
   box-sizing: border-box;
 }
 
+html,
+body {
+  /* Native-app feel: strict vertical-only scrolling, no horizontal slip,
+     no pinch-zoom, no double-tap zoom, no iOS Safari elastic side-bounce.
+     touch-action: pan-y restricts the browser to vertical pans only and
+     also kills pinch + double-tap zoom on supported touch devices. */
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+  overscroll-behavior-x: none;
+  overscroll-behavior-y: contain;
+  touch-action: pan-y;
+  -webkit-text-size-adjust: 100%;
+  -ms-text-size-adjust: 100%;
+}
+
 body {
   margin: 0;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
