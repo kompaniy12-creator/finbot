@@ -17,22 +17,33 @@
 
 * {
   box-sizing: border-box;
+  /* Native-app feel applied to every element so inner scroll containers
+     (modal bodies, lists with overflow-y:auto) can't accept horizontal
+     pan or pinch-zoom gestures either - touch-action does NOT inherit,
+     so html/body alone is not enough. pan-y = vertical pans only,
+     pinch and double-tap zoom disabled. */
+  touch-action: pan-y;
 }
 
 html,
 body {
-  /* Native-app feel: strict vertical-only scrolling, no horizontal slip,
-     no pinch-zoom, no double-tap zoom, no iOS Safari elastic side-bounce.
-     touch-action: pan-y restricts the browser to vertical pans only and
-     also kills pinch + double-tap zoom on supported touch devices. */
   width: 100%;
   max-width: 100%;
   overflow-x: hidden;
   overscroll-behavior-x: none;
   overscroll-behavior-y: contain;
-  touch-action: pan-y;
   -webkit-text-size-adjust: 100%;
   -ms-text-size-adjust: 100%;
+}
+
+/* Every scroll container also pins overscroll behavior so iOS Safari's
+   rubber-band on edge-of-scroll doesn't propagate up to the body and
+   doesn't bounce sideways. */
+.modal-card,
+.plan-form,
+.modal-cat-list,
+.app {
+  overscroll-behavior: contain;
 }
 
 body {
