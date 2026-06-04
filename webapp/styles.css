@@ -1003,6 +1003,35 @@ details.settings-section > button:last-child {
   margin-bottom: 14px;
 }
 
+/* ---- Always-open settings sections (Profile / Theme / Users / Other) -
+   Same card visuals as collapsible details, but no chevron, no toggle,
+   contents always visible. */
+.settings-section-static {
+  background: var(--secondary-bg);
+  border-radius: 10px;
+  padding: 14px;
+  margin-bottom: 12px;
+}
+.settings-section-static > .settings-section-head {
+  margin-bottom: 10px;
+  cursor: default;
+}
+.settings-section-static > .settings-section-head h4 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+/* Inner block spacing inside a static section. Reset margin-left/right
+   so they don't inherit the indented look from the collapsible card. */
+.settings-section-static > p.settings-hint,
+.settings-section-static > .profile-row,
+.settings-section-static > .theme-options,
+.settings-section-static > ul,
+.settings-section-static > button {
+  margin-left: 0;
+  margin-right: 0;
+}
+
 /* ---- Profile / theme / users widgets ------------------------------ */
 .profile-row {
   display: flex;

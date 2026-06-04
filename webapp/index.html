@@ -6,7 +6,7 @@
     <title>FinBot Dashboard</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
-    <link rel="stylesheet" href="./styles.css?v=20260604i" />
+    <link rel="stylesheet" href="./styles.css?v=20260604j" />
   </head>
   <body>
     <div id="gate" class="gate">
@@ -169,8 +169,8 @@
           <h3>Настройки</h3>
         </header>
 
-        <details class="settings-section">
-          <summary class="settings-section-head"><h4>👤 Профиль</h4></summary>
+        <div class="settings-section settings-section-static">
+          <header class="settings-section-head"><h4>👤 Профиль</h4></header>
           <p class="settings-hint">Имя, которым бот к тебе обращается.</p>
           <div class="profile-row">
             <input id="settings-name-input" type="text" maxlength="60" placeholder="Имя" />
@@ -179,28 +179,30 @@
             </button>
           </div>
           <span id="settings-name-status" class="settings-status"></span>
-        </details>
+        </div>
 
-        <details class="settings-section">
-          <summary class="settings-section-head"><h4>🎨 Тема</h4></summary>
+        <div class="settings-section settings-section-static">
+          <header class="settings-section-head"><h4>🎨 Тема</h4></header>
           <p class="settings-hint">«Авто» подхватывает тему из Telegram.</p>
           <div class="theme-options">
             <label><input type="radio" name="theme" value="auto" /> Авто (Telegram)</label>
             <label><input type="radio" name="theme" value="light" /> Светлая</label>
             <label><input type="radio" name="theme" value="dark" /> Тёмная</label>
           </div>
-        </details>
+        </div>
 
-        <details id="settings-users-wrapper" class="settings-section" style="display: none">
-          <summary class="settings-section-head">
-            <h4>👥 Пользователи</h4>
-          </summary>
+        <div
+          id="settings-users-wrapper"
+          class="settings-section settings-section-static"
+          style="display: none"
+        >
+          <header class="settings-section-head"><h4>👥 Пользователи</h4></header>
           <p class="settings-hint">Управление доступом к боту (только для админа).</p>
           <ul id="settings-users-list" class="cat-list"></ul>
           <button id="settings-user-add" type="button" class="settings-add-btn">
             + Добавить пользователя
           </button>
-        </details>
+        </div>
 
         <details class="settings-section">
           <summary class="settings-section-head">
@@ -224,8 +226,8 @@
           <ul id="settings-cat-income" class="cat-list"></ul>
         </details>
 
-        <details class="settings-section">
-          <summary class="settings-section-head"><h4>⚙️ Другое</h4></summary>
+        <div class="settings-section settings-section-static">
+          <header class="settings-section-head"><h4>⚙️ Другое</h4></header>
           <ul class="settings-list">
             <li>
               <strong>Веб-сессии</strong>
@@ -238,7 +240,7 @@
               <p id="settings-version">FinBot v1.2</p>
             </li>
           </ul>
-        </details>
+        </div>
       </section>
 
       <footer><small id="version">FinBot v1.2</small></footer>
@@ -358,7 +360,7 @@
       </div>
     </div>
 
-    <script src="./tg-webapp.js?v=20260604i"></script>
-    <script src="./app.js?v=20260604i"></script>
+    <script src="./tg-webapp.js?v=20260604j"></script>
+    <script src="./app.js?v=20260604j"></script>
   </body>
 </html>
