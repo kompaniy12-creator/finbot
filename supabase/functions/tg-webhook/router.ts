@@ -31,6 +31,7 @@ import {
 import type { AskTurn } from "../_shared/ask_agent.ts";
 import { classifyIntent } from "../_shared/intent.ts";
 import { formatReply, highAmountKeyboard, processTextMessage } from "./text_pipeline.ts";
+import { formatDebtReply, processDebtMessage } from "./debt_pipeline.ts";
 import { processVoiceMessage } from "./voice_pipeline.ts";
 import { type PhotoOutcome, processPhotoMessage } from "./photo_pipeline.ts";
 import { type BankPipelineOutcome, processBankStatement } from "./bank_pipeline.ts";
@@ -240,6 +241,15 @@ export async function dispatch(
         question: msg.text.slice(0, 500),
       });
       return { chatId: msg.chat.id, reply };
+    }
+
+    if (intent === "debt") {
+      const outcome = await processDebtMessage({
+        sb: input.sb,
+        member: input.member,
+        text: msg.text,
+      });
+      return { chatId: msg.chat.id, reply: { text: formatDebtReply(outcome) } };
     }
 
     const result = await processTextMessage({

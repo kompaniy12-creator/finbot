@@ -9,7 +9,7 @@
 // into a 0.01 PLN line item (the exact bug in the user's screenshot) is the
 // failure mode we cannot afford.
 
-export type Intent = "expense" | "question";
+export type Intent = "expense" | "question" | "debt";
 
 // Question lead-words across the four languages the family uses.
 // Word-boundary anchored so "какой" matches but "какойто" or substrings don't.
@@ -41,6 +41,27 @@ const CURRENCY_MARKERS = new RegExp(
 // parsed as an expense even if some weird heuristic flips.
 const GREETING =
   /^(привет|здаров|здравствуй|hi|hello|hey|cześć|witaj|вітаю|спасибо|спс|thanks|thx|ок|ok|понятно|ясно)\b/i;
+
+// Debt-creation triggers. "1000 дал в долг Паше", "взял у Маши 500",
+// "одолжил подруге 200 EUR" - these create a debts row, not an
+// expense or a question. Caught BEFORE the expense-parser path so
+// the digit+currency rule doesn't snatch them away.
+const DEBT_PATTERNS = new RegExp(
+  "(^|[^\\p{L}])(" +
+    // Russian: "дал/даю в долг", "одолжил/-а", "занял/-а N у кого", "взял в долг", "должен мне/я"
+    "дал\\s+в\\s+долг|даю\\s+в\\s+долг|одолжи(л|ла|ть|у)|" +
+    "взял\\s+в\\s+долг|взяла\\s+в\\s+долг|" +
+    "(должен|должна)\\s+(мне|нам)|я\\s+должен|я\\s+должна|" +
+    "занял\\s+у|заняла\\s+у|" +
+    // Ukrainian
+    "позичи(в|ла|ти)|" +
+    // Polish
+    "pożyczy(łem|łam|ć)|" +
+    // English
+    "lent|borrowed|owes\\s+me|i\\s+owe|loan(ed)?" +
+    ")([^\\p{L}]|$)",
+  "iu",
+);
 
 // Strong analyst triggers. When the message contains any of these tokens,
 // it goes to the analyst even if it also has digits/currency markers - so
@@ -74,6 +95,10 @@ const ANALYST_OVERRIDES = new RegExp(
 export function classifyIntent(text: string): Intent {
   const t = text.trim();
   if (!t) return "question";
+  // Debt-creation phrases beat both the analyst and the expense parser:
+  // "1000 дал в долг Паше" must become a debt row, not a 1000-PLN
+  // expense in 'Выплаты по кредиту' (the existing wrong behavior).
+  if (DEBT_PATTERNS.test(t)) return "debt";
   // Strong analyst override BEFORE the digit/currency rule: an explicit
   // "отметь / сверь / выписка / удали" request must not be eaten by the
   // expense parser just because it happens to contain a number.
