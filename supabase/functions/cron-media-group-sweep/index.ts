@@ -23,8 +23,6 @@ interface BufferRow {
 
 interface FamilyMemberRow {
   id: string;
-  tenant_id: string;
-  bot_id: string | null;
   telegram_id: number;
   name: string;
   role: "admin" | "member";
@@ -59,9 +57,7 @@ Deno.serve(async (req: Request) => {
   }
 
   const fmIds = [...new Set(rows.map((r) => r.family_member_id))];
-  const fmsRes = await sb.from("family_members").select(
-    "id, tenant_id, bot_id, telegram_id, name, role, active",
-  )
+  const fmsRes = await sb.from("family_members").select("id, telegram_id, name, role, active")
     .in("id", fmIds);
   const fmsMap = new Map<string, FamilyMemberRow>(
     ((fmsRes.data ?? []) as FamilyMemberRow[]).map((m) => [m.id, m]),

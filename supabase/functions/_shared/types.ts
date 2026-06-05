@@ -8,11 +8,6 @@ export type Role = z.infer<typeof RoleSchema>;
 
 export const FamilyMemberSchema = z.object({
   id: z.string().uuid(),
-  // Tenant (workspace) this member belongs to. Always present after the
-  // multi-tenancy backfill. bot_id is the bot that reaches this member; it
-  // stays nullable until the SaaS bot goes live (phase 4).
-  tenant_id: z.string().uuid(),
-  bot_id: z.string().uuid().nullable().optional(),
   telegram_id: z.number().int(),
   username: z.string().nullable().optional(),
   name: z.string(),

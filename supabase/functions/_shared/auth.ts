@@ -8,7 +8,7 @@ export async function authorize(
 ): Promise<FamilyMember | null> {
   const { data, error } = await sb
     .from("family_members")
-    .select("id, tenant_id, bot_id, telegram_id, name, role, active")
+    .select("id, telegram_id, name, role, active")
     .eq("telegram_id", telegramId)
     .eq("active", true)
     .maybeSingle();
