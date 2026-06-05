@@ -1,32 +1,44 @@
 # STATE.md, текущее состояние работы
 
 ```yaml
-status: done
-current_milestone: DONE
+status: active
+current_milestone: "post-v1.0 feature development (~v1.2)"
 last_completed_milestone: M18
-last_completed_step: "tag v1.0.0 pushed"
+last_completed_step: "fix(ci): lint no-inner-declarations in api-budgets, CI Test back to green"
 next_step: null
 blockers: []
 notes:
-  - "All 18 milestones complete"
-  - "Tests: 139 unit + 6 integration = 145, all green (RUN_INTEGRATION=1 required for the 6 DB-backed ones)"
-  - "Coverage: supabase/functions/ 82% functions (target 80% ✓), _shared/ 84.6% functions / 62.2% branches / 68.6% lines (line target 90% NOT met - see v1.1 backlog)"
-  - "Deployed Edge Functions: tg-webhook, setup-once, cron-{retry-failed, retraining, auto-confirm, media-group-sweep, rates, recurring, retention, anomaly, backup}, api-{me, stats, transactions, categories, family, export, health, health-public}"
-  - "Cron: 9 jobs registered + active (heartbeat, recurring, retention, retraining, anomaly, media-group-sweep, rates, auto-confirm, retry-failed). settings table holds functions_url + cron_secret (ALTER DATABASE app.* denied on managed Supabase, so we used a row-table workaround)"
-  - "CI/CD: test.yml + deploy.yml both green. Deno pinned 2.7.14. Auto-revert PR job present with [no-auto-revert] guard"
-  - "Telegram bot @KSSfinance_bot live. Webhook registered. BotFather commands + menu set"
-  - "api-health-public = 200 (heartbeat live)"
-  - "Backup safety gate active: cron-backup short-circuits with {ok:false, reason:'safety_gate'} until /health backup-confirm"
-  - "Repo: kompaniy12-creator/finbot (private). main + tag v1.0.0 pushed"
+  - "v1.0.0 (18 milestones) tagged 2026-05-19. С тех пор 97 коммитов с фичами поверх тега, ветка main."
+  - "Разработка идёт прямо в main (быстрый соло-режим), не через feature-ветки. CI на каждый push: Test + Deploy."
+  - "Тесты: 211 passed, 0 failed, 6 ignored (deno task test). Типы deno check чисто (125 файлов). Lint чист. Fmt чист (165 файлов)."
+  - "Edge Functions: 35 (без _shared). Миграций: 26 (последняя 0027_credit_name_pattern)."
+  - "Бэкенд live: api-health-public = ok. Бот @KSSfinance_bot, webhook зарегистрирован."
+  - "Supabase project ref: bltbuptzsswaislqagwe. Репо: kompaniy12-creator/finbot (private)."
+  - "Cron активны (из миграций): daily-summary 20:00 UTC, month-summary 07:00 UTC 1-го, notifications-daily 06:00 UTC, recurring-daily 07:00, retention-daily 02:30, retraining-weekly вс 03:00, anomaly-daily 08:00, media-group-sweep */2m, rates-daily 05:00, auto-confirm каждую минуту, retry-failed */5m."
+
+features_since_v1_0:
+  - "v1.1: conversational ask (AI-аналитик на данных FinBot, propose-confirm записи), magic-link web sessions, income tracking"
+  - "Dashboard: family-wide видимость, KPI по исходной валюте, кастомные date-range, дефолт текущий месяц"
+  - "Categories: CRUD из Mini App (admin), per-kind управление в settings"
+  - "Access/members: запросы доступа, одно-тап approve/reject, grant/revoke/promote/demote, DM уведомления"
+  - "Learning: непрерывное обучение, 3-band confidence, мгновенный retrain"
+  - "Bank: PDF и screenshot пайплайн reconcile (Claude Sonnet + auto-match), авто-расходы из несматченных строк"
+  - "Planning hub: planned payments CRUD, бюджеты на категории, платёжный календарь (planned+credit+debt на одной сетке)"
+  - "Credits: вкладка с 9 типами долгов, auto-expense при платеже, pattern-based auto-debt, credit-for-someone -> auto debt, stats card"
+  - "Debts: двусторонний учёт, auto expense/income при погашении, return-by-debt гасит связанный кредит, NL-запись долга текстом"
+  - "Settings: профиль, тема, пользователи, сворачиваемые секции"
+  - "Security: P1-P5 hardening pass"
+
 todo_carry_over:
-  - "GitHub Pages for private repo requires Pro ($4/mo). Mini App URL kompaniy12-creator.github.io/finbot/webapp/ NOT reachable on free plan. Options: public repo / Pro / Netlify"
-  - "HEIC: detect+reject only in v1. Add magick-wasm conversion in v1.1"
-  - "ALL currency: exchangerate.host v2 needs API key. Defer to v1.1 or switch provider"
-  - "_shared/ line coverage below 90% target. v1.1: add more mocked-API tests for text_pipeline/voice_pipeline/photo_pipeline/cron-recurring/anomaly happy paths"
-  - "cron-retry-failed reprocess() stub: in v1.1 wire to actual text_pipeline.processTextMessage by deserializing the payload field"
+  - "GitHub Pages для private repo требует Pro ($4/mo). Mini App на free plan недоступен по github.io. Опции: public / Pro / Netlify. (в CI есть успешные pages-build-deployment, статус уточнить)"
+  - "HEIC: detect+reject в v1. Конверсия magick-wasm отложена."
+  - "ALL currency: exchangerate.host v2 требует API key. Отложено / сменить провайдера."
+  - "_shared/ line coverage ниже целевых 90%. Добрать mocked-API тесты для pipelines."
+  - "cron-retry-failed reprocess() заглушка: подключить к text_pipeline.processTextMessage через десериализацию payload."
+
 family_members:
   - { name: "Серхий", telegram_id: 1436806270, role: "admin" }
   - { name: "Viktoriia", telegram_id: 1061823487, role: "member" }
-final_report_sent: true
-last_updated: 2026-05-19T05:30:00Z
+
+last_updated: 2026-06-05
 ```
