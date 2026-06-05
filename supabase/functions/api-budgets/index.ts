@@ -110,12 +110,12 @@ Deno.serve(async (req: Request) => {
 
     // Cache rate lookups per currency so we don't hit the DB once per budget.
     const rateCache = new Map<string, number>();
-    async function rateFor(ccy: string): Promise<number> {
+    const rateFor = async (ccy: string): Promise<number> => {
       if (rateCache.has(ccy)) return rateCache.get(ccy)!;
       const r = await latestRate(sb, ccy);
       rateCache.set(ccy, r);
       return r;
-    }
+    };
 
     const items = [];
     for (const b of budgets) {
