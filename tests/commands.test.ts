@@ -21,8 +21,10 @@ import {
 } from "../supabase/functions/tg-webhook/router.ts";
 import type { FamilyMember, TelegramUpdate } from "../supabase/functions/_shared/types.ts";
 
+const TENANT = "00000000-0000-0000-0000-000000000001";
 const ADMIN: FamilyMember = {
   id: "fm-admin",
+  tenant_id: TENANT,
   telegram_id: 1436806270,
   name: "Серхий",
   role: "admin",
@@ -30,6 +32,7 @@ const ADMIN: FamilyMember = {
 };
 const MEMBER: FamilyMember = {
   id: "fm-member",
+  tenant_id: TENANT,
   telegram_id: 1061823487,
   name: "Viktoriia",
   role: "member",

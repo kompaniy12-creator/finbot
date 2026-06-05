@@ -107,7 +107,7 @@ export async function authenticateInitData(
   if (!valid) return null;
   const { data, error } = await sb
     .from("family_members")
-    .select("id, telegram_id, name, role, active")
+    .select("id, tenant_id, bot_id, telegram_id, name, role, active")
     .eq("telegram_id", valid.userId)
     .eq("active", true)
     .maybeSingle();
@@ -163,7 +163,7 @@ export async function authenticateWebSession(
 
   const mem = await sb
     .from("family_members")
-    .select("id, telegram_id, name, role, active")
+    .select("id, tenant_id, bot_id, telegram_id, name, role, active")
     .eq("id", row.family_member_id)
     .eq("active", true)
     .maybeSingle();
