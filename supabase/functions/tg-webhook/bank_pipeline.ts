@@ -87,6 +87,11 @@ export async function processBankStatement(args: {
   const base64 = bytesToBase64(fileBytes);
   const { system, tools } = buildBankStatementPrompt();
   const model = Deno.env.get("CLAUDE_MODEL_VISION") ?? "claude-sonnet-4-6";
+  // A full-month statement can hold 100+ lines; at ~150 output tokens per line
+  // the old 8192 cap truncated the tool call mid-JSON, so `lines` never arrived
+  // and zod failed with "lines: Required". We only pay for tokens actually
+  // generated, so a generous cap is safe. Override via BANK_PARSE_MAX_TOKENS.
+  const maxTokens = Number(Deno.env.get("BANK_PARSE_MAX_TOKENS")) || 16000;
 
   const contentBlock = mediaType === "image"
     ? {
@@ -122,7 +127,7 @@ export async function processBankStatement(args: {
       model,
       system,
       tools,
-      maxTokens: 8192,
+      maxTokens,
       toolChoice: { type: "tool", name: "parse_bank_statement" },
       messages: [{
         role: "user",
@@ -139,6 +144,18 @@ export async function processBankStatement(args: {
       error: (err as Error).message.slice(0, 500),
     }).eq("id", statementId);
     return { kind: "parse_failed", statement_id: statementId, error: (err as Error).message };
+  }
+
+  // Truncation guard: if Claude hit the output cap, the tool-call JSON is cut
+  // off (typically before `lines`), which would otherwise surface as a cryptic
+  // zod "lines: Required". Catch it here and tell the user something actionable.
+  if (resp.response.stop_reason === "max_tokens") {
+    log("warn", "bank_parse_truncated", { statement_id: statementId, maxTokens });
+    await sb.from("bank_statements").update({
+      status: "failed",
+      error: "truncated_max_tokens",
+    }).eq("id", statementId);
+    return { kind: "parse_failed", statement_id: statementId, error: "truncated" };
   }
 
   const toolUse = resp.response.content.find((c) => c.type === "tool_use");

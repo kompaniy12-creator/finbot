@@ -474,6 +474,15 @@ function formatBankReply(outcome: BankPipelineOutcome, filename: string): string
     case "download_failed":
       return `Не смог скачать PDF из Telegram. Пришли ещё раз.`;
     case "parse_failed":
+      if (outcome.error === "truncated") {
+        return `Выписка слишком длинная, я не смог разобрать её за один раз. ` +
+          `Пришли её за более короткий период (например, по неделям или по дням).`;
+      }
+      if (outcome.error === "zod_parse_failed" || outcome.error === "no_tool_use_block") {
+        return `Не смог распознать структуру выписки. ` +
+          `Проверь, что это PDF из банка (mBank/Revolut), и пришли ещё раз. ` +
+          `Если не помогает, пришли за более короткий период.`;
+      }
       return `Не смог разобрать выписку: ${outcome.error.slice(0, 100)}. ` +
         `Попробуй прислать ещё раз или другим форматом.`;
     case "ok": {
