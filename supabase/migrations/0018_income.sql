@@ -34,7 +34,10 @@ create index if not exists expenses_kind_date_idx
 -- "expense" fallback already exists (Дополнительные расходы); "Прочий" is
 -- the income fallback.
 --
--- Idempotent: ON CONFLICT (name) DO NOTHING so re-running is safe.
+-- Idempotent: ON CONFLICT DO NOTHING so re-running is safe. Uses a target-less
+-- clause (not "on conflict (name)") so it survives the multi-tenancy migration:
+-- 0032 drops the global categories(name) unique in favor of
+-- (tenant_id, name, kind), and a named target would then no longer match.
 
 insert into categories (name, description, kind, is_fallback, embedding)
 values
@@ -52,4 +55,4 @@ values
     'income', false, array_fill(0::real, ARRAY[384])::vector(384)),
   ('Прочий', 'Other income, miscellaneous earnings, unclassified positive cash flow',
     'income', true, array_fill(0::real, ARRAY[384])::vector(384))
-on conflict (name) do nothing;
+on conflict do nothing;
