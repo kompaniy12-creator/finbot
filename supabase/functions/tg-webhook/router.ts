@@ -471,15 +471,21 @@ function formatBankReply(outcome: BankPipelineOutcome, filename: string): string
       const head = `📄 «${filename}» - разобрал ${outcome.total_lines} ${
         outcome.total_lines === 1 ? "операцию" : "операций"
       } (${outcome.source}).\n\n`;
+      // Plain text (no HTML/Markdown) because progress.update() edits the
+      // ack message without a parse_mode header - any <b> or _italic_
+      // would otherwise show as literal characters.
       const stats = [
-        `✓ Сверено с чеками: <b>${s.matched}</b>`,
-        s.no_candidate > 0 ? `❓ Не нашёл в базе: <b>${s.no_candidate}</b>` : null,
+        `✓ Сверено с чеками: ${s.matched}`,
+        s.auto_created > 0 ? `➕ Создал новых: ${s.auto_created}` : null,
+        s.no_candidate > 0 ? `❓ Не нашёл в базе: ${s.no_candidate}` : null,
         s.ambiguous > 0 ? `⚠ Несколько кандидатов: ${s.ambiguous}` : null,
         s.skipped > 0 ? `↺ Пропущено (переводы/комиссии): ${s.skipped}` : null,
       ].filter(Boolean).join("\n");
       const tail = s.no_candidate > 0
-        ? `\n\n_Несверённые позиции остались для триажа - открой Mini App и проверь._`
-        : `\n\n_Все позиции сверены ✓_`;
+        ? `\n\nНесверённые позиции остались для триажа - открой Mini App и проверь.`
+        : s.auto_created > 0
+        ? `\n\nНовые позиции автоматически разнесены по категориям - проверь в Mini App, поправь если что-то ушло не туда.`
+        : `\n\nВсе позиции сверены ✓`;
       return head + stats + tail;
     }
   }

@@ -19,7 +19,15 @@ import {
   ParseBankStatementOutputSchema,
 } from "../_shared/prompts/parse_bank_statement.ts";
 import { reconcileStatement, type ReconcileSummary } from "../_shared/reconcile.ts";
+import { categorize } from "../_shared/categorizer.ts";
+import { defaultEmbedFn } from "../_shared/embedder.ts";
+import { buildClaudeFallback } from "../_shared/claude_fallback.ts";
 import { log } from "../_shared/log.ts";
+
+export interface ExtendedReconcileSummary extends ReconcileSummary {
+  /** Auto-created from bank lines that had no matching receipt/expense. */
+  auto_created: number;
+}
 
 export type BankPipelineOutcome =
   | { kind: "no_file"; statement_id: string }
@@ -30,7 +38,7 @@ export type BankPipelineOutcome =
     statement_id: string;
     source: string;
     total_lines: number;
-    summary: ReconcileSummary;
+    summary: ExtendedReconcileSummary;
   };
 
 export async function processBankStatement(args: {
@@ -193,18 +201,129 @@ export async function processBankStatement(args: {
   // 5. Reconcile.
   const summary = await reconcileStatement(sb, statementId);
 
+  // 6. Auto-create expenses for lines that had no candidate. Each gets
+  // run through the same categorizer the text-pipeline uses, so the
+  // resulting row has a sensible category and contributes to the kNN
+  // training set next time. This is what the user wants: 'не нашёл в
+  // базе' should become 'создал N новых' instead of silent triage.
+  const autoCreated = await autoCreateUnmatched(sb, member, statementId);
+
   await sb.from("bank_statements").update({
     matched_lines: summary.matched,
-    added_lines: summary.skipped, // intentional: 'skipped' here means we ignored, not 'added'
+    added_lines: autoCreated,
   }).eq("id", statementId);
 
+  const ext: ExtendedReconcileSummary = { ...summary, auto_created: autoCreated };
+  // After auto-create, no_candidate effectively went to zero - report
+  // the original count for transparency, but reduce by what we added.
+  ext.no_candidate = Math.max(0, summary.no_candidate - autoCreated);
   return {
     kind: "ok",
     statement_id: statementId,
     source: out.source,
     total_lines: rows.length,
-    summary,
+    summary: ext,
   };
+}
+
+interface PendingLine {
+  id: string;
+  family_member_id: string;
+  posted_date: string;
+  amount: number;
+  currency: "PLN" | "EUR" | "ALL" | "USD";
+  description: string;
+  method: "card" | "cash" | "transfer";
+  kind: "expense" | "income";
+}
+
+async function autoCreateUnmatched(
+  sb: SupabaseClient,
+  member: FamilyMember,
+  statementId: string,
+): Promise<number> {
+  // After reconcile, lines that found no candidate stay status='pending'.
+  // Internal-transfer lines are already 'skipped'. Auto-create every
+  // remaining pending line as a fresh expense/income row.
+  const res = await sb.from("bank_statement_lines")
+    .select(
+      "id, family_member_id, posted_date, amount, currency, description, method, kind",
+    )
+    .eq("statement_id", statementId)
+    .eq("status", "pending");
+  const lines = (res.data ?? []) as PendingLine[];
+  if (lines.length === 0) return 0;
+
+  const embedFn = defaultEmbedFn();
+  const fallback = buildClaudeFallback(sb, member.id);
+
+  let created = 0;
+  for (const line of lines) {
+    try {
+      // Use the bank's description as both raw name and embedder input.
+      // gte-small handles cross-language reasonably, so 'Jumbo' /
+      // 'BIG EMIGRANTI' / 'ROZL. OPROC.' all embed coherently.
+      const rawName = line.description?.trim() || "Bank transaction";
+      const normalized = rawName.toLowerCase();
+
+      const cat = await categorize(
+        { sb, embedFn, fallback },
+        {
+          name: rawName,
+          nameNormalizedEn: normalized,
+          familyMemberId: line.family_member_id,
+          kind: line.kind,
+        },
+      );
+
+      const amount = Number(line.amount);
+      const amountPln = line.currency === "PLN" ? amount : amount;
+
+      const ins = await sb.from("expenses").insert({
+        kind: line.kind,
+        name: rawName,
+        name_normalized: normalized,
+        expense_date: line.posted_date,
+        amount,
+        currency: line.currency,
+        amount_pln: amountPln,
+        category_id: cat.categoryId,
+        family_member_id: line.family_member_id,
+        source: "text",
+        payment_method: line.method,
+        description: `Авто-создано из выписки`,
+        confidence: cat.confidence === "high" ? 1.0 : cat.confidence === "medium" ? 0.85 : 0.5,
+        // Confident classifications go straight to the books; the rest
+        // are flagged for review so the user can correct them in the
+        // Mini App and feed the kNN.
+        needs_confirmation: cat.confidence !== "high",
+        embedding: cat.embedding,
+        reconciled_at: new Date().toISOString(),
+        bank_statement_line_id: line.id,
+      }).select("id").maybeSingle();
+
+      if (ins.error || !ins.data) {
+        log("warn", "auto_create_insert_failed", {
+          line_id: line.id,
+          error: ins.error?.message,
+        });
+        continue;
+      }
+      const expenseId = (ins.data as { id: string }).id;
+      await sb.from("bank_statement_lines").update({
+        status: "added",
+        matched_expense_id: expenseId,
+      }).eq("id", line.id);
+      created++;
+    } catch (err) {
+      log("warn", "auto_create_failed", {
+        line_id: line.id,
+        error: (err as Error).message,
+      });
+    }
+  }
+  log("info", "bank_auto_create_done", { statement_id: statementId, created });
+  return created;
 }
 
 async function downloadTelegramFile(fileId: string): Promise<Uint8Array | null> {
