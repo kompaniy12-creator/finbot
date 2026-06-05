@@ -10,6 +10,7 @@
 
 import { z } from "zod";
 import { adminClient } from "../_shared/supabase.ts";
+import { tenantDb } from "../_shared/tenant_db.ts";
 import { authenticate } from "../_shared/webapp_auth.ts";
 import { forbidden, handleOptions, json, unauthorized } from "../_shared/api_response.ts";
 import { log } from "../_shared/log.ts";
@@ -49,6 +50,7 @@ Deno.serve(async (req: Request) => {
   const sb = adminClient();
   const me = await authenticate(req, sb);
   if (!me) return unauthorized(req);
+  const db = tenantDb(sb, me.tenant_id);
   if (me.role !== "admin") return forbidden(req);
 
   const url = new URL(req.url);
@@ -62,21 +64,21 @@ Deno.serve(async (req: Request) => {
     }
 
     // Uniqueness on name (schema enforces it but we want a friendly message).
-    const exists = await sb.from("categories").select("id").eq("name", body.name).maybeSingle();
+    const exists = await db.from("categories").select("id").eq("name", body.name).maybeSingle();
     if (exists.data) return json(req, { error: "name_taken" }, 409);
 
     // Fallback is per-kind: one expense fallback, one income fallback. If
     // the new category claims fallback, unset only the existing fallback of
     // the SAME kind (not across kinds).
     if (body.is_fallback) {
-      await sb.from("categories")
+      await db.from("categories")
         .update({ is_fallback: false })
         .eq("is_fallback", true)
         .eq("kind", body.kind);
     }
 
     const embedding = await embed(body.description);
-    const ins = await sb.from("categories").insert({
+    const ins = await db.from("categories").insert({
       name: body.name,
       description: body.description,
       is_fallback: body.is_fallback ?? false,
@@ -111,7 +113,7 @@ Deno.serve(async (req: Request) => {
       return json(req, { error: "bad_request" }, 400);
     }
 
-    const before = await sb.from("categories")
+    const before = await db.from("categories")
       .select("id, name, description, is_fallback, kind")
       .eq("id", id).maybeSingle();
     if (!before.data) return json(req, { error: "not_found" }, 404);
@@ -125,14 +127,14 @@ Deno.serve(async (req: Request) => {
 
     // Name collision check.
     if (body.name && body.name !== cur.name) {
-      const other = await sb.from("categories")
+      const other = await db.from("categories")
         .select("id").eq("name", body.name).neq("id", id).maybeSingle();
       if (other.data) return json(req, { error: "name_taken" }, 409);
     }
 
     // is_fallback toggle: per-kind invariant - one fallback per kind.
     if (body.is_fallback === true && !cur.is_fallback) {
-      await sb.from("categories")
+      await db.from("categories")
         .update({ is_fallback: false })
         .eq("is_fallback", true)
         .eq("kind", cur.kind);
@@ -158,7 +160,7 @@ Deno.serve(async (req: Request) => {
       return json(req, { ok: true, category: cur, unchanged: true });
     }
 
-    const upd = await sb.from("categories").update(patch).eq("id", id)
+    const upd = await db.from("categories").update(patch).eq("id", id)
       .select("id, name, description, is_fallback").maybeSingle();
     if (upd.error) return json(req, { error: upd.error.message }, 500);
 
@@ -178,7 +180,7 @@ Deno.serve(async (req: Request) => {
     const id = url.searchParams.get("id");
     if (!id || !/^[0-9a-f-]{36}$/i.test(id)) return json(req, { error: "id_required" }, 400);
 
-    const target = await sb.from("categories")
+    const target = await db.from("categories")
       .select("id, name, is_fallback, kind").eq("id", id).maybeSingle();
     if (!target.data) return json(req, { error: "not_found" }, 404);
     const tgt = target.data as {
@@ -192,23 +194,23 @@ Deno.serve(async (req: Request) => {
     // Fallback receiver must be the SAME kind: income rows must land on the
     // income fallback, not the expense one (and vice versa) - otherwise we'd
     // mix kinds and break the kind-scoped categorizer downstream.
-    const fb = await sb.from("categories")
+    const fb = await db.from("categories")
       .select("id, name").eq("is_fallback", true).eq("kind", tgt.kind).maybeSingle();
     if (!fb.data) return json(req, { error: "no_fallback_category" }, 500);
     const fallbackId = (fb.data as { id: string }).id;
 
     // Reassign expenses + recurring_expenses; the audit trigger will log the
     // category change for each affected expense row.
-    const moveExp = await sb.from("expenses")
+    const moveExp = await db.from("expenses")
       .update({ category_id: fallbackId })
       .eq("category_id", id);
     if (moveExp.error) return json(req, { error: moveExp.error.message }, 500);
-    const moveRec = await sb.from("recurring_expenses")
+    const moveRec = await db.from("recurring_expenses")
       .update({ category_id: fallbackId })
       .eq("category_id", id);
     if (moveRec.error) return json(req, { error: moveRec.error.message }, 500);
 
-    const del = await sb.from("categories").delete().eq("id", id);
+    const del = await db.from("categories").delete().eq("id", id);
     if (del.error) return json(req, { error: del.error.message }, 500);
 
     log("info", "category_deleted", { id, name: tgt.name, moved_to: fallbackId });

@@ -2,6 +2,7 @@
 // GET /api-family?all=1       - all members including inactive (admin only;
 //                                used by the Settings → Пользователи panel)
 import { adminClient } from "../_shared/supabase.ts";
+import { tenantDb } from "../_shared/tenant_db.ts";
 import { authenticate } from "../_shared/webapp_auth.ts";
 import { forbidden, handleOptions, json, unauthorized } from "../_shared/api_response.ts";
 
@@ -10,6 +11,7 @@ Deno.serve(async (req: Request) => {
   const sb = adminClient();
   const me = await authenticate(req, sb);
   if (!me) return unauthorized(req);
+  const db = tenantDb(sb, me.tenant_id);
 
   const url = new URL(req.url);
   const includeInactive = url.searchParams.get("all") === "1";
@@ -17,7 +19,7 @@ Deno.serve(async (req: Request) => {
   // gate behind admin role to be conservative.
   if (includeInactive && me.role !== "admin") return forbidden(req);
 
-  let q = sb.from("family_members")
+  let q = db.from("family_members")
     .select("id, name, role, telegram_id, active")
     .order("active", { ascending: false })
     .order("role", { ascending: true });

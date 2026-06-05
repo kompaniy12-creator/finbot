@@ -6,6 +6,7 @@
 // receipt's photo, matching the dashboard contract).
 
 import { adminClient } from "../_shared/supabase.ts";
+import { tenantDb } from "../_shared/tenant_db.ts";
 import { authenticate } from "../_shared/webapp_auth.ts";
 import { handleOptions, json, unauthorized } from "../_shared/api_response.ts";
 
@@ -17,6 +18,7 @@ Deno.serve(async (req: Request) => {
   const sb = adminClient();
   const me = await authenticate(req, sb);
   if (!me) return unauthorized(req);
+  const db = tenantDb(sb, me.tenant_id);
   void me; // family-wide visibility, role unused
 
   const id = new URL(req.url).searchParams.get("id");
@@ -24,7 +26,7 @@ Deno.serve(async (req: Request) => {
     return json(req, { error: "id (uuid) required" }, 400);
   }
 
-  const rec = await sb.from("receipts")
+  const rec = await db.from("receipts")
     .select("id, photo_path, photo_purged_at, merchant, receipt_date")
     .eq("id", id).maybeSingle();
   if (rec.error) return json(req, { error: rec.error.message }, 500);

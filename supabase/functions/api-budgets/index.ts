@@ -12,6 +12,7 @@
 
 import { z } from "zod";
 import { adminClient } from "../_shared/supabase.ts";
+import { tenantDb } from "../_shared/tenant_db.ts";
 import { authenticate } from "../_shared/webapp_auth.ts";
 import { forbidden, handleOptions, json, unauthorized } from "../_shared/api_response.ts";
 import { todayWarsawIso } from "../_shared/dates.ts";
@@ -72,6 +73,7 @@ Deno.serve(async (req: Request) => {
   const sb = adminClient();
   const me = await authenticate(req, sb);
   if (!me) return unauthorized(req);
+  const db = tenantDb(sb, me.tenant_id);
   void me;
 
   const url = new URL(req.url);
@@ -79,13 +81,13 @@ Deno.serve(async (req: Request) => {
   if (req.method === "GET") {
     const today = todayWarsawIso();
     const [bRes, linkRes] = await Promise.all([
-      sb.from("budgets")
+      db.from("budgets")
         .select(
           "id, family_member_id, name, amount, currency, period, notify_on_exceed, notify_at_75, active, created_at",
         )
         .eq("active", true)
         .order("created_at", { ascending: false }),
-      sb.from("budget_categories").select("budget_id, category_id"),
+      db.from("budget_categories").select("budget_id, category_id"),
     ]);
     if (bRes.error) return json(req, { error: bRes.error.message }, 500);
     const budgets = (bRes.data ?? []) as Array<{
@@ -123,7 +125,7 @@ Deno.serve(async (req: Request) => {
       const startIso = periodStart(b.period, today);
       let spentPln = 0;
       if (catIds.length > 0) {
-        const exp = await sb
+        const exp = await db
           .from("expenses")
           .select("amount_pln")
           .eq("archived", false)
@@ -158,7 +160,7 @@ Deno.serve(async (req: Request) => {
     } catch (_e) {
       return json(req, { error: "bad_request" }, 400);
     }
-    const ins = await sb.from("budgets").insert({
+    const ins = await db.from("budgets").insert({
       family_member_id: me.id,
       name: body.name,
       amount: body.amount,
@@ -175,10 +177,10 @@ Deno.serve(async (req: Request) => {
       budget_id: budgetId,
       category_id: cid,
     }));
-    const linkRes = await sb.from("budget_categories").insert(links);
+    const linkRes = await db.from("budget_categories").insert(links);
     if (linkRes.error) {
       // Rollback by deleting the budget shell so we don't leave it categoryless.
-      await sb.from("budgets").delete().eq("id", budgetId);
+      await db.from("budgets").delete().eq("id", budgetId);
       return json(req, { error: linkRes.error.message }, 500);
     }
     log("info", "budget_created", { id: budgetId, cats: body.category_ids.length });
@@ -194,7 +196,7 @@ Deno.serve(async (req: Request) => {
     } catch (_e) {
       return json(req, { error: "bad_request" }, 400);
     }
-    const before = await sb.from("budgets")
+    const before = await db.from("budgets")
       .select("family_member_id").eq("id", id).maybeSingle();
     if (!before.data) return json(req, { error: "not_found" }, 404);
     const ownerId = (before.data as { family_member_id: string }).family_member_id;
@@ -207,13 +209,13 @@ Deno.serve(async (req: Request) => {
     }
     if (Object.keys(patch).length > 0) {
       patch.updated_at = new Date().toISOString();
-      const upd = await sb.from("budgets").update(patch).eq("id", id);
+      const upd = await db.from("budgets").update(patch).eq("id", id);
       if (upd.error) return json(req, { error: upd.error.message }, 500);
     }
     // Replace category links atomically if provided.
     if (body.category_ids) {
-      await sb.from("budget_categories").delete().eq("budget_id", id);
-      const ins = await sb.from("budget_categories").insert(
+      await db.from("budget_categories").delete().eq("budget_id", id);
+      const ins = await db.from("budget_categories").insert(
         body.category_ids.map((cid) => ({ budget_id: id, category_id: cid })),
       );
       if (ins.error) return json(req, { error: ins.error.message }, 500);
@@ -225,14 +227,14 @@ Deno.serve(async (req: Request) => {
   if (req.method === "DELETE") {
     const id = url.searchParams.get("id");
     if (!id || !/^[0-9a-f-]{36}$/i.test(id)) return json(req, { error: "id_required" }, 400);
-    const before = await sb.from("budgets")
+    const before = await db.from("budgets")
       .select("family_member_id").eq("id", id).maybeSingle();
     if (!before.data) return json(req, { error: "not_found" }, 404);
     const ownerId = (before.data as { family_member_id: string }).family_member_id;
     if (ownerId !== me.id && me.role !== "admin") return forbidden(req);
 
     // budget_categories rows cascade on delete.
-    const del = await sb.from("budgets").delete().eq("id", id);
+    const del = await db.from("budgets").delete().eq("id", id);
     if (del.error) return json(req, { error: del.error.message }, 500);
     log("info", "budget_deleted", { id });
     return json(req, { ok: true, deleted_id: id });

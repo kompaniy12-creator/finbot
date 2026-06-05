@@ -1,5 +1,6 @@
 // GET /api-me: returns the authenticated FamilyMember plus other family members' names.
 import { adminClient } from "../_shared/supabase.ts";
+import { tenantDb } from "../_shared/tenant_db.ts";
 import { authenticate } from "../_shared/webapp_auth.ts";
 import { handleOptions, json, unauthorized } from "../_shared/api_response.ts";
 
@@ -8,7 +9,8 @@ Deno.serve(async (req: Request) => {
   const sb = adminClient();
   const me = await authenticate(req, sb);
   if (!me) return unauthorized(req);
-  const others = await sb.from("family_members").select("id, name, role").eq("active", true);
+  const db = tenantDb(sb, me.tenant_id);
+  const others = await db.from("family_members").select("id, name, role").eq("active", true);
   return json(req, {
     me,
     family: (others.data ?? []) as Array<{ id: string; name: string; role: string }>,

@@ -6,6 +6,7 @@
 // other members go through api-family-mutate.
 import { z } from "zod";
 import { adminClient } from "../_shared/supabase.ts";
+import { tenantDb } from "../_shared/tenant_db.ts";
 import { authenticate } from "../_shared/webapp_auth.ts";
 import { handleOptions, json, unauthorized } from "../_shared/api_response.ts";
 
@@ -20,6 +21,7 @@ Deno.serve(async (req: Request) => {
   const sb = adminClient();
   const me = await authenticate(req, sb);
   if (!me) return unauthorized(req);
+  const db = tenantDb(sb, me.tenant_id);
 
   let body: z.infer<typeof BodySchema>;
   try {
@@ -28,7 +30,7 @@ Deno.serve(async (req: Request) => {
     return json(req, { error: "bad_request" }, 400);
   }
 
-  const upd = await sb.from("family_members")
+  const upd = await db.from("family_members")
     .update({ name: body.name })
     .eq("id", me.id)
     .select("id, name, role")

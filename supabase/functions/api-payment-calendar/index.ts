@@ -17,6 +17,7 @@
 
 import { z } from "zod";
 import { adminClient } from "../_shared/supabase.ts";
+import { tenantDb } from "../_shared/tenant_db.ts";
 import { authenticate } from "../_shared/webapp_auth.ts";
 import { handleOptions, json, unauthorized } from "../_shared/api_response.ts";
 import { todayWarsawIso } from "../_shared/dates.ts";
@@ -65,6 +66,7 @@ Deno.serve(async (req: Request) => {
   const sb = adminClient();
   const me = await authenticate(req, sb);
   if (!me) return unauthorized(req);
+  const db = tenantDb(sb, me.tenant_id);
 
   const url = new URL(req.url);
   let q: z.infer<typeof QuerySchema>;
@@ -79,7 +81,7 @@ Deno.serve(async (req: Request) => {
   const items: CalendarItem[] = [];
 
   // --- Planned payments ---------------------------------------------------
-  const pps = await sb.from("planned_payments")
+  const pps = await db.from("planned_payments")
     .select(
       "id, kind, name, amount, currency, frequency, next_due_date, category_id, auto_confirm",
     )
@@ -102,7 +104,7 @@ Deno.serve(async (req: Request) => {
   }
 
   // --- Credits -----------------------------------------------------------
-  const credits = await sb.from("credits")
+  const credits = await db.from("credits")
     .select(
       "id, name, lender, currency, monthly_payment, payment_day, remaining_balance, status, type",
     )
@@ -120,7 +122,7 @@ Deno.serve(async (req: Request) => {
   };
 
   // --- Debts -------------------------------------------------------------
-  const debts = await sb.from("debts")
+  const debts = await db.from("debts")
     .select("id, direction, counterparty, currency, remaining_balance, due_date, status")
     .eq("status", "active")
     .not("due_date", "is", null);
@@ -137,7 +139,7 @@ Deno.serve(async (req: Request) => {
   // Resolve category names in one go.
   const catMap = new Map<string, string>();
   if (catIds.size > 0) {
-    const cres = await sb.from("categories").select("id, name").in("id", [...catIds]);
+    const cres = await db.from("categories").select("id, name").in("id", [...catIds]);
     for (const c of (cres.data ?? []) as Array<{ id: string; name: string }>) {
       catMap.set(c.id, c.name);
     }

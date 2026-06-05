@@ -3,6 +3,7 @@
 // the receipt, or be admin).
 
 import { adminClient } from "../_shared/supabase.ts";
+import { tenantDb } from "../_shared/tenant_db.ts";
 import { authenticate } from "../_shared/webapp_auth.ts";
 import { handleOptions, json, unauthorized } from "../_shared/api_response.ts";
 import { loadEurRates, plnToEur } from "../_shared/eur_view.ts";
@@ -12,13 +13,14 @@ Deno.serve(async (req: Request) => {
   const sb = adminClient();
   const me = await authenticate(req, sb);
   if (!me) return unauthorized(req);
+  const db = tenantDb(sb, me.tenant_id);
 
   const id = new URL(req.url).searchParams.get("id");
   if (!id || !/^[0-9a-f-]{36}$/i.test(id)) {
     return json(req, { error: "id (uuid) required" }, 400);
   }
 
-  const recRes = await sb.from("receipts")
+  const recRes = await db.from("receipts")
     .select("id, merchant, total, currency, total_pln, receipt_date, family_member_id, items")
     .eq("id", id)
     .maybeSingle();
@@ -37,7 +39,7 @@ Deno.serve(async (req: Request) => {
   // Family-wide visibility: anyone in the family can open any receipt.
   void me;
 
-  const lineRes = await sb.from("expenses")
+  const lineRes = await db.from("expenses")
     .select(
       "id, kind, name, amount, currency, amount_pln, category_id, line_index, needs_review, needs_confirmation, created_at",
     )

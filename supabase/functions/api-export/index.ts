@@ -1,5 +1,6 @@
 // GET /api-export?period=month|all: CSV of expenses.
 import { adminClient } from "../_shared/supabase.ts";
+import { tenantDb } from "../_shared/tenant_db.ts";
 import { authenticate } from "../_shared/webapp_auth.ts";
 import { handleOptions, text, unauthorized } from "../_shared/api_response.ts";
 import { todayWarsawIso } from "../_shared/dates.ts";
@@ -16,6 +17,7 @@ Deno.serve(async (req: Request) => {
   const sb = adminClient();
   const me = await authenticate(req, sb);
   if (!me) return unauthorized(req);
+  const db = tenantDb(sb, me.tenant_id);
 
   const url = new URL(req.url);
   const period = url.searchParams.get("period") ?? "month";
@@ -24,7 +26,7 @@ Deno.serve(async (req: Request) => {
 
   // Family-wide export: every member can export the full family CSV.
   void me;
-  const q = sb.from("expenses")
+  const q = db.from("expenses")
     .select(
       "expense_date, name, amount, currency, amount_pln, category_id, family_member_id, source, needs_review, needs_confirmation",
     )

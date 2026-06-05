@@ -2,6 +2,7 @@
 // Returns totals in EUR (computed per-row using EUR/PLN rate at expense_date).
 // total_pln is kept for backwards-compat / internal consumers.
 import { adminClient } from "../_shared/supabase.ts";
+import { tenantDb } from "../_shared/tenant_db.ts";
 import { authenticate } from "../_shared/webapp_auth.ts";
 import { handleOptions, json, unauthorized } from "../_shared/api_response.ts";
 import { todayWarsawIso } from "../_shared/dates.ts";
@@ -13,6 +14,7 @@ Deno.serve(async (req: Request) => {
   const sb = adminClient();
   const me = await authenticate(req, sb);
   if (!me) return unauthorized(req);
+  const db = tenantDb(sb, me.tenant_id);
 
   const url = new URL(req.url);
   const today = todayWarsawIso();
@@ -31,13 +33,13 @@ Deno.serve(async (req: Request) => {
   // requires ownership or admin, but viewing is shared.
   void me;
   const [expRes, catRes, prevRes] = await Promise.all([
-    sb.from("expenses")
+    db.from("expenses")
       .select("kind, amount, currency, amount_pln, category_id, expense_date")
       .eq("archived", false)
       .gte("expense_date", win.start)
       .lte("expense_date", win.end),
-    sb.from("categories").select("id, name, kind, is_fallback"),
-    sb.from("expenses")
+    db.from("categories").select("id, name, kind, is_fallback"),
+    db.from("expenses")
       .select("kind, amount_pln, expense_date")
       .eq("archived", false)
       .gte("expense_date", prevStartIso)

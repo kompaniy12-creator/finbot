@@ -1,5 +1,6 @@
 // GET /api-health: admin-only extended status.
 import { adminClient } from "../_shared/supabase.ts";
+import { tenantDb } from "../_shared/tenant_db.ts";
 import { authenticate } from "../_shared/webapp_auth.ts";
 import { forbidden, handleOptions, json, unauthorized } from "../_shared/api_response.ts";
 
@@ -8,14 +9,15 @@ Deno.serve(async (req: Request) => {
   const sb = adminClient();
   const me = await authenticate(req, sb);
   if (!me) return unauthorized(req);
+  const db = tenantDb(sb, me.tenant_id);
   if (me.role !== "admin") return forbidden(req);
 
   const sh = await sb.from("system_health").select("*").eq("id", 1).maybeSingle();
   const today = new Date().toISOString().slice(0, 10);
-  const todayCount = await sb.from("expenses")
+  const todayCount = await db.from("expenses")
     .select("id", { count: "exact", head: true })
     .eq("expense_date", today);
-  const usage = await sb.from("anthropic_usage")
+  const usage = await db.from("anthropic_usage")
     .select("cost_usd")
     .eq("date", today);
   const cost = ((usage.data ?? []) as Array<{ cost_usd: number }>)

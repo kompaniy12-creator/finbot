@@ -13,39 +13,24 @@
 import { assert } from "@std/assert";
 import { PER_TENANT_TABLES } from "../supabase/functions/_shared/tenant_db.ts";
 
-// Files allowed to use raw `sb.from(<per-tenant>)` for now (phase 1 baseline).
-// SHRINK this set as functions are converted to tenantDb in phase 2.
+// Files allowed to use raw `sb.from(<per-tenant>)`. SHRINK this set as
+// functions are converted to tenantDb in phase 2.
+//
+// PERMANENT entries (identity resolution: they query family_members /
+// web_sessions to FIND the tenant, so they cannot be tenant-scoped):
+// _shared/auth.ts, _shared/webapp_auth.ts, api-web-exchange/index.ts.
 const ALLOWED_RAW = new Set<string>([
+  "supabase/functions/_shared/auth.ts",
+  "supabase/functions/_shared/webapp_auth.ts",
+  "supabase/functions/api-web-exchange/index.ts",
   "supabase/functions/_shared/analyst_snapshot.ts",
   "supabase/functions/_shared/ask_agent.ts",
-  "supabase/functions/_shared/auth.ts",
   "supabase/functions/_shared/budget.ts",
   "supabase/functions/_shared/categorizer.ts",
   "supabase/functions/_shared/idempotency.ts",
   "supabase/functions/_shared/reconcile.ts",
   "supabase/functions/_shared/retrain.ts",
   "supabase/functions/_shared/retry.ts",
-  "supabase/functions/_shared/webapp_auth.ts",
-  "supabase/functions/api-budgets/index.ts",
-  "supabase/functions/api-categories/index.ts",
-  "supabase/functions/api-category-mutate/index.ts",
-  "supabase/functions/api-credits/index.ts",
-  "supabase/functions/api-debts/index.ts",
-  "supabase/functions/api-delete-item/index.ts",
-  "supabase/functions/api-export/index.ts",
-  "supabase/functions/api-family-mutate/index.ts",
-  "supabase/functions/api-family/index.ts",
-  "supabase/functions/api-health/index.ts",
-  "supabase/functions/api-me-mutate/index.ts",
-  "supabase/functions/api-me/index.ts",
-  "supabase/functions/api-payment-calendar/index.ts",
-  "supabase/functions/api-planned-payments/index.ts",
-  "supabase/functions/api-recategorize/index.ts",
-  "supabase/functions/api-receipt-items/index.ts",
-  "supabase/functions/api-receipt-photo/index.ts",
-  "supabase/functions/api-stats/index.ts",
-  "supabase/functions/api-transactions/index.ts",
-  "supabase/functions/api-web-exchange/index.ts",
   "supabase/functions/cron-anomaly/index.ts",
   "supabase/functions/cron-auto-confirm/index.ts",
   "supabase/functions/cron-daily-summary/index.ts",

@@ -16,6 +16,7 @@
 
 import { z } from "zod";
 import { adminClient } from "../_shared/supabase.ts";
+import { tenantDb } from "../_shared/tenant_db.ts";
 import { authenticate } from "../_shared/webapp_auth.ts";
 import { forbidden, handleOptions, json, unauthorized } from "../_shared/api_response.ts";
 import { todayWarsawIso } from "../_shared/dates.ts";
@@ -97,13 +98,14 @@ Deno.serve(async (req: Request) => {
   const sb = adminClient();
   const me = await authenticate(req, sb);
   if (!me) return unauthorized(req);
+  const db = tenantDb(sb, me.tenant_id);
 
   const url = new URL(req.url);
   const today = todayWarsawIso();
 
   if (req.method === "GET") {
     const statusFilter = url.searchParams.get("status") ?? "active";
-    let q = sb.from("credits").select(
+    let q = db.from("credits").select(
       "id, family_member_id, name, type, lender, principal, currency, interest_rate, start_date, term_months, monthly_payment, payment_day, remaining_balance, status, notes, borrowed_for, auto_create_debt, name_pattern, created_at",
     ).order("created_at", { ascending: false });
     if (statusFilter !== "all") q = q.eq("status", statusFilter);
@@ -121,7 +123,7 @@ Deno.serve(async (req: Request) => {
     const ids = credits.map((c) => c.id);
     const lastPaidByCredit = new Map<string, string>();
     if (ids.length > 0) {
-      const pays = await sb.from("credit_payments")
+      const pays = await db.from("credit_payments")
         .select("credit_id, paid_at")
         .in("credit_id", ids)
         .order("paid_at", { ascending: false });
@@ -155,7 +157,7 @@ Deno.serve(async (req: Request) => {
     // configures borrowed_for on an already-active credit.
     const id = url.searchParams.get("id");
     if (!id || !/^[0-9a-f-]{36}$/i.test(id)) return json(req, { error: "id_required" }, 400);
-    const c = await sb.from("credits").select(
+    const c = await db.from("credits").select(
       "id, family_member_id, currency, monthly_payment, borrowed_for, auto_create_debt, name, status, name_pattern",
     ).eq("id", id).maybeSingle();
     if (!c.data) return json(req, { error: "not_found" }, 404);
@@ -180,7 +182,7 @@ Deno.serve(async (req: Request) => {
     let exps: Array<{ id: string; amount: number; expense_date: string }>;
     if (cr.name_pattern && cr.name_pattern.trim().length > 0) {
       const pat = `%${cr.name_pattern.trim().replace(/[%_]/g, "\\$&")}%`;
-      const expRes = await sb.from("expenses")
+      const expRes = await db.from("expenses")
         .select("id, amount, expense_date")
         .eq("family_member_id", cr.family_member_id)
         .eq("kind", "expense")
@@ -192,7 +194,7 @@ Deno.serve(async (req: Request) => {
     } else {
       const mp = Number(cr.monthly_payment!);
       const tol = Math.max(0.05, 0.05 * mp);
-      const expRes = await sb.from("expenses")
+      const expRes = await db.from("expenses")
         .select("id, amount, expense_date")
         .eq("family_member_id", cr.family_member_id)
         .eq("kind", "expense")
@@ -209,7 +211,7 @@ Deno.serve(async (req: Request) => {
     }
 
     // Filter out those that already have a debt row linked.
-    const existing = await sb.from("debts")
+    const existing = await db.from("debts")
       .select("source_expense_id")
       .in("source_expense_id", exps.map((e) => e.id));
     const linked = new Set(
@@ -234,7 +236,7 @@ Deno.serve(async (req: Request) => {
       source_credit_id: cr.id,
       source_expense_id: e.id,
     }));
-    const ins = await sb.from("debts").insert(rows);
+    const ins = await db.from("debts").insert(rows);
     if (ins.error) return json(req, { error: ins.error.message }, 500);
     log("info", "credit_link_past_payments", {
       credit_id: cr.id,
@@ -253,7 +255,7 @@ Deno.serve(async (req: Request) => {
     } catch (_e) {
       return json(req, { error: "bad_request" }, 400);
     }
-    const cred = await sb.from("credits")
+    const cred = await db.from("credits")
       .select(
         "id, family_member_id, name, currency, remaining_balance, status, monthly_payment",
       )
@@ -271,7 +273,7 @@ Deno.serve(async (req: Request) => {
     if (c.status === "closed") return json(req, { error: "credit_closed" }, 409);
 
     // Find category "Выплаты по кредиту"; fall back to expense fallback.
-    const catRes = await sb.from("categories")
+    const catRes = await db.from("categories")
       .select("id, name, is_fallback, kind")
       .eq("kind", "expense");
     const cats = (catRes.data ?? []) as Array<{
@@ -286,7 +288,7 @@ Deno.serve(async (req: Request) => {
     if (!categoryId) return json(req, { error: "no_category" }, 500);
 
     // Insert the expense row.
-    const expense = await sb.from("expenses").insert({
+    const expense = await db.from("expenses").insert({
       kind: "expense",
       name: `Кредит: ${c.name}`,
       expense_date: body.paid_at,
@@ -308,7 +310,7 @@ Deno.serve(async (req: Request) => {
     const expenseId = (expense.data as { id: string }).id;
 
     // Link payment row.
-    await sb.from("credit_payments").insert({
+    await db.from("credit_payments").insert({
       credit_id: id,
       expense_id: expenseId,
       amount: body.amount,
@@ -318,7 +320,7 @@ Deno.serve(async (req: Request) => {
     // Decrement balance + auto-close if depleted.
     const newBalance = Math.max(0, Number(c.remaining_balance) - body.amount);
     const newStatus = newBalance <= 0 ? "closed" : c.status;
-    const upd = await sb.from("credits").update({
+    const upd = await db.from("credits").update({
       remaining_balance: newBalance,
       status: newStatus,
       updated_at: new Date().toISOString(),
@@ -346,7 +348,7 @@ Deno.serve(async (req: Request) => {
     } catch (_e) {
       return json(req, { error: "bad_request" }, 400);
     }
-    const ins = await sb.from("credits").insert({
+    const ins = await db.from("credits").insert({
       family_member_id: me.id,
       name: body.name,
       type: body.type,
@@ -378,7 +380,7 @@ Deno.serve(async (req: Request) => {
     } catch (_e) {
       return json(req, { error: "bad_request" }, 400);
     }
-    const before = await sb.from("credits")
+    const before = await db.from("credits")
       .select("family_member_id").eq("id", id).maybeSingle();
     if (!before.data) return json(req, { error: "not_found" }, 404);
     const ownerId = (before.data as { family_member_id: string }).family_member_id;
@@ -390,7 +392,7 @@ Deno.serve(async (req: Request) => {
     }
     if (Object.keys(patch).length === 0) return json(req, { ok: true, unchanged: true });
     patch.updated_at = new Date().toISOString();
-    const upd = await sb.from("credits").update(patch).eq("id", id);
+    const upd = await db.from("credits").update(patch).eq("id", id);
     if (upd.error) return json(req, { error: upd.error.message }, 500);
     return json(req, { ok: true });
   }
@@ -398,12 +400,12 @@ Deno.serve(async (req: Request) => {
   if (req.method === "DELETE") {
     const id = url.searchParams.get("id");
     if (!id || !/^[0-9a-f-]{36}$/i.test(id)) return json(req, { error: "id_required" }, 400);
-    const before = await sb.from("credits")
+    const before = await db.from("credits")
       .select("family_member_id").eq("id", id).maybeSingle();
     if (!before.data) return json(req, { error: "not_found" }, 404);
     const ownerId = (before.data as { family_member_id: string }).family_member_id;
     if (ownerId !== me.id && me.role !== "admin") return forbidden(req);
-    const del = await sb.from("credits").delete().eq("id", id);
+    const del = await db.from("credits").delete().eq("id", id);
     if (del.error) return json(req, { error: del.error.message }, 500);
     return json(req, { ok: true, deleted_id: id });
   }

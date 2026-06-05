@@ -7,6 +7,7 @@
 
 import { z } from "zod";
 import { adminClient } from "../_shared/supabase.ts";
+import { tenantDb } from "../_shared/tenant_db.ts";
 import { authenticate } from "../_shared/webapp_auth.ts";
 import { forbidden, handleOptions, json, unauthorized } from "../_shared/api_response.ts";
 import { log } from "../_shared/log.ts";
@@ -23,6 +24,7 @@ Deno.serve(async (req: Request) => {
   const sb = adminClient();
   const me = await authenticate(req, sb);
   if (!me) return unauthorized(req);
+  const db = tenantDb(sb, me.tenant_id);
 
   let body: z.infer<typeof BodySchema>;
   try {
@@ -32,7 +34,7 @@ Deno.serve(async (req: Request) => {
   }
 
   if (body.kind === "expense") {
-    const lookup = await sb.from("expenses")
+    const lookup = await db.from("expenses")
       .select("id, family_member_id, archived, receipt_id, name")
       .eq("id", body.id)
       .maybeSingle();
@@ -48,7 +50,7 @@ Deno.serve(async (req: Request) => {
     if (me.role !== "admin" && row.family_member_id !== me.id) return forbidden(req);
     if (row.archived) return json(req, { ok: true, already: true });
 
-    const upd = await sb.from("expenses").update({ archived: true }).eq("id", row.id);
+    const upd = await db.from("expenses").update({ archived: true }).eq("id", row.id);
     if (upd.error) return json(req, { error: upd.error.message }, 500);
     log("info", "item_deleted", {
       kind: "expense",
@@ -60,7 +62,7 @@ Deno.serve(async (req: Request) => {
   }
 
   // kind === "receipt": archive the receipt and all its expense lines.
-  const recLookup = await sb.from("receipts")
+  const recLookup = await db.from("receipts")
     .select("id, family_member_id, archived, merchant")
     .eq("id", body.id)
     .maybeSingle();
@@ -75,13 +77,13 @@ Deno.serve(async (req: Request) => {
   if (me.role !== "admin" && rec.family_member_id !== me.id) return forbidden(req);
   if (rec.archived) return json(req, { ok: true, already: true });
 
-  const updLines = await sb.from("expenses")
+  const updLines = await db.from("expenses")
     .update({ archived: true })
     .eq("receipt_id", rec.id)
     .eq("archived", false);
   if (updLines.error) return json(req, { error: updLines.error.message }, 500);
 
-  const updRec = await sb.from("receipts").update({ archived: true }).eq("id", rec.id);
+  const updRec = await db.from("receipts").update({ archived: true }).eq("id", rec.id);
   if (updRec.error) return json(req, { error: updRec.error.message }, 500);
 
   log("info", "item_deleted", {

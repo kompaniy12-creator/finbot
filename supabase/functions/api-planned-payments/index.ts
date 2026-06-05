@@ -12,6 +12,7 @@
 
 import { z } from "zod";
 import { adminClient } from "../_shared/supabase.ts";
+import { tenantDb } from "../_shared/tenant_db.ts";
 import { authenticate } from "../_shared/webapp_auth.ts";
 import { forbidden, handleOptions, json, unauthorized } from "../_shared/api_response.ts";
 import { log } from "../_shared/log.ts";
@@ -45,12 +46,13 @@ Deno.serve(async (req: Request) => {
   const sb = adminClient();
   const me = await authenticate(req, sb);
   if (!me) return unauthorized(req);
+  const db = tenantDb(sb, me.tenant_id);
 
   const url = new URL(req.url);
 
   if (req.method === "GET") {
     const kind = url.searchParams.get("kind") ?? "all";
-    let q = sb.from("planned_payments")
+    let q = db.from("planned_payments")
       .select(
         "id, family_member_id, kind, name, amount, currency, category_id, payment_method, frequency, next_due_date, auto_confirm, notify_on_day, notify_3d_before, note, active, last_executed_date, created_at",
       )
@@ -69,7 +71,7 @@ Deno.serve(async (req: Request) => {
     } catch (_e) {
       return json(req, { error: "bad_request" }, 400);
     }
-    const ins = await sb.from("planned_payments").insert({
+    const ins = await db.from("planned_payments").insert({
       family_member_id: me.id,
       kind: body.kind,
       name: body.name,
@@ -100,7 +102,7 @@ Deno.serve(async (req: Request) => {
       return json(req, { error: "bad_request" }, 400);
     }
 
-    const before = await sb.from("planned_payments")
+    const before = await db.from("planned_payments")
       .select("id, family_member_id").eq("id", id).maybeSingle();
     if (!before.data) return json(req, { error: "not_found" }, 404);
     const ownerId = (before.data as { family_member_id: string }).family_member_id;
@@ -114,7 +116,7 @@ Deno.serve(async (req: Request) => {
       return json(req, { ok: true, unchanged: true });
     }
     patch.updated_at = new Date().toISOString();
-    const upd = await sb.from("planned_payments").update(patch).eq("id", id)
+    const upd = await db.from("planned_payments").update(patch).eq("id", id)
       .select("*").maybeSingle();
     if (upd.error) return json(req, { error: upd.error.message }, 500);
     log("info", "planned_payment_updated", { id, fields: Object.keys(patch) });
@@ -125,13 +127,13 @@ Deno.serve(async (req: Request) => {
     const id = url.searchParams.get("id");
     if (!id || !/^[0-9a-f-]{36}$/i.test(id)) return json(req, { error: "id_required" }, 400);
 
-    const before = await sb.from("planned_payments")
+    const before = await db.from("planned_payments")
       .select("id, family_member_id").eq("id", id).maybeSingle();
     if (!before.data) return json(req, { error: "not_found" }, 404);
     const ownerId = (before.data as { family_member_id: string }).family_member_id;
     if (ownerId !== me.id && me.role !== "admin") return forbidden(req);
 
-    const del = await sb.from("planned_payments").delete().eq("id", id);
+    const del = await db.from("planned_payments").delete().eq("id", id);
     if (del.error) return json(req, { error: del.error.message }, 500);
     log("info", "planned_payment_deleted", { id });
     return json(req, { ok: true, deleted_id: id });

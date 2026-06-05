@@ -15,6 +15,7 @@
 
 import { z } from "zod";
 import { adminClient } from "../_shared/supabase.ts";
+import { tenantDb } from "../_shared/tenant_db.ts";
 import { authenticate } from "../_shared/webapp_auth.ts";
 import { forbidden, handleOptions, json, unauthorized } from "../_shared/api_response.ts";
 import { recordAudit } from "../_shared/audit.ts";
@@ -37,6 +38,7 @@ Deno.serve(async (req: Request) => {
   const sb = adminClient();
   const me = await authenticate(req, sb);
   if (!me) return unauthorized(req);
+  const db = tenantDb(sb, me.tenant_id);
   if (me.role !== "admin") return forbidden(req);
 
   const url = new URL(req.url);
@@ -51,7 +53,7 @@ Deno.serve(async (req: Request) => {
     const name = (body.name ?? "Member").trim().slice(0, 80) || "Member";
     const role = body.role ?? "member";
 
-    const existing = await sb.from("family_members")
+    const existing = await db.from("family_members")
       .select("id, name, role, active")
       .eq("telegram_id", body.telegram_id)
       .maybeSingle();
@@ -67,7 +69,7 @@ Deno.serve(async (req: Request) => {
       if (row.active) {
         return json(req, { error: "already_active", member: row }, 409);
       }
-      const upd = await sb.from("family_members")
+      const upd = await db.from("family_members")
         .update({ active: true })
         .eq("id", row.id);
       if (upd.error) return json(req, { error: upd.error.message }, 500);
@@ -86,7 +88,7 @@ Deno.serve(async (req: Request) => {
       return json(req, { ok: true, action: "reactivated", member: row });
     }
 
-    const ins = await sb.from("family_members")
+    const ins = await db.from("family_members")
       .insert({ name, telegram_id: body.telegram_id, role, active: true })
       .select("id, name, telegram_id, role, active")
       .maybeSingle();
@@ -120,7 +122,7 @@ Deno.serve(async (req: Request) => {
   if (!id || !/^[0-9a-f-]{36}$/i.test(id)) {
     return json(req, { error: "id_required" }, 400);
   }
-  const cur = await sb.from("family_members")
+  const cur = await db.from("family_members")
     .select("id, name, telegram_id, role, active")
     .eq("id", id).maybeSingle();
   if (cur.error) return json(req, { error: cur.error.message }, 500);
@@ -160,7 +162,7 @@ Deno.serve(async (req: Request) => {
     if (Object.keys(patch).length === 0) {
       return json(req, { ok: true, member: target, unchanged: true });
     }
-    const upd = await sb.from("family_members")
+    const upd = await db.from("family_members")
       .update(patch).eq("id", id)
       .select("id, name, telegram_id, role, active").maybeSingle();
     if (upd.error) return json(req, { error: upd.error.message }, 500);
@@ -201,7 +203,7 @@ Deno.serve(async (req: Request) => {
     if (!target.active) {
       return json(req, { ok: true, member: target, unchanged: true });
     }
-    const upd = await sb.from("family_members").update({ active: false }).eq("id", id);
+    const upd = await db.from("family_members").update({ active: false }).eq("id", id);
     if (upd.error) return json(req, { error: upd.error.message }, 500);
     await recordAudit(sb, {
       actorTelegramId: me.telegram_id,

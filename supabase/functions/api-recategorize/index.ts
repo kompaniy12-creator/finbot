@@ -6,6 +6,7 @@
 
 import { z } from "zod";
 import { adminClient } from "../_shared/supabase.ts";
+import { tenantDb } from "../_shared/tenant_db.ts";
 import { authenticate } from "../_shared/webapp_auth.ts";
 import { forbidden, handleOptions, json, unauthorized } from "../_shared/api_response.ts";
 import { log } from "../_shared/log.ts";
@@ -23,6 +24,7 @@ Deno.serve(async (req: Request) => {
   const sb = adminClient();
   const me = await authenticate(req, sb);
   if (!me) return unauthorized(req);
+  const db = tenantDb(sb, me.tenant_id);
 
   let body: z.infer<typeof BodySchema>;
   try {
@@ -31,7 +33,7 @@ Deno.serve(async (req: Request) => {
     return json(req, { error: "bad_request" }, 400);
   }
 
-  const expRes = await sb.from("expenses")
+  const expRes = await db.from("expenses")
     .select("id, kind, family_member_id, category_id, archived")
     .eq("id", body.expense_id)
     .maybeSingle();
@@ -47,7 +49,7 @@ Deno.serve(async (req: Request) => {
   if (me.role !== "admin" && exp.family_member_id !== me.id) return forbidden(req);
   if (exp.archived) return json(req, { error: "archived" }, 409);
 
-  const catRes = await sb.from("categories")
+  const catRes = await db.from("categories")
     .select("id, name, kind")
     .eq("id", body.category_id)
     .maybeSingle();
@@ -66,7 +68,7 @@ Deno.serve(async (req: Request) => {
     return json(req, { ok: true, category_id: cat.id, category_name: cat.name, unchanged: true });
   }
 
-  const upd = await sb.from("expenses")
+  const upd = await db.from("expenses")
     .update({ category_id: cat.id, corrected_by_user: true })
     .eq("id", exp.id);
   if (upd.error) return json(req, { error: upd.error.message }, 500);

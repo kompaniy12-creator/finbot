@@ -5,6 +5,7 @@
 // Sorted by created_at desc. Search matches receipt.merchant or expense.name.
 
 import { adminClient } from "../_shared/supabase.ts";
+import { tenantDb } from "../_shared/tenant_db.ts";
 import { authenticate } from "../_shared/webapp_auth.ts";
 import { handleOptions, json, unauthorized } from "../_shared/api_response.ts";
 import { loadEurRates, plnToEur } from "../_shared/eur_view.ts";
@@ -43,6 +44,7 @@ Deno.serve(async (req: Request) => {
   const sb = adminClient();
   const me = await authenticate(req, sb);
   if (!me) return unauthorized(req);
+  const db = tenantDb(sb, me.tenant_id);
 
   const url = new URL(req.url);
   const limit = Math.min(Number(url.searchParams.get("limit") ?? "50"), 200);
@@ -88,7 +90,7 @@ Deno.serve(async (req: Request) => {
     created_at: string;
   }> = [];
   if (!skipReceipts) {
-    let rq = sb.from("receipts").select(
+    let rq = db.from("receipts").select(
       "id, merchant, total, currency, total_pln, receipt_date, family_member_id, created_at",
     ).eq("archived", false);
     if (search) rq = rq.ilike("merchant", `%${search}%`);
@@ -119,7 +121,7 @@ Deno.serve(async (req: Request) => {
   const countMap = new Map<string, number>();
   const receiptKindMap = new Map<string, "expense" | "income">();
   if (receiptIds.length > 0) {
-    const cnt = await sb.from("expenses").select("receipt_id, kind").in(
+    const cnt = await db.from("expenses").select("receipt_id, kind").in(
       "receipt_id",
       receiptIds,
     ).eq("archived", false);
@@ -134,7 +136,7 @@ Deno.serve(async (req: Request) => {
 
   // 2. Solo expenses (no receipt_id). Now includes income rows too -
   // they're filed in the same table, distinguished by tx_kind in the FeedItem.
-  let eq = sb.from("expenses").select(
+  let eq = db.from("expenses").select(
     "id, kind, name, amount, currency, amount_pln, expense_date, category_id, family_member_id, source, needs_review, needs_confirmation, created_at, payment_method, reconciled_at",
   ).eq("archived", false).is("receipt_id", null);
   if (search) eq = eq.ilike("name", `%${search}%`);
@@ -218,7 +220,7 @@ Deno.serve(async (req: Request) => {
   // For receipts, derive reconciled state from underlying children.
   // (Done after the merge so we have access to receiptIds.)
   if (receiptIds.length > 0) {
-    const childRes = await sb.from("expenses")
+    const childRes = await db.from("expenses")
       .select("receipt_id, reconciled_at, payment_method")
       .in("receipt_id", receiptIds);
     const byReceipt = new Map<string, { reconciled: boolean; pm: string }>();
