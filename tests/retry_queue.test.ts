@@ -88,24 +88,36 @@ function mockSupabaseForPendingRetry() {
         return Promise.resolve({ data: row, error: null });
       },
       update(patch: Row) {
-        return {
+        const conds: Array<[string, unknown]> = [];
+        const u = {
           eq(col: string, val: unknown) {
+            conds.push([col, val]);
+            return u;
+          },
+          then(onF: (v: unknown) => unknown) {
             for (const r of rows) {
-              if (r[col] === val) Object.assign(r, patch);
+              if (conds.every(([c, v]) => r[c] === v)) Object.assign(r, patch);
             }
-            return Promise.resolve({ data: rows, error: null });
+            return Promise.resolve({ data: rows, error: null }).then(onF);
           },
         };
+        return u;
       },
       delete() {
-        return {
+        const conds: Array<[string, unknown]> = [];
+        const d = {
           eq(col: string, val: unknown) {
+            conds.push([col, val]);
+            return d;
+          },
+          then(onF: (v: unknown) => unknown) {
             for (let i = rows.length - 1; i >= 0; i--) {
-              if (rows[i]![col] === val) rows.splice(i, 1);
+              if (conds.every(([c, v]) => rows[i]![c] === v)) rows.splice(i, 1);
             }
-            return Promise.resolve({ data: null, error: null });
+            return Promise.resolve({ data: null, error: null }).then(onF);
           },
         };
+        return d;
       },
     };
     return obj;
@@ -137,6 +149,7 @@ Deno.test("enqueueRetry: inserts with attempt_count=0 on first call", async () =
   const result = await enqueueRetry(sb, {
     telegramMessageId: 1001,
     familyMemberId: "fm-1",
+    tenantId: "t-1",
     payload: { text: "test" },
     payloadType: "text",
     error: "first failure",
@@ -153,6 +166,7 @@ Deno.test("enqueueRetry: bumps attempt_count on repeat", async () => {
   await enqueueRetry(sb, {
     telegramMessageId: 1002,
     familyMemberId: "fm-1",
+    tenantId: "t-1",
     payload: {},
     payloadType: "text",
     error: "first",
@@ -160,6 +174,7 @@ Deno.test("enqueueRetry: bumps attempt_count on repeat", async () => {
   await enqueueRetry(sb, {
     telegramMessageId: 1002,
     familyMemberId: "fm-1",
+    tenantId: "t-1",
     payload: {},
     payloadType: "text",
     error: "second",
@@ -178,6 +193,7 @@ Deno.test("enqueueRetry: gives up at MAX_ATTEMPTS", async () => {
     await enqueueRetry(sb, {
       telegramMessageId: 1003,
       familyMemberId: "fm-1",
+      tenantId: "t-1",
       payload: {},
       payloadType: "text",
       error: `failure ${i + 1}`,

@@ -10,6 +10,7 @@ import { checkCronAuth, clearRetry, MAX_ATTEMPTS, nextRetryAt } from "../_shared
 
 interface PendingRow {
   id: number;
+  tenant_id: string;
   telegram_message_id: number;
   family_member_id: string;
   payload: Record<string, unknown>;
@@ -41,7 +42,9 @@ Deno.serve(async (req: Request) => {
 
   const { data, error } = await sb
     .from("pending_retry")
-    .select("id, telegram_message_id, family_member_id, payload, payload_type, attempt_count")
+    .select(
+      "id, tenant_id, telegram_message_id, family_member_id, payload, payload_type, attempt_count",
+    )
     .lt("attempt_count", MAX_ATTEMPTS)
     .lte("next_retry_at", nowIso)
     .order("next_retry_at", { ascending: true })
@@ -66,7 +69,7 @@ Deno.serve(async (req: Request) => {
     }
 
     if (ok) {
-      await clearRetry(sb, row.id);
+      await clearRetry(sb, row.tenant_id, row.id);
       succeeded++;
     } else {
       const newAttempt = row.attempt_count + 1;

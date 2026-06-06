@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { tenantDb } from "./tenant_db.ts";
 import { log } from "./log.ts";
 
 // Backoff buckets (minutes) per SPEC §5: 1, 5, 15, 60, 300.
@@ -11,6 +12,7 @@ export type PayloadType = "text" | "voice" | "photo";
 export interface EnqueueRetryInput {
   telegramMessageId: number;
   familyMemberId: string;
+  tenantId: string;
   payload: Record<string, unknown>;
   payloadType: PayloadType;
   error: string;
@@ -31,10 +33,11 @@ export async function enqueueRetry(
   sb: SupabaseClient,
   input: EnqueueRetryInput,
 ): Promise<{ ok: boolean; attempt: number; nextAt: string | null }> {
-  const { telegramMessageId, familyMemberId, payload, payloadType, error } = input;
+  const { telegramMessageId, familyMemberId, tenantId, payload, payloadType, error } = input;
+  const db = tenantDb(sb, tenantId);
 
   // Look up existing
-  const { data: existing, error: selErr } = await sb
+  const { data: existing, error: selErr } = await db
     .from("pending_retry")
     .select("id, attempt_count")
     .eq("telegram_message_id", telegramMessageId)
@@ -55,7 +58,7 @@ export async function enqueueRetry(
         attempts: newAttempt,
       });
       // Keep the row so it can be inspected; mark via last_error.
-      await sb
+      await db
         .from("pending_retry")
         .update({
           attempt_count: newAttempt,
@@ -66,7 +69,7 @@ export async function enqueueRetry(
       return { ok: false, attempt: newAttempt, nextAt: null };
     }
     const next = nextRetryAt(newAttempt).toISOString();
-    const { error: upErr } = await sb
+    const { error: upErr } = await db
       .from("pending_retry")
       .update({
         attempt_count: newAttempt,
@@ -82,7 +85,7 @@ export async function enqueueRetry(
   }
 
   const next = nextRetryAt(0).toISOString();
-  const { error: insErr } = await sb.from("pending_retry").insert({
+  const { error: insErr } = await db.from("pending_retry").insert({
     telegram_message_id: telegramMessageId,
     family_member_id: familyMemberId,
     payload,
@@ -103,9 +106,10 @@ export async function enqueueRetry(
  */
 export async function clearRetry(
   sb: SupabaseClient,
+  tenantId: string,
   id: number,
 ): Promise<void> {
-  const { error } = await sb.from("pending_retry").delete().eq("id", id);
+  const { error } = await tenantDb(sb, tenantId).from("pending_retry").delete().eq("id", id);
   if (error) {
     log("warn", "clear_retry_failed", { id, error: error.message });
   }

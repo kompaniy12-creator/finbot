@@ -245,7 +245,7 @@ Deno.serve(async (req: Request) => {
   // Idempotent skip for non-command messages (commands are idempotent by design).
   const cmd = parseCommand(msg?.text);
   if (msg && !cmd) {
-    const fresh = await dedupe(msg.message_id, member.id, sb);
+    const fresh = await dedupe(msg.message_id, member.id, member.tenant_id, sb);
     if (!fresh) {
       log("info", "webhook_dedupe_skip", {
         telegram_message_id: msg.message_id,
@@ -311,11 +311,11 @@ Deno.serve(async (req: Request) => {
 
     const out = await dispatch({ update, member, sb });
     if (out) await sendReply(out.chatId, out.reply);
-    if (msg && !cmd) await markDone(msg.message_id, member.id, sb);
+    if (msg && !cmd) await markDone(msg.message_id, member.id, member.tenant_id, sb);
   } catch (err) {
     log("error", "webhook_dispatch_failed", { error: (err as Error).message });
     if (msg && !cmd) {
-      await markError(msg.message_id, member.id, sb, (err as Error).message);
+      await markError(msg.message_id, member.id, member.tenant_id, sb, (err as Error).message);
     }
     return new Response("error", { status: 500 });
   }

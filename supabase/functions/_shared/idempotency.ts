@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { tenantDb } from "./tenant_db.ts";
 import { log } from "./log.ts";
 
 /**
@@ -8,9 +9,10 @@ import { log } from "./log.ts";
 export async function dedupe(
   telegramMessageId: number,
   familyMemberId: string,
+  tenantId: string,
   sb: SupabaseClient,
 ): Promise<boolean> {
-  const { data, error } = await sb
+  const { data, error } = await tenantDb(sb, tenantId)
     .from("message_log")
     .insert({
       telegram_message_id: telegramMessageId,
@@ -37,9 +39,10 @@ export async function dedupe(
 export async function markDone(
   telegramMessageId: number,
   familyMemberId: string,
+  tenantId: string,
   sb: SupabaseClient,
 ): Promise<void> {
-  const { error } = await sb
+  const { error } = await tenantDb(sb, tenantId)
     .from("message_log")
     .update({ status: "done", updated_at: new Date().toISOString() })
     .eq("telegram_message_id", telegramMessageId)
@@ -52,10 +55,11 @@ export async function markDone(
 export async function markError(
   telegramMessageId: number,
   familyMemberId: string,
+  tenantId: string,
   sb: SupabaseClient,
   errorMessage: string,
 ): Promise<void> {
-  const { error } = await sb
+  const { error } = await tenantDb(sb, tenantId)
     .from("message_log")
     .update({
       status: "error",
