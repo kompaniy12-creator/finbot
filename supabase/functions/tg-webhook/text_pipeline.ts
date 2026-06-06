@@ -6,6 +6,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { FamilyMember } from "../_shared/types.ts";
+import { tenantDb } from "../_shared/tenant_db.ts";
 import { callClaude } from "../_shared/claude.ts";
 import {
   buildParseExpensePrompt,
@@ -115,6 +116,7 @@ async function processSingleItem(
   fallback: any,
 ): Promise<ProcessedExpense | null> {
   const kind = item.kind ?? "expense";
+  const db = tenantDb(sb, member.tenant_id);
 
   const cat = await categorize(
     { sb, embedFn, fallback },
@@ -137,7 +139,7 @@ async function processSingleItem(
   // each correction feeds the kNN for next time.
   const needsConfirmation = amountPln > HIGH_AMOUNT_PLN || cat.confidence !== "high";
 
-  const ins = await sb.from("expenses").insert({
+  const ins = await db.from("expenses").insert({
     kind,
     name: item.name,
     name_normalized: item.name_normalized_en,
@@ -162,7 +164,7 @@ async function processSingleItem(
   }
 
   // Fetch category name for the reply.
-  const catRow = await sb.from("categories").select("name").eq("id", cat.categoryId)
+  const catRow = await db.from("categories").select("name").eq("id", cat.categoryId)
     .maybeSingle();
   const categoryName = (catRow.data as { name: string } | null)?.name ?? "?";
 

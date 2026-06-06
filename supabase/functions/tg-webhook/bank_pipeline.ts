@@ -13,6 +13,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { FamilyMember } from "../_shared/types.ts";
+import { tenantDb } from "../_shared/tenant_db.ts";
 import { callClaude } from "../_shared/claude.ts";
 import {
   buildBankStatementPrompt,
@@ -54,10 +55,10 @@ export async function processBankStatement(args: {
   mimeType?: string; // for image: image/png, image/jpeg, etc.
 }): Promise<BankPipelineOutcome> {
   const { sb, member, statementId, mediaType = "pdf", mimeType } = args;
+  const db = tenantDb(sb, member.tenant_id);
 
   // 1. Load statement row + extract Telegram file_id stashed in raw_text.
-  const stmtRes = await sb
-    .from("bank_statements")
+  const stmtRes = await db.from("bank_statements")
     .select("id, raw_text, filename")
     .eq("id", statementId)
     .maybeSingle();
@@ -74,7 +75,7 @@ export async function processBankStatement(args: {
   // 2. Download file bytes.
   const fileBytes = await downloadTelegramFile(fileId);
   if (!fileBytes) {
-    await sb.from("bank_statements").update({
+    await db.from("bank_statements").update({
       status: "failed",
       error: "telegram_download_failed",
     }).eq("id", statementId);
@@ -139,7 +140,7 @@ export async function processBankStatement(args: {
     });
   } catch (err) {
     log("error", "bank_parse_claude_failed", { error: (err as Error).message });
-    await sb.from("bank_statements").update({
+    await db.from("bank_statements").update({
       status: "failed",
       error: (err as Error).message.slice(0, 500),
     }).eq("id", statementId);
@@ -151,7 +152,7 @@ export async function processBankStatement(args: {
   // zod "lines: Required". Catch it here and tell the user something actionable.
   if (resp.response.stop_reason === "max_tokens") {
     log("warn", "bank_parse_truncated", { statement_id: statementId, maxTokens });
-    await sb.from("bank_statements").update({
+    await db.from("bank_statements").update({
       status: "failed",
       error: "truncated_max_tokens",
     }).eq("id", statementId);
@@ -160,7 +161,7 @@ export async function processBankStatement(args: {
 
   const toolUse = resp.response.content.find((c) => c.type === "tool_use");
   if (!toolUse || toolUse.name !== "parse_bank_statement") {
-    await sb.from("bank_statements").update({
+    await db.from("bank_statements").update({
       status: "failed",
       error: "no_tool_use_block",
     }).eq("id", statementId);
@@ -168,7 +169,7 @@ export async function processBankStatement(args: {
   }
   const parsed = ParseBankStatementOutputSchema.safeParse(toolUse.input);
   if (!parsed.success) {
-    await sb.from("bank_statements").update({
+    await db.from("bank_statements").update({
       status: "failed",
       error: JSON.stringify(parsed.error.issues).slice(0, 500),
     }).eq("id", statementId);
@@ -199,14 +200,14 @@ export async function processBankStatement(args: {
   }));
 
   // Wipe any previous lines (re-parse case) then insert fresh.
-  await sb.from("bank_statement_lines").delete().eq("statement_id", statementId);
+  await db.from("bank_statement_lines").delete().eq("statement_id", statementId);
   if (rows.length > 0) {
-    const ins = await sb.from("bank_statement_lines").insert(rows);
+    const ins = await db.from("bank_statement_lines").insert(rows);
     if (ins.error) {
       log("error", "bank_lines_insert_failed", { error: ins.error.message });
     }
   }
-  await sb.from("bank_statements").update({
+  await db.from("bank_statements").update({
     status: "parsed",
     source: out.source,
     period_start: out.period_start ?? null,
@@ -225,7 +226,7 @@ export async function processBankStatement(args: {
   // базе' should become 'создал N новых' instead of silent triage.
   const autoCreated = await autoCreateUnmatched(sb, member, statementId);
 
-  await sb.from("bank_statements").update({
+  await db.from("bank_statements").update({
     matched_lines: summary.matched,
     added_lines: autoCreated,
   }).eq("id", statementId);
@@ -260,9 +261,10 @@ async function autoCreateUnmatched(
   statementId: string,
 ): Promise<number> {
   // After reconcile, lines that found no candidate stay status='pending'.
+  const db = tenantDb(sb, member.tenant_id);
   // Internal-transfer lines are already 'skipped'. Auto-create every
   // remaining pending line as a fresh expense/income row.
-  const res = await sb.from("bank_statement_lines")
+  const res = await db.from("bank_statement_lines")
     .select(
       "id, family_member_id, posted_date, amount, currency, description, method, kind",
     )
@@ -296,7 +298,7 @@ async function autoCreateUnmatched(
       const amount = Number(line.amount);
       const amountPln = line.currency === "PLN" ? amount : amount;
 
-      const ins = await sb.from("expenses").insert({
+      const ins = await db.from("expenses").insert({
         kind: line.kind,
         name: rawName,
         name_normalized: normalized,
@@ -327,7 +329,7 @@ async function autoCreateUnmatched(
         continue;
       }
       const expenseId = (ins.data as { id: string }).id;
-      await sb.from("bank_statement_lines").update({
+      await db.from("bank_statement_lines").update({
         status: "added",
         matched_expense_id: expenseId,
       }).eq("id", line.id);

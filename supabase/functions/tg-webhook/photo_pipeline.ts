@@ -6,6 +6,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { FamilyMember } from "../_shared/types.ts";
+import { tenantDb } from "../_shared/tenant_db.ts";
 import { detectImage, reconcileTotal, sha256Hex } from "../_shared/image.ts";
 import { callClaude } from "../_shared/claude.ts";
 import { buildParseReceiptPrompt, ParsedReceiptSchema } from "../_shared/prompts/parse_receipt.ts";
@@ -74,6 +75,17 @@ export type PhotoOutcome =
   };
 
 const DEDUP_WINDOW_DAYS = 30;
+const EMBED_DIMS = 384;
+
+// Guard against a malformed embedding poisoning the atomic bulk insert. The
+// expenses.embedding column is vector(384); anything else (wrong length, NaN)
+// would make the whole batch fail. Returns null so the row still saves.
+function validEmbedding(e: unknown): number[] | null {
+  return Array.isArray(e) && e.length === EMBED_DIMS &&
+      e.every((n) => typeof n === "number" && Number.isFinite(n))
+    ? e as number[]
+    : null;
+}
 
 export async function processPhotoMessage(args: {
   sb: SupabaseClient;
@@ -92,6 +104,7 @@ export async function processPhotoMessage(args: {
   progress?: ProgressEmitter;
 }): Promise<PhotoOutcome> {
   const p = args.progress;
+  const db = tenantDb(args.sb, args.member.tenant_id);
   if (p) await p.update("📥 Скачиваю фото...");
   const buf = await downloadTelegramFile(args.fileId);
   if (!buf) return { kind: "download_failed" };
@@ -108,7 +121,7 @@ export async function processPhotoMessage(args: {
   // Layer 1: byte-identical duplicate check via SHA-256 of the bytes.
   const photoHash = await sha256Hex(buf);
   const sinceIso = new Date(Date.now() - DEDUP_WINDOW_DAYS * 86_400_000).toISOString();
-  const dupHashRes = await args.sb.from("receipts")
+  const dupHashRes = await db.from("receipts")
     .select("id, merchant, total, currency, receipt_date")
     .eq("family_member_id", args.member.id)
     .eq("archived", false)
@@ -171,8 +184,7 @@ export async function processPhotoMessage(args: {
   // Preload categories so Vision can assign one per item in a single call.
   // This collapses the old N-item Claude-fallback loop into 0 extra calls.
   // Filter by detected kind so Vision can't mix expense and income pools.
-  const catRows = await args.sb
-    .from("categories")
+  const catRows = await db.from("categories")
     .select("id, name, kind, is_fallback")
     .eq("kind", photoKind)
     .order("is_fallback", { ascending: true })
@@ -291,7 +303,7 @@ export async function processPhotoMessage(args: {
   // Layer 2: content-fingerprint duplicate check.
   // Same merchant + receipt_date + total + currency from the same family,
   // not archived. Catches re-photographed-same-receipt cases.
-  const dupContentRes = await args.sb.from("receipts")
+  const dupContentRes = await db.from("receipts")
     .select("id, merchant, total, currency, receipt_date")
     .eq("family_member_id", args.member.id)
     .eq("archived", false)
@@ -322,7 +334,7 @@ export async function processPhotoMessage(args: {
   }
 
   // Insert receipt
-  const recIns = await args.sb.from("receipts").insert({
+  const recIns = await db.from("receipts").insert({
     merchant: receipt.merchant,
     receipt_date: receipt.receipt_date,
     currency: receipt.currency,
@@ -387,17 +399,35 @@ export async function processPhotoMessage(args: {
       source: "photo",
       receipt_id: receiptId,
       needs_review: !recon.ok || hallucinated,
-      embedding: embeddings[i] ?? null,
+      // Only accept a well-formed 384-dim embedding. A malformed one (wrong
+      // dimension / non-finite) would otherwise make the WHOLE atomic batch
+      // fail, losing every line of the receipt (the "saved 0 of N" bug).
+      embedding: validEmbedding(embeddings[i]),
       telegram_message_id: args.telegramMessageId,
       line_index: i,
     };
   });
 
-  const bulkIns = await args.sb.from("expenses").insert(rows).select("id");
+  // One atomic bulk insert is the fast path. If it fails for any reason (a
+  // single bad row would otherwise sink all N), fall back to per-row inserts so
+  // a 20-item receipt never silently saves zero. The verify count below is the
+  // source of truth either way.
+  let insertedHint = 0;
+  const bulkIns = await db.from("expenses").insert(rows).select("id");
   if (bulkIns.error) {
     log("error", "photo_bulk_insert_failed", { error: bulkIns.error.message });
+    for (const row of rows) {
+      const one = await db.from("expenses").insert(row).select("id");
+      if (one.error) {
+        log("warn", "photo_row_insert_failed", { name: row.name, error: one.error.message });
+      } else {
+        insertedHint++;
+      }
+    }
+    log("info", "photo_perrow_fallback", { saved: insertedHint, total: rows.length });
+  } else {
+    insertedHint = bulkIns.data?.length ?? 0;
   }
-  const insertedHint = bulkIns.data?.length ?? 0;
 
   // Tip line from caption ("чаевые 100 лек"). Inserted as a separate expense
   // attached to the same receipt, so it shows up under the receipt in the
@@ -422,7 +452,7 @@ export async function processPhotoMessage(args: {
     for (const r of rows) counts.set(r.category_id, (counts.get(r.category_id) ?? 0) + 1);
     const topCat = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? fallbackCatId;
     const tipPln = Math.round(tip.amount * tipRate * 100) / 100;
-    const tipIns = await args.sb.from("expenses").insert({
+    const tipIns = await db.from("expenses").insert({
       kind: photoKind, // inherits photo's overall kind (expense in 99% of cases)
       name: "Чаевые",
       name_normalized: "tip gratuity",
@@ -449,7 +479,7 @@ export async function processPhotoMessage(args: {
             )) * 100,
       ) / 100;
       const newTotalPln = Math.round((totalPln + tipPln) * 100) / 100;
-      await args.sb.from("receipts").update({
+      await db.from("receipts").update({
         total: newTotal,
         total_pln: newTotalPln,
       }).eq("id", receiptId);
@@ -457,7 +487,7 @@ export async function processPhotoMessage(args: {
   }
 
   // Mandatory verification: trust nothing, count what's actually in the DB.
-  const verifyRes = await args.sb.from("expenses")
+  const verifyRes = await db.from("expenses")
     .select("id", { count: "exact", head: true })
     .eq("receipt_id", receiptId)
     .eq("archived", false);

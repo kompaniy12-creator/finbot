@@ -4,6 +4,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { FamilyMember, TelegramUpdate } from "../_shared/types.ts";
+import { tenantDb } from "../_shared/tenant_db.ts";
 import {
   askCommand,
   auditCommand,
@@ -155,24 +156,24 @@ export async function dispatch(
   input: DispatchInput,
 ): Promise<DispatchOutput | null> {
   const msg = input.update.message ?? input.update.edited_message;
+  const db = tenantDb(input.sb, input.member.tenant_id);
   if (!msg) return null;
 
   // M11: edited message semantics (SPEC §6.5). Hard-delete the previous
   // expense rows for this (telegram_message_id, family_member_id), letting the
   // audit trigger write 'archive' first, then re-process below as usual.
   if (input.update.edited_message) {
-    const prev = await input.sb
-      .from("expenses")
+    const prev = await db.from("expenses")
       .select("id")
       .eq("telegram_message_id", msg.message_id)
       .eq("family_member_id", input.member.id);
     const ids = ((prev.data ?? []) as Array<{ id: string }>).map((r) => r.id);
     if (ids.length > 0) {
       // UPDATE archived=true so audit trigger captures the archive event.
-      await input.sb.from("expenses").update({ archived: true }).in("id", ids);
+      await db.from("expenses").update({ archived: true }).in("id", ids);
       // Then hard-delete so the unique (msg_id, fm_id, line_index) constraint
       // frees up for the re-insert.
-      await input.sb.from("expenses").delete().in("id", ids);
+      await db.from("expenses").delete().in("id", ids);
     }
   }
 
@@ -194,8 +195,7 @@ export async function dispatch(
     const parentId = msg.reply_to_message.message_id;
     const parentFromBot = msg.reply_to_message.from?.is_bot === true;
     if (parentFromBot && typeof parentId === "number") {
-      const thread = await input.sb
-        .from("ask_threads")
+      const thread = await db.from("ask_threads")
         .select("history")
         .eq("chat_id", msg.chat.id)
         .eq("bot_message_id", parentId)
@@ -308,8 +308,7 @@ export async function dispatch(
     if (msg.media_group_id) {
       // Check if this is the first photo of the group (atomic via sequential
       // insert + count). If so, send ack and store its msg_id on the row.
-      const existing = await input.sb
-        .from("media_group_buffer")
+      const existing = await db.from("media_group_buffer")
         .select("ack_message_id")
         .eq("media_group_id", msg.media_group_id)
         .not("ack_message_id", "is", null)
@@ -324,7 +323,7 @@ export async function dispatch(
         ackMsgId = prog?.messageId() ?? null;
       }
 
-      await input.sb.from("media_group_buffer").insert({
+      await db.from("media_group_buffer").insert({
         media_group_id: msg.media_group_id,
         telegram_message_id: msg.message_id,
         family_member_id: input.member.id,
@@ -340,7 +339,7 @@ export async function dispatch(
     // (extract lines, reconcile) instead of treating it as a store receipt.
     if (msg.caption && isBankScreenshotCaption(msg.caption)) {
       const prog = await startProgress(msg.chat.id, "📱 Распознаю выписку из приложения банка...");
-      const ins = await input.sb.from("bank_statements").insert({
+      const ins = await db.from("bank_statements").insert({
         family_member_id: input.member.id,
         source: "other",
         filename: `screenshot_${msg.message_id}.jpg`,
@@ -413,7 +412,7 @@ export async function dispatch(
   // PDF document → bank statement pipeline (parse + auto-reconcile).
   if (msg.document && msg.document.mime_type === "application/pdf") {
     const filename = msg.document.file_name || "statement.pdf";
-    const ins = await input.sb.from("bank_statements").insert({
+    const ins = await db.from("bank_statements").insert({
       family_member_id: input.member.id,
       source: "other",
       filename,

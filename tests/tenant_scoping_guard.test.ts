@@ -42,18 +42,16 @@ const ALLOWED_RAW = new Set<string>([
   "supabase/functions/cron-retraining/index.ts",
   "supabase/functions/cron-retry-failed/index.ts",
   "supabase/functions/setup-once/index.ts",
-  "supabase/functions/tg-webhook/bank_pipeline.ts",
   "supabase/functions/tg-webhook/callbacks.ts",
   "supabase/functions/tg-webhook/commands.ts",
-  "supabase/functions/tg-webhook/debt_pipeline.ts",
-  "supabase/functions/tg-webhook/photo_pipeline.ts",
-  "supabase/functions/tg-webhook/router.ts",
-  "supabase/functions/tg-webhook/text_pipeline.ts",
 ]);
 
 const ROOT = "supabase/functions";
-// Matches `sb.from("table")` / `sb .from('table')` across whitespace/newlines.
-const RAW_FROM = /\bsb\s*\.\s*from\(\s*["']([a-z_]+)["']/gs;
+// Matches raw per-tenant access through either the bare service client
+// (`sb.from(...)`) or the tenantDb escape hatch (`db.raw.from(...)`), across
+// whitespace/newlines. The escape hatch must only touch global tables/RPC, so
+// using it on a per-tenant table is just as much a leak as a raw sb.from.
+const RAW_FROM = /(?:\bsb|\braw)\s*\.\s*from\(\s*["']([a-z_]+)["']/gs;
 
 async function* walk(dir: string): AsyncGenerator<string> {
   for await (const entry of Deno.readDir(dir)) {

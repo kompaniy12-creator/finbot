@@ -4,6 +4,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { FamilyMember } from "../_shared/types.ts";
+import { tenantDb } from "../_shared/tenant_db.ts";
 import { callClaude } from "../_shared/claude.ts";
 import {
   buildDebtSystemPrompt,
@@ -62,9 +63,10 @@ export async function processDebtMessage(args: {
     return { kind: "parse_failed", reason: "schema_invalid" };
   }
   const d = parsed.data;
+  const db = tenantDb(args.sb, args.member.tenant_id);
   const borrowedAt = d.borrowed_at ?? today;
 
-  const ins = await args.sb.from("debts").insert({
+  const ins = await db.from("debts").insert({
     family_member_id: args.member.id,
     direction: d.direction,
     counterparty: d.counterparty,
