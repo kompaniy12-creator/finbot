@@ -9,7 +9,24 @@
 // into a 0.01 PLN line item (the exact bug in the user's screenshot) is the
 // failure mode we cannot afford.
 
-export type Intent = "expense" | "question" | "debt";
+export type Intent = "expense" | "question" | "debt" | "budget";
+
+// Budget-creation triggers. "Добавь бюджет еда 2000", "установи лимит на
+// транспорт 300 EUR" - a create verb + a budget noun + a number. Caught BEFORE
+// the expense parser so "бюджет ... 150 евро" is not recorded as a 150 EUR
+// expense (the exact bug from the user's screenshot). A bare question like
+// "сколько в бюджете?" has no create verb and is left to the analyst.
+const BUDGET_NOUN = new RegExp(
+  "(^|[^\\p{L}])(бюджет\\p{L}*|лимит\\p{L}*|ліміт\\p{L}*|budget|limit)([^\\p{L}]|$)",
+  "iu",
+);
+const BUDGET_VERB = new RegExp(
+  "(^|[^\\p{L}])(" +
+    "добав\\p{L}*|созда\\p{L}*|установ\\p{L}*|встанов\\p{L}*|задай|постав\\p{L}*|" +
+    "нов\\p{L}*|сдела\\p{L}*|add|set|create|make" +
+    ")([^\\p{L}]|$)",
+  "iu",
+);
 
 // Question lead-words across the four languages the family uses.
 // Word-boundary anchored so "какой" matches but "какойто" or substrings don't.
@@ -99,6 +116,9 @@ export function classifyIntent(text: string): Intent {
   // "1000 дал в долг Паше" must become a debt row, not a 1000-PLN
   // expense in 'Выплаты по кредиту' (the existing wrong behavior).
   if (DEBT_PATTERNS.test(t)) return "debt";
+  // Budget creation: verb + budget-noun + a number. Before the analyst override
+  // and the expense rule so it is not eaten by either.
+  if (BUDGET_NOUN.test(t) && BUDGET_VERB.test(t) && /\d/.test(t)) return "budget";
   // Strong analyst override BEFORE the digit/currency rule: an explicit
   // "отметь / сверь / выписка / удали" request must not be eaten by the
   // expense parser just because it happens to contain a number.

@@ -93,3 +93,21 @@ Deno.test("detectPhotoKind: generic captions stay expense", () => {
   assertEquals(detectPhotoKind("чек за бензин"), "expense");
   assertEquals(detectPhotoKind("Уличные собаки"), "expense");
 });
+
+Deno.test("classifyIntent: budget creation -> budget", () => {
+  assertEquals(classifyIntent("Добавь бюджет уличные животные 150 евро"), "budget");
+  assertEquals(classifyIntent("установи лимит на еду 2000 в месяц"), "budget");
+  assertEquals(classifyIntent("create a budget for transport 300 PLN"), "budget");
+  assertEquals(classifyIntent("новый бюджет развлечения 500"), "budget");
+});
+
+Deno.test("classifyIntent: budget questions stay analyst, not budget creation", () => {
+  // No create verb -> a question about budgets, not a new budget.
+  assertEquals(classifyIntent("сколько осталось в бюджете на еду?"), "question");
+  assertEquals(classifyIntent("какой у меня лимит на транспорт"), "question");
+});
+
+Deno.test("classifyIntent: plain expense is not mistaken for budget", () => {
+  assertEquals(classifyIntent("кофе 12 zł"), "expense");
+  assertEquals(classifyIntent("добавь кофе 12"), "expense"); // verb but no budget noun
+});
