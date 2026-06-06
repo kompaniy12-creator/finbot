@@ -13,6 +13,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type Anthropic from "@anthropic-ai/sdk";
 import type { FamilyMember } from "./types.ts";
+import { tenantDb } from "./tenant_db.ts";
 import { callClaude } from "./claude.ts";
 import { buildAnalystSnapshot } from "./analyst_snapshot.ts";
 import { log } from "./log.ts";
@@ -68,14 +69,16 @@ interface ProposeChangesInput {
 
 async function tQueryExpenses(
   sb: SupabaseClient,
+  tenantId: string,
   input: QueryExpensesInput,
 ): Promise<unknown> {
+  const db = tenantDb(sb, tenantId);
   const limit = Math.min(Math.max(Number(input.limit ?? 30), 1), 100);
   // Default to expense for backwards compat. Pass kind='income' to get
   // income rows. Pass kind='any' (handled as no filter) only if explicitly
   // intended; we don't expose 'any' through the tool schema for now.
   const kind = input.kind === "income" ? "income" : "expense";
-  let q = sb.from("expenses")
+  let q = db.from("expenses")
     .select(
       "id, kind, name, amount, currency, amount_pln, category_id, family_member_id, source, expense_date, receipt_id, needs_confirmation, archived",
     )
@@ -100,10 +103,12 @@ async function tQueryExpenses(
 
 async function tQueryReceipts(
   sb: SupabaseClient,
+  tenantId: string,
   input: QueryReceiptsInput,
 ): Promise<unknown> {
+  const db = tenantDb(sb, tenantId);
   const limit = Math.min(Math.max(Number(input.limit ?? 20), 1), 50);
-  let q = sb.from("receipts")
+  let q = db.from("receipts")
     .select("id, merchant, total, currency, receipt_date, family_member_id")
     .eq("archived", false)
     .order("receipt_date", { ascending: false })
@@ -116,8 +121,9 @@ async function tQueryReceipts(
   return { rows: data ?? [], count: (data ?? []).length };
 }
 
-async function tListCategories(sb: SupabaseClient): Promise<unknown> {
-  const { data, error } = await sb.from("categories")
+async function tListCategories(sb: SupabaseClient, tenantId: string): Promise<unknown> {
+  const db = tenantDb(sb, tenantId);
+  const { data, error } = await db.from("categories")
     .select("id, name, kind, is_fallback")
     .order("kind", { ascending: true })
     .order("is_fallback", { ascending: true })
@@ -126,8 +132,9 @@ async function tListCategories(sb: SupabaseClient): Promise<unknown> {
   return { rows: data ?? [] };
 }
 
-async function tListRecurring(sb: SupabaseClient): Promise<unknown> {
-  const { data, error } = await sb.from("recurring_expenses")
+async function tListRecurring(sb: SupabaseClient, tenantId: string): Promise<unknown> {
+  const db = tenantDb(sb, tenantId);
+  const { data, error } = await db.from("recurring_expenses")
     .select("id, name, amount, currency, day_of_month, active, category_id, family_member_id");
   if (error) return { error: error.message };
   return { rows: data ?? [] };
@@ -356,7 +363,8 @@ export async function runAskAgent(args: {
   priorTurns?: AskTurn[];
 }): Promise<AskAgentResult> {
   const { sb, viewer, question, priorTurns } = args;
-  const snapshot = await buildAnalystSnapshot(sb);
+  const db = tenantDb(sb, viewer.tenant_id);
+  const snapshot = await buildAnalystSnapshot(sb, viewer.tenant_id);
 
   // Render prior turns as a "Предыдущая беседа" preamble so a follow-up
   // question (e.g. "Как считал?") has the earlier Q/A in context. We pass
@@ -427,13 +435,13 @@ export async function runAskAgent(args: {
       let result: unknown;
       try {
         if (tu.name === "query_expenses") {
-          result = await tQueryExpenses(sb, tu.input as QueryExpensesInput);
+          result = await tQueryExpenses(sb, viewer.tenant_id, tu.input as QueryExpensesInput);
         } else if (tu.name === "query_receipts") {
-          result = await tQueryReceipts(sb, tu.input as QueryReceiptsInput);
+          result = await tQueryReceipts(sb, viewer.tenant_id, tu.input as QueryReceiptsInput);
         } else if (tu.name === "list_categories") {
-          result = await tListCategories(sb);
+          result = await tListCategories(sb, viewer.tenant_id);
         } else if (tu.name === "list_recurring") {
-          result = await tListRecurring(sb);
+          result = await tListRecurring(sb, viewer.tenant_id);
         } else if (tu.name === "propose_changes") {
           const input = tu.input as ProposeChangesInput;
           const validated = validateActions(input.actions);
@@ -476,7 +484,7 @@ export async function runAskAgent(args: {
   // Persist proposal if any.
   let proposalId: string | null = null;
   if (proposalActions && proposalActions.length > 0) {
-    const ins = await sb.from("ask_proposals").insert({
+    const ins = await db.from("ask_proposals").insert({
       proposer_family_member_id: viewer.id,
       proposer_telegram_id: viewer.telegram_id,
       question,

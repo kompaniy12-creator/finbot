@@ -4,6 +4,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { addDaysIso, todayWarsawIso } from "./dates.ts";
+import { tenantDb } from "./tenant_db.ts";
 import { loadEurRates, plnToEur } from "./eur_view.ts";
 
 const CCY_ORDER = ["PLN", "EUR", "USD", "ALL"];
@@ -146,7 +147,11 @@ export interface AnalystSnapshot {
 /**
  * Build the snapshot. Heavy on parallel queries; returns in 1-2s in prod.
  */
-export async function buildAnalystSnapshot(sb: SupabaseClient): Promise<AnalystSnapshot> {
+export async function buildAnalystSnapshot(
+  sb: SupabaseClient,
+  tenantId: string,
+): Promise<AnalystSnapshot> {
+  const db = tenantDb(sb, tenantId);
   const today = todayWarsawIso();
   const monthYm = today.slice(0, 7);
   const monthStart = `${monthYm}-01`;
@@ -172,39 +177,39 @@ export async function buildAnalystSnapshot(sb: SupabaseClient): Promise<AnalystS
     recurringRes,
     lifetimeByCatRes,
   ] = await Promise.all([
-    sb.from("family_members").select("id, name, role").eq("active", true),
-    sb.from("categories").select("id, name, is_fallback"),
-    sb.from("expenses")
+    db.from("family_members").select("id, name, role").eq("active", true),
+    db.from("categories").select("id, name, is_fallback"),
+    db.from("expenses")
       .select(
         "kind, amount, currency, amount_pln, category_id, family_member_id, source, expense_date",
       )
       .eq("archived", false)
       .gte("expense_date", trendStartIso)
       .lte("expense_date", today),
-    sb.from("expenses")
+    db.from("expenses")
       .select(
         "id, kind, name, amount, currency, amount_pln, category_id, family_member_id, source, expense_date, receipt_id",
       )
       .eq("archived", false)
       .gte("expense_date", monthStart)
       .lte("expense_date", monthEnd),
-    sb.from("expenses")
+    db.from("expenses")
       .select(
         "id, kind, name, amount, currency, amount_pln, category_id, family_member_id, source, expense_date",
       )
       .eq("archived", false)
       .gte("expense_date", prevStart)
       .lte("expense_date", prevEnd),
-    sb.from("receipts")
+    db.from("receipts")
       .select("id, merchant, total, currency, total_pln, receipt_date")
       .eq("archived", false)
       .gte("receipt_date", weekStart)
       .lte("receipt_date", today)
       .order("created_at", { ascending: false })
       .limit(10),
-    sb.from("recurring_expenses")
+    db.from("recurring_expenses")
       .select("name, amount, currency, day_of_month, active, category_id, family_member_id"),
-    sb.from("expenses")
+    db.from("expenses")
       .select("kind, category_id, amount_pln")
       .eq("archived", false),
   ]);
@@ -418,7 +423,7 @@ export async function buildAnalystSnapshot(sb: SupabaseClient): Promise<AnalystS
   const receiptIds = receipts.map((r) => r.id);
   const countMap = new Map<string, number>();
   if (receiptIds.length > 0) {
-    const cnt = await sb.from("expenses")
+    const cnt = await db.from("expenses")
       .select("receipt_id")
       .in("receipt_id", receiptIds)
       .eq("archived", false);
