@@ -52,6 +52,9 @@ function mockSb(seed: Record<string, Array<Record<string, unknown>>>) {
         return obj;
       },
       eq(col: string, val: unknown) {
+        // tenantDb auto-adds .eq("tenant_id", ...); the mock seeds are
+        // single-tenant, so treat that filter as a no-op here.
+        if (col === "tenant_id") return obj;
         filtered = filtered.filter((r) => r[col] === val);
         return obj;
       },
@@ -126,7 +129,7 @@ Deno.test("categoriesCommand: lists seeded categories with fallback marker", asy
       { name: "Transport", is_fallback: false },
     ],
   });
-  const r = await categoriesCommand(sb);
+  const r = await categoriesCommand(sb, TENANT);
   assertStringIncludes(r.text, "Категории (3)");
   assertStringIncludes(r.text, "Groceries");
   assertStringIncludes(r.text, "Other (fallback)");
@@ -144,7 +147,7 @@ Deno.test("healthCommand: shows system_health and today's count", async () => {
     ],
     expenses: [{ expense_date: new Date().toISOString().slice(0, 10) }],
   });
-  const r = await healthCommand(sb);
+  const r = await healthCommand(sb, TENANT);
   assertStringIncludes(r.text, "last_seen");
   assertStringIncludes(r.text, "test");
   assertStringIncludes(r.text, "backup_confirmed: true");
@@ -153,13 +156,13 @@ Deno.test("healthCommand: shows system_health and today's count", async () => {
 
 Deno.test("auditCommand: refuses non-uuid", async () => {
   const sb = mockSb({});
-  const r = await auditCommand(sb, "not-a-uuid");
+  const r = await auditCommand(sb, TENANT, "not-a-uuid");
   assertStringIncludes(r.text, "Использование");
 });
 
 Deno.test("auditCommand: shows empty message for missing expense", async () => {
   const sb = mockSb({ expense_audit: [] });
-  const r = await auditCommand(sb, "11111111-2222-3333-4444-555555555555");
+  const r = await auditCommand(sb, TENANT, "11111111-2222-3333-4444-555555555555");
   assertStringIncludes(r.text, "Нет audit-записей");
 });
 
@@ -182,7 +185,7 @@ Deno.test("auditCommand: lists 5 latest audit rows", async () => {
       },
     ],
   });
-  const r = await auditCommand(sb, "11111111-2222-3333-4444-555555555555");
+  const r = await auditCommand(sb, TENANT, "11111111-2222-3333-4444-555555555555");
   assertStringIncludes(r.text, "Audit для 11111111");
   assertStringIncludes(r.text, "insert");
   assertStringIncludes(r.text, "archive");

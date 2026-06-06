@@ -5,6 +5,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { FamilyMember } from "../_shared/types.ts";
+import { tenantDb } from "../_shared/tenant_db.ts";
 import { recordAudit } from "../_shared/audit.ts";
 import { notifyUser } from "../_shared/notify.ts";
 import { buildAnalystSnapshot } from "../_shared/analyst_snapshot.ts";
@@ -97,9 +98,10 @@ export function helpCommand(member: FamilyMember): CommandReply {
 
 export async function categoriesCommand(
   sb: SupabaseClient,
+  tenantId: string,
 ): Promise<CommandReply> {
-  const { data, error } = await sb
-    .from("categories")
+  const db = tenantDb(sb, tenantId);
+  const { data, error } = await db.from("categories")
     .select("name, is_fallback")
     .order("is_fallback", { ascending: true })
     .order("name", { ascending: true });
@@ -141,12 +143,12 @@ export async function webCommand(
   sb: SupabaseClient,
   member: FamilyMember,
 ): Promise<CommandReply> {
+  const db = tenantDb(sb, member.tenant_id);
   // Soft per-user rate limit: 3 magic links per 5 minutes. We count
   // unconsumed-and-still-valid rows; deliberately permissive so a user who
   // refreshed and tossed a tab can ask again.
   const since = new Date(Date.now() - 5 * 60 * 1000).toISOString();
-  const recent = await sb
-    .from("web_sessions")
+  const recent = await db.from("web_sessions")
     .select("id", { count: "exact", head: true })
     .eq("family_member_id", member.id)
     .gte("created_at", since);
@@ -161,7 +163,7 @@ export async function webCommand(
   const magicExpiresAt = new Date(
     Date.now() + MAGIC_TTL_MIN * 60 * 1000,
   ).toISOString();
-  const ins = await sb.from("web_sessions").insert({
+  const ins = await db.from("web_sessions").insert({
     family_member_id: member.id,
     magic_token: magic,
     magic_expires_at: magicExpiresAt,
@@ -194,8 +196,8 @@ export async function webLogoutCommand(
   sb: SupabaseClient,
   member: FamilyMember,
 ): Promise<CommandReply> {
-  const upd = await sb
-    .from("web_sessions")
+  const db = tenantDb(sb, member.tenant_id);
+  const upd = await db.from("web_sessions")
     .update({ session_expires_at: new Date(0).toISOString() })
     .eq("family_member_id", member.id)
     .gt("session_expires_at", new Date().toISOString());
@@ -209,15 +211,16 @@ export async function webLogoutCommand(
 
 export async function healthCommand(
   sb: SupabaseClient,
+  tenantId: string,
 ): Promise<CommandReply> {
+  const db = tenantDb(sb, tenantId);
   const sh = await sb
     .from("system_health")
     .select("last_seen, bot_version, backup_key_confirmed")
     .eq("id", 1)
     .maybeSingle();
   const todayIso = new Date().toISOString().slice(0, 10);
-  const todayCount = await sb
-    .from("expenses")
+  const todayCount = await db.from("expenses")
     .select("id", { count: "exact", head: true })
     .eq("expense_date", todayIso);
 
@@ -244,13 +247,14 @@ export async function healthCommand(
 
 export async function auditCommand(
   sb: SupabaseClient,
+  tenantId: string,
   expenseId: string,
 ): Promise<CommandReply> {
+  const db = tenantDb(sb, tenantId);
   if (!/^[0-9a-f-]{36}$/i.test(expenseId)) {
     return { text: "Использование: /audit UUID" };
   }
-  const { data, error } = await sb
-    .from("expense_audit")
+  const { data, error } = await db.from("expense_audit")
     .select("action, created_at, actor_telegram_id, source")
     .eq("expense_id", expenseId)
     .order("created_at", { ascending: false })
@@ -288,10 +292,10 @@ export function unauthorizedReply(): CommandReply {
 
 export async function membersCommand(
   sb: SupabaseClient,
-  actor?: FamilyMember,
+  actor: FamilyMember,
 ): Promise<CommandReply> {
-  const res = await sb
-    .from("family_members")
+  const db = tenantDb(sb, actor.tenant_id);
+  const res = await db.from("family_members")
     .select("id, name, telegram_id, role, active, username")
     .order("active", { ascending: false })
     .order("role", { ascending: true })
@@ -357,6 +361,7 @@ export async function grantCommand(
   args: string,
   actor: FamilyMember,
 ): Promise<CommandReply> {
+  const db = tenantDb(sb, actor.tenant_id);
   const m = args.trim().match(/^(\d{4,})(?:\s+(.+))?$/);
   if (!m) {
     return {
@@ -366,8 +371,7 @@ export async function grantCommand(
   const tid = Number(m[1]);
   const name = (m[2] ?? "Member").trim().slice(0, 80) || "Member";
 
-  const existing = await sb
-    .from("family_members")
+  const existing = await db.from("family_members")
     .select("id, name, role, active")
     .eq("telegram_id", tid)
     .maybeSingle();
@@ -378,7 +382,7 @@ export async function grantCommand(
     if (row.active) {
       return { text: `${row.name} (${tid}) уже имеет доступ (${row.role}).` };
     }
-    const upd = await sb.from("family_members").update({ active: true }).eq("id", row.id);
+    const upd = await db.from("family_members").update({ active: true }).eq("id", row.id);
     if (upd.error) return { text: `DB error: ${upd.error.message}` };
     await recordAudit(sb, {
       actorTelegramId: actor.telegram_id,
@@ -395,7 +399,7 @@ export async function grantCommand(
     return { text: `✅ Доступ восстановлен: ${row.name} (${tid}).` };
   }
 
-  const ins = await sb.from("family_members").insert({
+  const ins = await db.from("family_members").insert({
     name,
     telegram_id: tid,
     role: "member",
@@ -423,6 +427,7 @@ export async function revokeCommand(
   args: string,
   actor: FamilyMember,
 ): Promise<CommandReply> {
+  const db = tenantDb(sb, actor.tenant_id);
   const tid = Number(args.trim());
   if (!tid || !Number.isInteger(tid)) {
     return { text: "Использование: /revoke TID" };
@@ -430,8 +435,7 @@ export async function revokeCommand(
   if (tid === actor.telegram_id) {
     return { text: "Нельзя отозвать доступ у самого себя." };
   }
-  const row = await sb
-    .from("family_members")
+  const row = await db.from("family_members")
     .select("id, name, active")
     .eq("telegram_id", tid)
     .maybeSingle();
@@ -439,7 +443,7 @@ export async function revokeCommand(
   const m = row.data as { id: string; name: string; active: boolean } | null;
   if (!m) return { text: `Не нашёл участника с telegram_id=${tid}.` };
   if (!m.active) return { text: `${m.name} уже отключен.` };
-  const upd = await sb.from("family_members").update({ active: false }).eq("id", m.id);
+  const upd = await db.from("family_members").update({ active: false }).eq("id", m.id);
   if (upd.error) return { text: `DB error: ${upd.error.message}` };
   await recordAudit(sb, {
     actorTelegramId: actor.telegram_id,
@@ -479,12 +483,12 @@ async function changeRoleCommand(
   newRole: "admin" | "member",
   actor: FamilyMember,
 ): Promise<CommandReply> {
+  const db = tenantDb(sb, actor.tenant_id);
   const tid = Number(args.trim());
   if (!tid || !Number.isInteger(tid)) {
     return { text: `Использование: /${newRole === "admin" ? "promote" : "demote"} TID` };
   }
-  const row = await sb
-    .from("family_members")
+  const row = await db.from("family_members")
     .select("id, name, role")
     .eq("telegram_id", tid)
     .maybeSingle();
@@ -492,7 +496,7 @@ async function changeRoleCommand(
   const m = row.data as { id: string; name: string; role: string } | null;
   if (!m) return { text: `Не нашёл участника с telegram_id=${tid}.` };
   if (m.role === newRole) return { text: `${m.name} уже ${newRole}.` };
-  const upd = await sb.from("family_members").update({ role: newRole }).eq("id", m.id);
+  const upd = await db.from("family_members").update({ role: newRole }).eq("id", m.id);
   if (upd.error) return { text: `DB error: ${upd.error.message}` };
   await recordAudit(sb, {
     actorTelegramId: actor.telegram_id,
@@ -527,10 +531,11 @@ export async function subscriptionsCommand(
   sb: SupabaseClient,
   actor: FamilyMember,
 ): Promise<CommandReply> {
+  const db = tenantDb(sb, actor.tenant_id);
   if (actor.role !== "admin") return { text: "Только админ." };
 
   const sinceDate = new Date(Date.now() - 120 * 86_400_000).toISOString().slice(0, 10);
-  const res = await sb.from("expenses")
+  const res = await db.from("expenses")
     .select("id, name, amount, currency, category_id, family_member_id, expense_date")
     .eq("archived", false)
     .gte("expense_date", sinceDate)
@@ -587,7 +592,7 @@ export async function subscriptionsCommand(
   }
 
   // Exclude ones already in recurring_expenses.
-  const rec = await sb.from("recurring_expenses")
+  const rec = await db.from("recurring_expenses")
     .select("name, currency, amount, family_member_id");
   const recSet = new Set(
     ((rec.data ?? []) as Array<{
@@ -642,6 +647,7 @@ export async function meCommand(
   sb: SupabaseClient,
   member: FamilyMember,
 ): Promise<CommandReply> {
+  const db = tenantDb(sb, member.tenant_id);
   const tz = Deno.env.get("DEFAULT_TIMEZONE") ?? "Europe/Warsaw";
   const fmt = new Intl.DateTimeFormat("en-CA", {
     timeZone: tz,
@@ -652,18 +658,18 @@ export async function meCommand(
   const monthStart = `${ym}-01`;
 
   const [mineRes, allRes, catRes] = await Promise.all([
-    sb.from("expenses")
+    db.from("expenses")
       .select("amount, currency, amount_pln, category_id, expense_date")
       .eq("archived", false)
       .eq("kind", "expense")
       .eq("family_member_id", member.id)
       .gte("expense_date", monthStart),
-    sb.from("expenses")
+    db.from("expenses")
       .select("amount_pln")
       .eq("archived", false)
       .eq("kind", "expense")
       .gte("expense_date", monthStart),
-    sb.from("categories").select("id, name"),
+    db.from("categories").select("id, name"),
   ]);
   if (mineRes.error) return { text: `DB error: ${mineRes.error.message}` };
 
@@ -733,9 +739,9 @@ export async function historyCommand(
   sb: SupabaseClient,
   member: FamilyMember,
 ): Promise<CommandReply> {
+  const db = tenantDb(sb, member.tenant_id);
   const scope = member.role === "admin" ? null : member.id;
-  let q = sb
-    .from("expenses")
+  let q = db.from("expenses")
     .select("id, name, amount, currency, expense_date, category_id, created_at")
     .eq("archived", false)
     .order("created_at", { ascending: false })
@@ -764,10 +770,10 @@ export async function undoCommand(
   sb: SupabaseClient,
   member: FamilyMember,
 ): Promise<CommandReply> {
+  const db = tenantDb(sb, member.tenant_id);
   const undoMin = Number(Deno.env.get("UNDO_WINDOW_MINUTES") ?? "10");
   const cutoff = new Date(Date.now() - undoMin * 60_000).toISOString();
-  const r = await sb
-    .from("expenses")
+  const r = await db.from("expenses")
     .select("id, name, created_at")
     .eq("family_member_id", member.id)
     .eq("archived", false)
@@ -777,7 +783,7 @@ export async function undoCommand(
     .maybeSingle();
   const row = r.data as { id: string; name: string; created_at: string } | null;
   if (!row) return { text: `Нет записей за последние ${undoMin} минут для отмены.` };
-  await sb.from("expenses").update({ archived: true }).eq("id", row.id);
+  await db.from("expenses").update({ archived: true }).eq("id", row.id);
   return { text: `Отменено: ${row.name}` };
 }
 
@@ -785,6 +791,7 @@ export async function statsCommand(
   sb: SupabaseClient,
   member: FamilyMember,
 ): Promise<CommandReply> {
+  const db = tenantDb(sb, member.tenant_id);
   // First day of current Warsaw month, as ISO YYYY-MM-DD.
   const tz = Deno.env.get("DEFAULT_TIMEZONE") ?? "Europe/Warsaw";
   const fmt = new Intl.DateTimeFormat("en-CA", {
@@ -795,8 +802,7 @@ export async function statsCommand(
   const ym = fmt.format(new Date()); // "2026-05"
   const monthStart = `${ym}-01`;
 
-  let q = sb
-    .from("expenses")
+  let q = db.from("expenses")
     .select("amount_pln, category_id")
     .eq("archived", false)
     .gte("expense_date", monthStart);
@@ -814,7 +820,7 @@ export async function statsCommand(
   if (rows.length === 0) {
     return { text: `Нет трат в ${ym}.` };
   }
-  const cats = await sb.from("categories").select("id, name");
+  const cats = await db.from("categories").select("id, name");
   const catName = new Map<string, string>(
     ((cats.data ?? []) as Array<{ id: string; name: string }>).map((c) => [c.id, c.name]),
   );
@@ -855,6 +861,7 @@ export async function runAskAndBuildReply(args: {
   question: string;
   priorTurns?: AskTurn[];
 }): Promise<CommandReply> {
+  const db = tenantDb(args.sb, args.viewer.tenant_id);
   const { sb, viewer, chatId, question, priorTurns } = args;
 
   let agentResult;
@@ -874,7 +881,7 @@ export async function runAskAndBuildReply(args: {
   const trimmedHistory = nextHistory.slice(-8);
 
   const persistThread = (chatId === null) ? undefined : async (messageId: number) => {
-    const ins = await sb.from("ask_threads").insert({
+    const ins = await db.from("ask_threads").insert({
       chat_id: chatId,
       bot_message_id: messageId,
       family_member_id: viewer.id,

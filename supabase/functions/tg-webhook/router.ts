@@ -86,7 +86,7 @@ export async function routeCommand(
     case "help":
       return helpCommand(ctx.member);
     case "categories":
-      return await categoriesCommand(ctx.sb);
+      return await categoriesCommand(ctx.sb, ctx.member.tenant_id);
     case "dashboard":
       return dashboardCommand();
     case "health":
@@ -97,9 +97,9 @@ export async function routeCommand(
         if (upd.error) return { text: `DB error: ${upd.error.message}` };
         return { text: "Подтверждено. Backups активны." };
       }
-      return await healthCommand(ctx.sb);
+      return await healthCommand(ctx.sb, ctx.member.tenant_id);
     case "audit":
-      return await auditCommand(ctx.sb, args.trim());
+      return await auditCommand(ctx.sb, ctx.member.tenant_id, args.trim());
     case "history":
       return await historyCommand(ctx.sb, ctx.member);
     case "stats":

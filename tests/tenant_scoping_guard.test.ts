@@ -42,8 +42,6 @@ const ALLOWED_RAW = new Set<string>([
   "supabase/functions/cron-retraining/index.ts",
   "supabase/functions/cron-retry-failed/index.ts",
   "supabase/functions/setup-once/index.ts",
-  "supabase/functions/tg-webhook/callbacks.ts",
-  "supabase/functions/tg-webhook/commands.ts",
 ]);
 
 const ROOT = "supabase/functions";

@@ -21,6 +21,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { FamilyMember } from "../_shared/types.ts";
+import { tenantDb } from "../_shared/tenant_db.ts";
 import { type CommandReply, membersCommand } from "./commands.ts";
 import { retrainCategory } from "../_shared/retrain.ts";
 import { log } from "../_shared/log.ts";
@@ -69,19 +70,61 @@ export async function handleCallback(args: {
     case "undo":
       return await doUndo(args.sb, args.member, args.chatId, cb.parts[0]!, args.messageId);
     case "catmenu":
-      return await doCatMenu(args.sb, args.chatId, cb.parts[0]!, 0, args.messageId);
+      return await doCatMenu(
+        args.sb,
+        args.member.tenant_id,
+        args.chatId,
+        cb.parts[0]!,
+        0,
+        args.messageId,
+      );
     case "catall": {
       const page = Number(cb.parts[1] ?? "0");
-      return await doCatMenu(args.sb, args.chatId, cb.parts[0]!, page, args.messageId);
+      return await doCatMenu(
+        args.sb,
+        args.member.tenant_id,
+        args.chatId,
+        cb.parts[0]!,
+        page,
+        args.messageId,
+      );
     }
     case "catset":
-      return await doCatSet(args.sb, args.chatId, cb.parts[0]!, cb.parts[1]!, args.messageId);
+      return await doCatSet(
+        args.sb,
+        args.member.tenant_id,
+        args.chatId,
+        cb.parts[0]!,
+        cb.parts[1]!,
+        args.messageId,
+      );
     case "conf_yes":
-      return await doConfirm(args.sb, args.chatId, cb.parts[0]!, "yes", args.messageId);
+      return await doConfirm(
+        args.sb,
+        args.member.tenant_id,
+        args.chatId,
+        cb.parts[0]!,
+        "yes",
+        args.messageId,
+      );
     case "conf_no":
-      return await doConfirm(args.sb, args.chatId, cb.parts[0]!, "no", args.messageId);
+      return await doConfirm(
+        args.sb,
+        args.member.tenant_id,
+        args.chatId,
+        cb.parts[0]!,
+        "no",
+        args.messageId,
+      );
     case "conf_edit":
-      return await doCatMenu(args.sb, args.chatId, cb.parts[0]!, 0, args.messageId);
+      return await doCatMenu(
+        args.sb,
+        args.member.tenant_id,
+        args.chatId,
+        cb.parts[0]!,
+        0,
+        args.messageId,
+      );
     case "access_grant":
       return await doAccessGrant(
         args.sb,
@@ -176,10 +219,11 @@ interface ExpenseDetails {
 
 async function loadExpenseDetails(
   sb: SupabaseClient,
+  tenantId: string,
   expenseId: string,
 ): Promise<ExpenseDetails | null> {
-  const res = await sb
-    .from("expenses")
+  const db = tenantDb(sb, tenantId);
+  const res = await db.from("expenses")
     .select("id, name, amount, currency, archived, family_member_id, created_at, category_id")
     .eq("id", expenseId)
     .maybeSingle();
@@ -196,7 +240,7 @@ async function loadExpenseDetails(
   };
   let categoryName: string | null = null;
   if (row.category_id) {
-    const c = await sb.from("categories").select("name").eq("id", row.category_id).maybeSingle();
+    const c = await db.from("categories").select("name").eq("id", row.category_id).maybeSingle();
     categoryName = (c.data as { name: string } | null)?.name ?? null;
   }
   return {
@@ -218,16 +262,18 @@ function expenseSummary(e: ExpenseDetails): string {
 
 async function doConfirm(
   sb: SupabaseClient,
+  tenantId: string,
   chatId: number,
   expenseId: string,
   action: "yes" | "no",
   editMessageId?: number,
 ): Promise<CallbackOutput> {
+  const db = tenantDb(sb, tenantId);
   // The high-amount/uncertain keyboard carries only ONE expense_id, but a user
   // message can produce multiple sibling rows. Apply the action to every
   // non-archived sibling in the same telegram_message_id batch so the user's
   // single tap reflects what they expect ("Да = подтвердить весь Записал").
-  const seed = await sb.from("expenses")
+  const seed = await db.from("expenses")
     .select("telegram_message_id, family_member_id")
     .eq("id", expenseId).maybeSingle();
   const sib = seed.data as { telegram_message_id: number; family_member_id: string } | null;
@@ -240,7 +286,7 @@ async function doConfirm(
   // post-action summary regardless of whether the row was just archived.
   let affected: Array<{ id: string }> = [];
   if (sib?.telegram_message_id) {
-    const q = await sb.from("expenses")
+    const q = await db.from("expenses")
       .select("id")
       .eq("telegram_message_id", sib.telegram_message_id)
       .eq("family_member_id", sib.family_member_id)
@@ -250,18 +296,18 @@ async function doConfirm(
   if (affected.length === 0) affected = [{ id: expenseId }];
 
   if (sib?.telegram_message_id) {
-    const upd = await sb.from("expenses").update(patch)
+    const upd = await db.from("expenses").update(patch)
       .eq("telegram_message_id", sib.telegram_message_id)
       .eq("family_member_id", sib.family_member_id)
       .eq("archived", false);
     if (upd.error) return { chatId, reply: { text: `Ошибка: ${upd.error.message}` } };
   } else {
-    const upd = await sb.from("expenses").update(patch).eq("id", expenseId);
+    const upd = await db.from("expenses").update(patch).eq("id", expenseId);
     if (upd.error) return { chatId, reply: { text: `Ошибка: ${upd.error.message}` } };
   }
 
   // Build a multi-line summary so the user sees EVERY row the action covered.
-  const details = await Promise.all(affected.map((a) => loadExpenseDetails(sb, a.id)));
+  const details = await Promise.all(affected.map((a) => loadExpenseDetails(sb, tenantId, a.id)));
   const valid = details.filter((d): d is NonNullable<typeof d> => d !== null);
   const icon = action === "yes" ? "✅" : "❌";
   const head = action === "yes" ? "Подтверждено" : "Отменено";
@@ -287,7 +333,8 @@ async function doUndo(
   expenseId: string,
   editMessageId?: number,
 ): Promise<CallbackOutput> {
-  const r = await sb.from("expenses").select(
+  const db = tenantDb(sb, member.tenant_id);
+  const r = await db.from("expenses").select(
     "id, family_member_id, created_at, archived, category_id",
   ).eq("id", expenseId).maybeSingle();
   const row = r.data as ExpenseRow | null;
@@ -305,8 +352,8 @@ async function doUndo(
     };
   }
   if (row.archived) return { chatId, reply: { text: "Запись уже отменена." } };
-  await sb.from("expenses").update({ archived: true }).eq("id", expenseId);
-  const detail = await loadExpenseDetails(sb, expenseId);
+  await db.from("expenses").update({ archived: true }).eq("id", expenseId);
+  const detail = await loadExpenseDetails(sb, member.tenant_id, expenseId);
   const summary = detail ? expenseSummary(detail) : "";
   return {
     chatId,
@@ -320,15 +367,16 @@ const CAT_ID_PREFIX_LEN = 8;
 
 async function doCatMenu(
   sb: SupabaseClient,
+  tenantId: string,
   chatId: number,
   expenseId: string,
   page: number,
   editMessageId?: number,
 ): Promise<CallbackOutput> {
+  const db = tenantDb(sb, tenantId);
   const offset = page * CAT_MENU_PAGE;
   // Pull one extra row to know if a "Ещё..." button is needed.
-  const cats = await sb
-    .from("categories")
+  const cats = await db.from("categories")
     .select("id, name, is_fallback")
     .order("is_fallback", { ascending: true })
     .order("usage_count", { ascending: false })
@@ -352,7 +400,7 @@ async function doCatMenu(
       callback_data: `catall:${expenseId}:0`,
     }]);
   }
-  const detail = await loadExpenseDetails(sb, expenseId);
+  const detail = await loadExpenseDetails(sb, tenantId, expenseId);
   const head = detail
     ? `Выбери категорию для:\n${detail.amount.toFixed(2)} ${detail.currency} ${detail.name}`
     : "Выбери категорию:";
@@ -368,18 +416,20 @@ async function doCatMenu(
 
 async function doCatSet(
   sb: SupabaseClient,
+  tenantId: string,
   chatId: number,
   expenseId: string,
   catRef: string,
   editMessageId?: number,
 ): Promise<CallbackOutput> {
+  const db = tenantDb(sb, tenantId);
   // catRef may be a full UUID (legacy) or an 8-char prefix (new short form).
   // Resolve to the full id by scanning the small categories table.
   let categoryId: string | null = null;
   if (catRef.length === 36) {
     categoryId = catRef;
   } else {
-    const all = await sb.from("categories").select("id");
+    const all = await db.from("categories").select("id");
     const match = ((all.data ?? []) as Array<{ id: string }>).find((c) => c.id.startsWith(catRef));
     categoryId = match?.id ?? null;
   }
@@ -388,10 +438,10 @@ async function doCatSet(
   }
 
   // Capture old category so we can retrain it too.
-  const before = await sb.from("expenses").select("category_id").eq("id", expenseId).maybeSingle();
+  const before = await db.from("expenses").select("category_id").eq("id", expenseId).maybeSingle();
   const oldCat = (before.data as { category_id: string } | null)?.category_id ?? null;
 
-  const upd = await sb.from("expenses").update({
+  const upd = await db.from("expenses").update({
     category_id: categoryId,
     corrected_by_user: true,
     needs_confirmation: false,
@@ -404,7 +454,7 @@ async function doCatSet(
     oldCat ? retrainCategory(sb, oldCat) : Promise.resolve(0),
   ]).catch((err) => log("warn", "catset_retrain_failed", { error: String(err) }));
 
-  const detail = await loadExpenseDetails(sb, expenseId);
+  const detail = await loadExpenseDetails(sb, tenantId, expenseId);
   const summary = detail ? expenseSummary(detail) : "";
   return {
     chatId,
@@ -423,6 +473,7 @@ async function doAccessGrant(
   targetTid: number,
   editMessageId?: number,
 ): Promise<CallbackOutput> {
+  const db = tenantDb(sb, actor.tenant_id);
   if (actor.role !== "admin") {
     return { chatId, reply: { text: "Только админ может выдавать доступ." } };
   }
@@ -437,12 +488,12 @@ async function doAccessGrant(
     | null;
 
   // Idempotency: if the user is already a family member just edit the bubble.
-  const existingMem = await sb.from("family_members")
+  const existingMem = await db.from("family_members")
     .select("id, name, active").eq("telegram_id", targetTid).maybeSingle();
   if (existingMem.data) {
     const m = existingMem.data as { id: string; name: string; active: boolean };
     if (!m.active) {
-      await sb.from("family_members").update({ active: true }).eq("id", m.id);
+      await db.from("family_members").update({ active: true }).eq("id", m.id);
     }
     await sb.from("pending_access").delete().eq("telegram_id", targetTid);
     return {
@@ -457,7 +508,7 @@ async function doAccessGrant(
 
   const safeName = (pending?.first_name ?? "").replace(/[^\p{L}\p{N}\s_.-]/gu, "").slice(0, 80)
     .trim() || "Member";
-  const ins = await sb.from("family_members").insert({
+  const ins = await db.from("family_members").insert({
     name: safeName,
     telegram_id: targetTid,
     username: pending?.username ?? null,
@@ -548,6 +599,7 @@ async function doMemberAction(
   memberId: string,
   editMessageId?: number,
 ): Promise<CallbackOutput> {
+  const db = tenantDb(sb, actor.tenant_id);
   if (actor.role !== "admin") {
     return { chatId, reply: { text: "Только админ может менять состав." } };
   }
@@ -555,7 +607,7 @@ async function doMemberAction(
     return { chatId, reply: { text: "Неверный member id." } };
   }
 
-  const row = await sb.from("family_members")
+  const row = await db.from("family_members")
     .select("id, name, telegram_id, role, active, username")
     .eq("id", memberId).maybeSingle();
   if (!row.data) return { chatId, reply: { text: "Участник не найден." } };
@@ -638,7 +690,7 @@ async function doMemberAction(
       break;
   }
 
-  const upd = await sb.from("family_members").update(patch).eq("id", memberId);
+  const upd = await db.from("family_members").update(patch).eq("id", memberId);
   if (upd.error) {
     log("error", "member_action_failed", {
       action,
@@ -691,6 +743,7 @@ async function doSubAdd(
   expenseId: string,
   editMessageId?: number,
 ): Promise<CallbackOutput> {
+  const db = tenantDb(sb, actor.tenant_id);
   if (actor.role !== "admin") {
     return { chatId, reply: { text: "Только админ." } };
   }
@@ -698,7 +751,7 @@ async function doSubAdd(
     return { chatId, reply: { text: "Неверный id." } };
   }
 
-  const ex = await sb.from("expenses")
+  const ex = await db.from("expenses")
     .select("id, name, amount, currency, category_id, family_member_id")
     .eq("id", expenseId).maybeSingle();
   if (!ex.data) return { chatId, reply: { text: "Запись не найдена." } };
@@ -713,7 +766,7 @@ async function doSubAdd(
 
   // Find all matching expenses to pick the most-common day-of-month for the
   // recurring schedule.
-  const matches = await sb.from("expenses")
+  const matches = await db.from("expenses")
     .select("expense_date")
     .eq("archived", false)
     .eq("family_member_id", e.family_member_id)
@@ -735,7 +788,7 @@ async function doSubAdd(
   }
 
   // Skip if already a recurring entry for the same (member, name, currency, amount).
-  const dup = await sb.from("recurring_expenses")
+  const dup = await db.from("recurring_expenses")
     .select("id")
     .eq("family_member_id", e.family_member_id)
     .eq("currency", e.currency)
@@ -751,7 +804,7 @@ async function doSubAdd(
     };
   }
 
-  const ins = await sb.from("recurring_expenses").insert({
+  const ins = await db.from("recurring_expenses").insert({
     name: e.name,
     amount: e.amount,
     currency: e.currency,
@@ -803,10 +856,12 @@ interface ProposalRow {
 
 async function loadProposal(
   sb: SupabaseClient,
+  tenantId: string,
   proposalId: string,
 ): Promise<ProposalRow | null> {
+  const db = tenantDb(sb, tenantId);
   if (!/^[0-9a-f-]{36}$/i.test(proposalId)) return null;
-  const r = await sb.from("ask_proposals")
+  const r = await db.from("ask_proposals")
     .select(
       "id, proposer_family_member_id, proposer_telegram_id, question, actions, status, expires_at",
     )
@@ -821,7 +876,8 @@ async function doAskApply(
   proposalId: string,
   editMessageId?: number,
 ): Promise<CallbackOutput> {
-  const p = await loadProposal(sb, proposalId);
+  const db = tenantDb(sb, actor.tenant_id);
+  const p = await loadProposal(sb, actor.tenant_id, proposalId);
   if (!p) {
     return {
       chatId,
@@ -840,7 +896,7 @@ async function doAskApply(
     };
   }
   if (new Date(p.expires_at).getTime() < Date.now()) {
-    await sb.from("ask_proposals").update({ status: "expired" }).eq("id", p.id);
+    await db.from("ask_proposals").update({ status: "expired" }).eq("id", p.id);
     return {
       chatId,
       reply: { text: "Срок предложения истёк (10 мин). Спроси ещё раз." },
@@ -856,23 +912,23 @@ async function doAskApply(
     try {
       if (kind === "delete_expense") {
         const id = String(a.expense_id);
-        const upd = await sb.from("expenses").update({ archived: true }).eq("id", id);
+        const upd = await db.from("expenses").update({ archived: true }).eq("id", id);
         if (upd.error) throw new Error(upd.error.message);
         applied++;
       } else if (kind === "recategorize_expense") {
         const id = String(a.expense_id);
         const newCat = String(a.new_category_id);
-        const upd = await sb.from("expenses")
+        const upd = await db.from("expenses")
           .update({ category_id: newCat, corrected_by_user: true, needs_confirmation: false })
           .eq("id", id);
         if (upd.error) throw new Error(upd.error.message);
         applied++;
       } else if (kind === "delete_receipt") {
         const id = String(a.receipt_id);
-        const updLines = await sb.from("expenses").update({ archived: true })
+        const updLines = await db.from("expenses").update({ archived: true })
           .eq("receipt_id", id).eq("archived", false);
         if (updLines.error) throw new Error(updLines.error.message);
-        const updRec = await sb.from("receipts").update({ archived: true }).eq("id", id);
+        const updRec = await db.from("receipts").update({ archived: true }).eq("id", id);
         if (updRec.error) throw new Error(updRec.error.message);
         applied++;
       } else if (kind === "mark_reconciled") {
@@ -887,7 +943,7 @@ async function doAskApply(
           payment_method: pm,
         };
         if (override !== null) patch.amount_pln = override;
-        const upd = await sb.from("expenses").update(patch).eq("id", id);
+        const upd = await db.from("expenses").update(patch).eq("id", id);
         if (upd.error) throw new Error(upd.error.message);
         applied++;
       } else {
@@ -904,7 +960,7 @@ async function doAskApply(
     }
   }
 
-  await sb.from("ask_proposals").update({
+  await db.from("ask_proposals").update({
     status: "applied",
     applied_at: new Date().toISOString(),
     applied_count: applied,
@@ -940,7 +996,8 @@ async function doAskCancel(
   proposalId: string,
   editMessageId?: number,
 ): Promise<CallbackOutput> {
-  const p = await loadProposal(sb, proposalId);
+  const db = tenantDb(sb, actor.tenant_id);
+  const p = await loadProposal(sb, actor.tenant_id, proposalId);
   if (!p) {
     return {
       chatId,
@@ -952,7 +1009,7 @@ async function doAskCancel(
     return { chatId, reply: { text: "Отменить может только автор (или админ)." } };
   }
   if (p.status === "pending") {
-    await sb.from("ask_proposals").update({ status: "cancelled" }).eq("id", p.id);
+    await db.from("ask_proposals").update({ status: "cancelled" }).eq("id", p.id);
     await recordAudit(sb, {
       actorTelegramId: actor.telegram_id,
       actorFamilyMemberId: actor.id,
