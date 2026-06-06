@@ -84,8 +84,8 @@ Deno.serve(async (req: Request) => {
   // old category may need its centroid recomputed too (its sample set shrank).
   // Best-effort; failures don't block the user response.
   await Promise.all([
-    retrainCategory(sb, cat.id),
-    retrainCategory(sb, exp.category_id),
+    retrainCategory(sb, me.tenant_id, cat.id),
+    retrainCategory(sb, me.tenant_id, exp.category_id),
   ]).catch((err) => log("warn", "recategorize_retrain_failed", { error: String(err) }));
 
   return json(req, { ok: true, category_id: cat.id, category_name: cat.name });

@@ -217,7 +217,7 @@ export async function processBankStatement(args: {
   }).eq("id", statementId);
 
   // 5. Reconcile.
-  const summary = await reconcileStatement(sb, statementId);
+  const summary = await reconcileStatement(sb, member.tenant_id, statementId);
 
   // 6. Auto-create expenses for lines that had no candidate. Each gets
   // run through the same categorizer the text-pipeline uses, so the

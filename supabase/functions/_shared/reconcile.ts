@@ -9,6 +9,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { addDaysIso } from "./dates.ts";
+import { tenantDb } from "./tenant_db.ts";
 
 const BANK_FX_MARKUP_ALL_TO_PLN = 1.0765; // midpoint of 1.0753-1.0779
 const FX_TOLERANCE_PCT = 0.02; // ±2% for cross-currency matches
@@ -94,8 +95,10 @@ function predictBankPln(ourPln: number, ourCcy: string, bankCcy: string): number
  */
 export async function findCandidates(
   sb: SupabaseClient,
+  tenantId: string,
   line: BankLine,
 ): Promise<MatchCandidate[]> {
+  const db = tenantDb(sb, tenantId);
   if (line.status !== "pending") return [];
 
   const fromDate = addDaysIso(line.posted_date, -DATE_WINDOW_DAYS);
@@ -103,8 +106,7 @@ export async function findCandidates(
   const bankPln = Number(line.amount);
 
   // ---- Receipt-level candidates (sum of children) ----
-  const receiptsRes = await sb
-    .from("receipts")
+  const receiptsRes = await db.from("receipts")
     .select("id, total, currency, total_pln, receipt_date, merchant")
     .eq("family_member_id", line.family_member_id)
     .eq("archived", false)
@@ -115,8 +117,7 @@ export async function findCandidates(
   const receiptIds = receipts.map((r) => r.id);
   let availableReceipts = receipts;
   if (receiptIds.length > 0) {
-    const childRes = await sb
-      .from("expenses")
+    const childRes = await db.from("expenses")
       .select("receipt_id, reconciled_at")
       .in("receipt_id", receiptIds);
     const reconciledSet = new Set(
@@ -144,8 +145,7 @@ export async function findCandidates(
   }
 
   // ---- Solo-expense candidates (no receipt_id) ----
-  const soloRes = await sb
-    .from("expenses")
+  const soloRes = await db.from("expenses")
     .select("id, amount, currency, amount_pln, expense_date, kind, name, reconciled_at")
     .eq("family_member_id", line.family_member_id)
     .eq("archived", false)
@@ -184,14 +184,16 @@ export async function findCandidates(
  */
 export async function applyMatch(
   sb: SupabaseClient,
+  tenantId: string,
   line: BankLine,
   candidate: MatchCandidate,
 ): Promise<ReconcileOutcome> {
+  const db = tenantDb(sb, tenantId);
   const nowIso = new Date().toISOString();
   const bankPln = Number(line.amount);
 
   if (candidate.type === "expense") {
-    const upd = await sb.from("expenses").update({
+    const upd = await db.from("expenses").update({
       amount_pln: bankPln,
       reconciled_at: nowIso,
       payment_method: line.method,
@@ -200,7 +202,7 @@ export async function applyMatch(
     if (upd.error) {
       return { line_id: line.id, status: "skipped", reason: upd.error.message };
     }
-    await sb.from("bank_statement_lines").update({
+    await db.from("bank_statement_lines").update({
       status: "matched",
       matched_expense_id: candidate.id,
     }).eq("id", line.id);
@@ -215,8 +217,7 @@ export async function applyMatch(
   // Receipt: scale + reconcile children, update receipt total.
   const ratio = bankPln / candidate.our_pln;
   // Fetch children to scale amount_pln per-row.
-  const childRes = await sb
-    .from("expenses")
+  const childRes = await db.from("expenses")
     .select("id, amount_pln")
     .eq("receipt_id", candidate.id)
     .eq("archived", false);
@@ -230,15 +231,15 @@ export async function applyMatch(
       ? Math.round((bankPln - runningSum) * 100) / 100
       : Math.round(Number(c.amount_pln) * ratio * 100) / 100;
     runningSum += newPln;
-    await sb.from("expenses").update({
+    await db.from("expenses").update({
       amount_pln: newPln,
       reconciled_at: nowIso,
       payment_method: line.method,
       bank_statement_line_id: line.id,
     }).eq("id", c.id);
   }
-  await sb.from("receipts").update({ total_pln: bankPln }).eq("id", candidate.id);
-  await sb.from("bank_statement_lines").update({ status: "matched" }).eq("id", line.id);
+  await db.from("receipts").update({ total_pln: bankPln }).eq("id", candidate.id);
+  await db.from("bank_statement_lines").update({ status: "matched" }).eq("id", line.id);
   return {
     line_id: line.id,
     status: "matched",
@@ -254,6 +255,7 @@ export async function applyMatch(
  */
 export async function reconcileLine(
   sb: SupabaseClient,
+  tenantId: string,
   line: BankLine,
 ): Promise<ReconcileOutcome> {
   // Skip transfers between own accounts and bank fees we don't want auto-
@@ -269,7 +271,7 @@ export async function reconcileLine(
     return { line_id: line.id, status: "skipped", reason: "internal_transfer" };
   }
 
-  const cands = await findCandidates(sb, line);
+  const cands = await findCandidates(sb, tenantId, line);
   if (cands.length === 0) return { line_id: line.id, status: "no_candidate" };
 
   // Pick the best score. If two candidates tie within 0.1% we treat it as
@@ -278,7 +280,7 @@ export async function reconcileLine(
   if (cands.length > 1 && cands[1]!.score - cands[0]!.score < 0.001) {
     return { line_id: line.id, status: "ambiguous", candidate_count: cands.length };
   }
-  return await applyMatch(sb, line, cands[0]!);
+  return await applyMatch(sb, tenantId, line, cands[0]!);
 }
 
 /**
@@ -296,10 +298,11 @@ export interface ReconcileSummary {
 
 export async function reconcileStatement(
   sb: SupabaseClient,
+  tenantId: string,
   statementId: string,
 ): Promise<ReconcileSummary> {
-  const linesRes = await sb
-    .from("bank_statement_lines")
+  const db = tenantDb(sb, tenantId);
+  const linesRes = await db.from("bank_statement_lines")
     .select(
       "id, family_member_id, posted_date, amount, currency, description, method, kind, status",
     )
@@ -309,7 +312,7 @@ export async function reconcileStatement(
 
   const outcomes: ReconcileOutcome[] = [];
   for (const line of lines) {
-    outcomes.push(await reconcileLine(sb, line));
+    outcomes.push(await reconcileLine(sb, tenantId, line));
   }
 
   const summary: ReconcileSummary = {

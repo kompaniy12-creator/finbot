@@ -24,8 +24,6 @@ const ALLOWED_RAW = new Set<string>([
   "supabase/functions/_shared/webapp_auth.ts",
   "supabase/functions/api-web-exchange/index.ts",
   "supabase/functions/_shared/budget.ts",
-  "supabase/functions/_shared/reconcile.ts",
-  "supabase/functions/_shared/retrain.ts",
   "supabase/functions/cron-anomaly/index.ts",
   "supabase/functions/cron-auto-confirm/index.ts",
   "supabase/functions/cron-daily-summary/index.ts",

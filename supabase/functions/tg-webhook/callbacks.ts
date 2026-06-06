@@ -450,8 +450,8 @@ async function doCatSet(
 
   // Immediate centroid update so the next "молоко" already gets the new one.
   await Promise.all([
-    retrainCategory(sb, categoryId),
-    oldCat ? retrainCategory(sb, oldCat) : Promise.resolve(0),
+    retrainCategory(sb, tenantId, categoryId),
+    oldCat ? retrainCategory(sb, tenantId, oldCat) : Promise.resolve(0),
   ]).catch((err) => log("warn", "catset_retrain_failed", { error: String(err) }));
 
   const detail = await loadExpenseDetails(sb, tenantId, expenseId);

@@ -4,6 +4,7 @@
 // query already benefits, without waiting for the weekly cron.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { tenantDb } from "./tenant_db.ts";
 import { log } from "./log.ts";
 
 const MIN_CORRECTED = 3;
@@ -42,10 +43,12 @@ function meanEmbedding(rows: number[][]): number[] {
  */
 export async function retrainCategory(
   sb: SupabaseClient,
+  tenantId: string,
   categoryId: string,
 ): Promise<number> {
   if (!categoryId) return 0;
-  const expRes = await sb
+  const db = tenantDb(sb, tenantId);
+  const expRes = await db
     .from("expenses")
     .select("embedding")
     .eq("category_id", categoryId)
@@ -66,7 +69,7 @@ export async function retrainCategory(
   if (embeds.length < MIN_CORRECTED) return 0;
 
   const centroid = meanEmbedding(embeds);
-  const upd = await sb
+  const upd = await db
     .from("categories")
     .update({
       embedding: centroid,
