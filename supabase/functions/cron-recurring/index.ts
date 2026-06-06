@@ -12,6 +12,7 @@ import { todayWarsawIso } from "../_shared/dates.ts";
 
 interface RecurringRow {
   id: string;
+  tenant_id: string;
   name: string;
   amount: number;
   currency: string;
@@ -29,7 +30,7 @@ Deno.serve(async (req: Request) => {
   const res = await sb
     .from("recurring_expenses")
     .select(
-      "id, name, amount, currency, category_id, family_member_id, day_of_month, last_charged_date",
+      "id, tenant_id, name, amount, currency, category_id, family_member_id, day_of_month, last_charged_date",
     )
     .eq("active", true);
   if (res.error) {
@@ -50,7 +51,10 @@ Deno.serve(async (req: Request) => {
       skipped++;
       continue;
     }
+    // Cross-tenant cron: stamp tenant_id from the source recurring row so the
+    // generated expense lands in the right workspace (never the family DEFAULT).
     const ins = await sb.from("expenses").insert({
+      tenant_id: r.tenant_id,
       name: r.name,
       expense_date: eff,
       amount: r.amount,
