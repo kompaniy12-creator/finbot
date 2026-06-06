@@ -9,7 +9,6 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { EmbedFn } from "./embedder.ts";
-import { tenantDb } from "./tenant_db.ts";
 import { log } from "./log.ts";
 
 export const KNN_THRESHOLD = 0.70; // below this we go to Claude fallback
@@ -21,7 +20,6 @@ export const FALLBACK_SIMILAR_EXAMPLES = 5;
 export interface CategorizeInput {
   name: string;
   nameNormalizedEn: string;
-  tenantId: string;
   familyMemberId: string;
   // Defaults to "expense". When "income", the kNN and Claude fallback search
   // only over income-kind categories so a salary entry can never be filed
@@ -82,15 +80,13 @@ export async function categorize(
   input: CategorizeInput,
 ): Promise<CategorizeOutput> {
   const kind = input.kind ?? "expense";
-  const db = tenantDb(deps.sb, input.tenantId);
   const embedding = await deps.embedFn(input.nameNormalizedEn);
 
   // 1. kNN via match_expenses RPC. The RPC filters by kind so an income
-  // query can never come back with an expense category id, and by tenant so it
-  // never returns another workspace's expenses.
+  // query can never come back with an expense category id.
   const rpc = await deps.sb.rpc("match_expenses", {
     query_embedding: embedding,
-    tenant: input.tenantId,
+    family_id: input.familyMemberId,
     match_threshold: KNN_THRESHOLD,
     match_count: KNN_TOP_K,
     kind_filter: kind,
@@ -116,7 +112,7 @@ export async function categorize(
   // 2. Claude fallback: load top-N categories by usage_count + top-5 similar
   //    expenses (regardless of threshold). Restrict candidate categories to
   //    same kind so Claude can't accidentally cross the line.
-  const cats = await db
+  const cats = await deps.sb
     .from("categories")
     .select("id, name, description, is_fallback")
     .eq("kind", kind)
@@ -147,7 +143,7 @@ export async function categorize(
   // Inherits kind from the input so a new income category never lands in
   // the expense pool.
   const catEmbedding = await deps.embedFn(decision.description);
-  const ins = await db.from("categories").insert({
+  const ins = await deps.sb.from("categories").insert({
     name: decision.name,
     description: decision.description,
     embedding: catEmbedding,
@@ -183,17 +179,15 @@ export async function categorize(
  */
 export async function bumpCategoryUsage(
   sb: SupabaseClient,
-  tenantId: string,
   categoryId: string,
 ): Promise<void> {
-  const db = tenantDb(sb, tenantId);
   // Use a single SQL UPDATE rather than read-modify-write to avoid races.
   const { error } = await sb.rpc("increment_category_usage", { cat_id: categoryId });
   if (error) {
     // No RPC yet: best-effort fallback to a non-atomic update.
-    const cur = await db.from("categories").select("usage_count").eq("id", categoryId)
+    const cur = await sb.from("categories").select("usage_count").eq("id", categoryId)
       .maybeSingle();
     const next = ((cur.data as { usage_count: number } | null)?.usage_count ?? 0) + 1;
-    await db.from("categories").update({ usage_count: next }).eq("id", categoryId);
+    await sb.from("categories").update({ usage_count: next }).eq("id", categoryId);
   }
 }

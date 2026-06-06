@@ -290,7 +290,6 @@ async function autoCreateUnmatched(
         {
           name: rawName,
           nameNormalizedEn: normalized,
-          tenantId: member.tenant_id,
           familyMemberId: line.family_member_id,
           kind: line.kind,
         },

@@ -123,7 +123,6 @@ async function processSingleItem(
     {
       name: item.name,
       nameNormalizedEn: item.name_normalized_en,
-      tenantId: member.tenant_id,
       familyMemberId: member.id,
       kind,
     },
