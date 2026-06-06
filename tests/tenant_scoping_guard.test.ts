@@ -26,7 +26,6 @@ const ALLOWED_RAW = new Set<string>([
   "supabase/functions/_shared/analyst_snapshot.ts",
   "supabase/functions/_shared/ask_agent.ts",
   "supabase/functions/_shared/budget.ts",
-  "supabase/functions/_shared/categorizer.ts",
   "supabase/functions/_shared/idempotency.ts",
   "supabase/functions/_shared/reconcile.ts",
   "supabase/functions/_shared/retrain.ts",

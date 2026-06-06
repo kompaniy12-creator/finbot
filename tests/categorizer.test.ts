@@ -100,6 +100,7 @@ Deno.test("categorizer: kNN hit above threshold returns top-1 category", async (
   const out = await categorize(deps, {
     name: "молоко",
     nameNormalizedEn: "milk 2 percent",
+    tenantId: "t-1",
     familyMemberId: "fm-1",
   });
   assertEquals(out.method, "knn");
@@ -123,6 +124,7 @@ Deno.test("categorizer: kNN below threshold falls back to Claude (existing)", as
   const out = await categorize(deps, {
     name: "необычный товар",
     nameNormalizedEn: "unusual item",
+    tenantId: "t-1",
     familyMemberId: "fm-1",
   });
   assertEquals(out.method, "claude");
@@ -149,6 +151,7 @@ Deno.test("categorizer: Claude returns new category -> inserted", async () => {
   const out = await categorize(deps, {
     name: "корм для собак",
     nameNormalizedEn: "dog food",
+    tenantId: "t-1",
     familyMemberId: "fm-1",
   });
   assertEquals(out.method, "new");
@@ -172,6 +175,7 @@ Deno.test("categorizer: kNN exactly AT lower threshold does NOT count as hit (mu
   const out = await categorize(deps, {
     name: "x",
     nameNormalizedEn: "x",
+    tenantId: "t-1",
     familyMemberId: "fm-1",
   });
   assertEquals(out.method, "claude", "AT threshold should defer to fallback");
@@ -191,6 +195,7 @@ Deno.test("categorizer: medium-confidence band (kNN hit between 0.70 and 0.92)",
   const out = await categorize(deps, {
     name: "x",
     nameNormalizedEn: "x",
+    tenantId: "t-1",
     familyMemberId: "fm-1",
   });
   assertEquals(out.method, "knn");
@@ -211,6 +216,7 @@ Deno.test("categorizer: high-confidence band (kNN hit above 0.92)", async () => 
   const out = await categorize(deps, {
     name: "x",
     nameNormalizedEn: "x",
+    tenantId: "t-1",
     familyMemberId: "fm-1",
   });
   assertEquals(out.method, "knn");
@@ -230,6 +236,7 @@ Deno.test("categorizer: low-confidence band (Claude fallback)", async () => {
   const out = await categorize(deps, {
     name: "x",
     nameNormalizedEn: "x",
+    tenantId: "t-1",
     familyMemberId: "fm-1",
   });
   assertEquals(out.method, "claude");
@@ -250,6 +257,7 @@ Deno.test("categorizer: returns embedding for caller storage", async () => {
   const out = await categorize(deps, {
     name: "x",
     nameNormalizedEn: "x",
+    tenantId: "t-1",
     familyMemberId: "fm-1",
   });
   assertEquals(out.embedding.length, 384);
