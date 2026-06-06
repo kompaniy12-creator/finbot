@@ -1,6 +1,13 @@
 -- kNN matcher must respect kind so an "expense" query never returns an
 -- "income" embedding (and vice versa). Default kind_filter='expense' keeps
 -- every existing caller working unchanged.
+--
+-- Drop first: 0033 later renames the second parameter (family_id -> tenant).
+-- On every-deploy replay this migration runs before 0033 against a DB that
+-- already has the tenant-named version, and "create or replace" cannot rename
+-- a parameter (42P13). Dropping first avoids that conflict; 0033 then drops and
+-- recreates the tenant version, so the final state is identical either way.
+drop function if exists match_expenses(vector, uuid, float, int, text);
 
 create or replace function match_expenses(
   query_embedding vector(384),

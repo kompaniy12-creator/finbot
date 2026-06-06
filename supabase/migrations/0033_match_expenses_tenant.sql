@@ -12,7 +12,12 @@
 -- replace" (Postgres treats it as a different function and would otherwise
 -- leave the leaky overload in place).
 
+-- Drop every prior overload: the 5-arg family_id version (0019) and the
+-- original 4-arg family_id version (0004, the role='admin' leak). Both run
+-- before this migration on replay, so dropping them here leaves only the
+-- tenant-scoped version below.
 drop function if exists match_expenses(vector, uuid, float, int, text);
+drop function if exists match_expenses(vector, uuid, float, int);
 
 create or replace function match_expenses(
   query_embedding vector(384),
