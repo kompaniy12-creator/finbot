@@ -10,8 +10,12 @@ export interface ProgressEmitter {
   messageId(): number;
 }
 
-async function tgFetch(method: string, body: Record<string, unknown>): Promise<unknown> {
-  const token = Deno.env.get("TELEGRAM_BOT_TOKEN");
+async function tgFetch(
+  method: string,
+  body: Record<string, unknown>,
+  botToken?: string,
+): Promise<unknown> {
+  const token = botToken ?? Deno.env.get("TELEGRAM_BOT_TOKEN");
   if (!token) return null;
   const resp = await fetch(
     `https://api.telegram.org/bot${token}/${method}`,
@@ -32,21 +36,26 @@ async function tgFetch(method: string, body: Record<string, unknown>): Promise<u
 export async function startProgress(
   chatId: number,
   initialText: string,
+  botToken?: string,
 ): Promise<ProgressEmitter | null> {
   const sent = await tgFetch("sendMessage", {
     chat_id: chatId,
     text: initialText,
-  }) as { ok?: boolean; result?: { message_id: number } } | null;
+  }, botToken) as { ok?: boolean; result?: { message_id: number } } | null;
   if (!sent?.ok || !sent.result?.message_id) return null;
   const msgId = sent.result.message_id;
-  return makeEmitterFor(chatId, msgId);
+  return makeEmitterFor(chatId, msgId, botToken);
 }
 
 /**
  * Wrap an existing message id (e.g. the cron sweep recovers the ack message
  * created by tg-webhook earlier).
  */
-export function makeEmitterFor(chatId: number, msgId: number): ProgressEmitter {
+export function makeEmitterFor(
+  chatId: number,
+  msgId: number,
+  botToken?: string,
+): ProgressEmitter {
   return {
     messageId: () => msgId,
     async update(text: string) {
@@ -54,7 +63,7 @@ export function makeEmitterFor(chatId: number, msgId: number): ProgressEmitter {
         chat_id: chatId,
         message_id: msgId,
         text,
-      });
+      }, botToken);
     },
   };
 }

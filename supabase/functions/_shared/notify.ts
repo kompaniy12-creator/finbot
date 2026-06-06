@@ -5,8 +5,15 @@
 
 import { log } from "./log.ts";
 
-export async function notifyUser(telegramId: number, text: string): Promise<void> {
-  const token = Deno.env.get("TELEGRAM_BOT_TOKEN");
+// botToken selects which bot sends the DM. Defaults to the family bot's token
+// so existing single-bot callers are unchanged; multi-tenant callers pass the
+// token of the bot that owns the recipient's tenant.
+export async function notifyUser(
+  telegramId: number,
+  text: string,
+  botToken?: string,
+): Promise<void> {
+  const token = botToken ?? Deno.env.get("TELEGRAM_BOT_TOKEN");
   if (!token) return;
   try {
     const resp = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {

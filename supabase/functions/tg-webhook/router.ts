@@ -141,6 +141,8 @@ export interface DispatchInput {
   update: TelegramUpdate;
   member: FamilyMember;
   sb: SupabaseClient;
+  /** Token of the bot this update came from; used for progress bubbles. */
+  botToken?: string;
 }
 
 export interface DispatchOutput {
@@ -294,7 +296,7 @@ export async function dispatch(
 
   // Voice (M8): transcribe via Groq Whisper -> text pipeline.
   if (msg.voice) {
-    const prog = await startProgress(msg.chat.id, "🎙 Принимаю голосовое...");
+    const prog = await startProgress(msg.chat.id, "🎙 Принимаю голосовое...", input.botToken);
     const outcome = await processVoiceMessage({
       sb: input.sb,
       member: input.member,
@@ -329,7 +331,11 @@ export async function dispatch(
 
       let ackMsgId: number | null = existingAckId;
       if (!ackMsgId) {
-        const prog = await startProgress(msg.chat.id, "📸 Принимаю альбом, секунду...");
+        const prog = await startProgress(
+          msg.chat.id,
+          "📸 Принимаю альбом, секунду...",
+          input.botToken,
+        );
         ackMsgId = prog?.messageId() ?? null;
       }
 
@@ -348,7 +354,11 @@ export async function dispatch(
     // tells us this is a bank screenshot, we parse it like a PDF statement
     // (extract lines, reconcile) instead of treating it as a store receipt.
     if (msg.caption && isBankScreenshotCaption(msg.caption)) {
-      const prog = await startProgress(msg.chat.id, "📱 Распознаю выписку из приложения банка...");
+      const prog = await startProgress(
+        msg.chat.id,
+        "📱 Распознаю выписку из приложения банка...",
+        input.botToken,
+      );
       const ins = await db.from("bank_statements").insert({
         family_member_id: input.member.id,
         source: "other",
@@ -383,7 +393,7 @@ export async function dispatch(
       return { chatId: msg.chat.id, reply: { text: summaryText } };
     }
 
-    const prog = await startProgress(msg.chat.id, "📸 Принимаю фото...");
+    const prog = await startProgress(msg.chat.id, "📸 Принимаю фото...", input.botToken);
     let text: string;
     try {
       const outcome = await processPhotoMessage({
@@ -436,7 +446,7 @@ export async function dispatch(
         reply: { text: `Не смог зарегистрировать выписку. Попробуй прислать ещё раз.` },
       };
     }
-    const prog = await startProgress(msg.chat.id, "📄 Анализирую выписку...");
+    const prog = await startProgress(msg.chat.id, "📄 Анализирую выписку...", input.botToken);
     let summaryText: string;
     try {
       const outcome = await processBankStatement({

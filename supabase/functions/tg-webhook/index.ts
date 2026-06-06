@@ -42,13 +42,42 @@ function getEnv() {
   return envCached;
 }
 
+// Resolve which bot this request belongs to from the webhook secret header,
+// and return that bot's reply token. Falls back to the family bot's token
+// (legacy ?secret= path or the single-bot case). Cached per cold start.
+let botsCache:
+  | Array<{ id: string; webhook_secret_name: string; token_secret_name: string }>
+  | null = null;
+async function resolveBotToken(
+  sb: ReturnType<typeof adminClient>,
+  req: Request,
+): Promise<{ botId: string | null; token: string }> {
+  const fallback = getEnv().TELEGRAM_BOT_TOKEN;
+  const header = req.headers.get("x-telegram-bot-api-secret-token") ?? "";
+  if (!header) return { botId: null, token: fallback };
+  if (!botsCache) {
+    const r = await sb.from("bots").select("id, webhook_secret_name, token_secret_name")
+      .eq("active", true);
+    botsCache = (r.data ?? []) as Array<
+      { id: string; webhook_secret_name: string; token_secret_name: string }
+    >;
+  }
+  for (const b of botsCache ?? []) {
+    if (Deno.env.get(b.webhook_secret_name) === header) {
+      return { botId: b.id, token: Deno.env.get(b.token_secret_name) ?? fallback };
+    }
+  }
+  return { botId: null, token: fallback };
+}
+
 async function tgRequest(
   method: string,
   body: Record<string, unknown>,
+  botToken?: string,
 ): Promise<unknown> {
-  const { TELEGRAM_BOT_TOKEN } = getEnv();
+  const token = botToken ?? getEnv().TELEGRAM_BOT_TOKEN;
   const resp = await fetch(
-    `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/${method}`,
+    `https://api.telegram.org/bot${token}/${method}`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -76,7 +105,11 @@ async function tgRequest(
   }
 }
 
-async function sendReply(chatId: number, reply: CommandReply): Promise<void> {
+async function sendReply(
+  chatId: number,
+  reply: CommandReply,
+  botToken?: string,
+): Promise<void> {
   const body: Record<string, unknown> = {
     chat_id: chatId,
     text: reply.text,
@@ -86,7 +119,7 @@ async function sendReply(chatId: number, reply: CommandReply): Promise<void> {
   if (reply.reply_markup) {
     body.reply_markup = reply.reply_markup;
   }
-  const result = await tgRequest("sendMessage", body);
+  const result = await tgRequest("sendMessage", body, botToken);
   if (reply.onSent) {
     const msgId = (result as { message_id?: number } | null)?.message_id;
     if (typeof msgId === "number") {
@@ -103,6 +136,7 @@ async function editReply(
   chatId: number,
   messageId: number,
   reply: CommandReply,
+  botToken?: string,
 ): Promise<void> {
   const body: Record<string, unknown> = {
     chat_id: chatId,
@@ -117,12 +151,13 @@ async function editReply(
     // Strip the buttons explicitly so the bubble no longer shows them.
     body.reply_markup = { inline_keyboard: [] };
   }
-  await tgRequest("editMessageText", body);
+  await tgRequest("editMessageText", body, botToken);
 }
 
 async function notifyAdminWithButtons(
   text: string,
   buttons: Array<Array<{ text: string; callback_data: string }>>,
+  botToken?: string,
 ): Promise<void> {
   const { TELEGRAM_ADMIN_TELEGRAM_ID } = getEnv();
   await tgRequest("sendMessage", {
@@ -130,7 +165,7 @@ async function notifyAdminWithButtons(
     text,
     parse_mode: "HTML",
     reply_markup: { inline_keyboard: buttons },
-  });
+  }, botToken);
 }
 
 // Exported for testing.
@@ -189,6 +224,7 @@ Deno.serve(async (req: Request) => {
   }
 
   const sb = adminClient();
+  const { token: botToken } = await resolveBotToken(sb, req);
 
   // P2: cheap webhook-wide rate limit BEFORE we authorize - even unauthorized
   // hits go in the bucket so a spam attack from a known telegram_id can't
@@ -208,7 +244,7 @@ Deno.serve(async (req: Request) => {
   if (!member) {
     log("warn", "webhook_unauthorized_telegram_user", { telegram_id: fromId });
     const out = refuseUnauthorized(update);
-    if (out) await sendReply(out.chatId, out.reply);
+    if (out) await sendReply(out.chatId, out.reply, botToken);
     const firstName = msg?.from?.first_name ?? "?";
     const userName = msg?.from?.username ?? null;
 
@@ -237,7 +273,7 @@ Deno.serve(async (req: Request) => {
       await notifyAdminWithButtons(text, [[
         { text: "✅ Дать доступ", callback_data: `access_grant:${fromId}` },
         { text: "🚫 Отклонить", callback_data: `access_deny:${fromId}` },
-      ]]);
+      ]], botToken);
     }
     return new Response("ok", { status: 200 });
   }
@@ -279,7 +315,7 @@ Deno.serve(async (req: Request) => {
         await sendReply(msg.chat.id, {
           text: `Достигнут дневной лимит на ${kindForLimit} (${r.limit}/день). ` +
             `Попробуй завтра или попроси админа поднять порог.`,
-        });
+        }, botToken);
       }
       return new Response("ok", { status: 200 });
     }
@@ -292,25 +328,26 @@ Deno.serve(async (req: Request) => {
       const out = await handleCallback({
         sb,
         member,
+        botToken,
         data: cq.data ?? "",
         chatId: cq.message?.chat.id ?? cq.from.id,
         messageId: cq.message?.message_id,
       });
       if (out.edit_message_id) {
-        await editReply(out.chatId, out.edit_message_id, out.reply);
+        await editReply(out.chatId, out.edit_message_id, out.reply, botToken);
       } else {
-        await sendReply(out.chatId, out.reply);
+        await sendReply(out.chatId, out.reply, botToken);
       }
       // Acknowledge the callback so the spinning button stops.
       await tgRequest("answerCallbackQuery", {
         callback_query_id: cq.id,
         text: out.answer_text ?? "",
-      });
+      }, botToken);
       return new Response("ok", { status: 200 });
     }
 
-    const out = await dispatch({ update, member, sb });
-    if (out) await sendReply(out.chatId, out.reply);
+    const out = await dispatch({ update, member, sb, botToken });
+    if (out) await sendReply(out.chatId, out.reply, botToken);
     if (msg && !cmd) await markDone(msg.message_id, member.id, member.tenant_id, sb);
   } catch (err) {
     log("error", "webhook_dispatch_failed", { error: (err as Error).message });

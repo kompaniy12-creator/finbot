@@ -60,6 +60,8 @@ export async function handleCallback(args: {
   chatId: number;
   /** Telegram message_id of the bubble that carried the buttons (for edit-in-place). */
   messageId?: number;
+  /** Token of the bot this callback came from; used for DMs to other users. */
+  botToken?: string;
 }): Promise<CallbackOutput> {
   const cb = parseCallback(args.data);
   if (!cb) {
