@@ -941,6 +941,51 @@ body.tab-ops .tab-only.show-on-ops.ops-toggle {
   color: #fff;
 }
 
+/* ---- Финансовое здоровье (dashboard) ------------------------------- */
+.finance-health {
+  margin: 4px 0 14px;
+}
+.fh-title {
+  margin: 0 0 8px;
+  font-size: 15px;
+  font-weight: 700;
+}
+.fh-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+@media (max-width: 480px) {
+  .fh-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.fh-card {
+  background: var(--card, #1c1c1e);
+  border: 1px solid var(--border, #2c2c2e);
+  border-radius: 12px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+.fh-card label {
+  font-size: 12px;
+  color: var(--hint, #8e8e93);
+}
+.fh-card strong {
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+.fh-hint {
+  font-size: 11px;
+  color: var(--hint, #8e8e93);
+}
+.tone-warn {
+  color: #ff9f0a;
+}
+
 /* ---- Settings panel ------------------------------------------------ */
 .settings-list {
   list-style: none;

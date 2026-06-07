@@ -7,6 +7,7 @@ import { authenticate } from "../_shared/webapp_auth.ts";
 import { handleOptions, json, unauthorized } from "../_shared/api_response.ts";
 import { todayWarsawIso } from "../_shared/dates.ts";
 import { loadEurRates, plnToEur } from "../_shared/eur_view.ts";
+import { getRate } from "../_shared/currency.ts";
 import { resolveDateWindow } from "../_shared/period.ts";
 
 Deno.serve(async (req: Request) => {
@@ -32,7 +33,7 @@ Deno.serve(async (req: Request) => {
   // picture (totals, categories, transactions). Per-member edit/delete still
   // requires ownership or admin, but viewing is shared.
   void me;
-  const [expRes, catRes, prevRes] = await Promise.all([
+  const [expRes, catRes, prevRes, creditsRes] = await Promise.all([
     db.from("expenses")
       .select("kind, amount, currency, amount_pln, category_id, expense_date")
       .eq("archived", false)
@@ -44,6 +45,8 @@ Deno.serve(async (req: Request) => {
       .eq("archived", false)
       .gte("expense_date", prevStartIso)
       .lte("expense_date", prevEndIso),
+    // Active credits drive the "debt load" health metric (monthly obligations).
+    db.from("credits").select("monthly_payment, currency").eq("status", "active"),
   ]);
   const allRows = (expRes.data ?? []) as Array<{
     kind: "expense" | "income";
@@ -74,10 +77,35 @@ Deno.serve(async (req: Request) => {
   const prevIncomeRows = allPrev.filter((r) => r.kind === "income");
 
   const dates = [
+    today, // needed to convert credit monthly payments to EUR
     ...allRows.map((r) => r.expense_date),
     ...allPrev.map((r) => r.expense_date),
   ];
   const eurRates = await loadEurRates(sb, dates);
+
+  // Debt load: sum active credits' monthly payment, each converted
+  // currency -> PLN (getRate) -> EUR (today's rate). PLN passes through at 1.
+  const credits = (creditsRes.data ?? []) as Array<
+    { monthly_payment: number | null; currency: string }
+  >;
+  const plnRateCache = new Map<string, number>();
+  let debtMonthlyEur = 0;
+  for (const c of credits) {
+    const monthly = Number(c.monthly_payment ?? 0);
+    if (!monthly) continue;
+    let plnRate = 1;
+    if (c.currency !== "PLN") {
+      if (!plnRateCache.has(c.currency)) {
+        plnRateCache.set(
+          c.currency,
+          await getRate(sb, c.currency as "PLN" | "EUR" | "ALL" | "USD", today),
+        );
+      }
+      plnRate = plnRateCache.get(c.currency) ?? 1;
+    }
+    debtMonthlyEur += plnToEur(monthly * plnRate, today, eurRates) ?? 0;
+  }
+  debtMonthlyEur = Math.round(debtMonthlyEur * 100) / 100;
 
   let prevTotalEur = 0;
   for (const r of prevRows) {
@@ -193,6 +221,7 @@ Deno.serve(async (req: Request) => {
     delta_eur_pct: deltaEurPct,
     forecast_total_eur: forecastTotalEur,
     forecast_days_remaining: forecastDaysRemaining,
+    debt_monthly_eur: debtMonthlyEur,
     by_category: breakdown,
     by_currency: [...byCurrency.entries()]
       .map(([currency, total]) => ({

@@ -560,6 +560,66 @@ async function loadCategoriesAndFamily() {
   state.me = m.me ?? null;
 }
 
+function fhSetTone(el, tone) {
+  el.classList.remove("tone-good", "tone-warn", "tone-bad");
+  if (tone) el.classList.add("tone-" + tone);
+}
+
+// "Здоровье финансов" block: savings rate (the number that matters most),
+// free cash this period, and debt load. All derived from api-stats.
+function renderFinanceHealth({ income, prevIncome, net, prevNet, r }) {
+  const rateEl = $("#fh-savings-rate");
+  const hintEl = $("#fh-savings-hint");
+  const deltaEl = $("#fh-savings-delta");
+  const rate = income > 0 ? (net / income) * 100 : null;
+  const prevRate = prevIncome > 0 ? (prevNet / prevIncome) * 100 : null;
+  if (rate == null) {
+    rateEl.textContent = "-";
+    fhSetTone(rateEl, null);
+    hintEl.textContent = "нет дохода за период";
+    deltaEl.textContent = "";
+  } else {
+    rateEl.textContent = Math.round(rate) + "%";
+    fhSetTone(rateEl, rate >= 20 ? "good" : rate >= 5 ? "warn" : "bad");
+    hintEl.textContent = rate >= 20
+      ? "отлично - ты приумножаешь"
+      : rate >= 5
+      ? "неплохо, можно больше"
+      : rate >= 0
+      ? "на грани - почти всё уходит"
+      : "тратишь больше, чем зарабатываешь";
+    if (prevRate != null) {
+      const dpp = Math.round(rate - prevRate);
+      deltaEl.textContent = (dpp >= 0 ? "▲ +" : "▼ ") + dpp + " пп к прошлому";
+      fhSetTone(deltaEl, dpp >= 0 ? "good" : "bad");
+    } else {
+      deltaEl.textContent = "";
+    }
+  }
+
+  const freeEl = $("#fh-free");
+  freeEl.textContent = (net >= 0 ? "+" : "") + net.toFixed(2) + " EUR";
+  fhSetTone(freeEl, net > 0 ? "good" : net < 0 ? "bad" : null);
+
+  const debtEl = $("#fh-debt-load");
+  const debtHint = $("#fh-debt-hint");
+  const debtMonthly = Number(r.debt_monthly_eur ?? 0);
+  const load = income > 0 ? (debtMonthly / income) * 100 : null;
+  if (debtMonthly <= 0) {
+    debtEl.textContent = "0%";
+    fhSetTone(debtEl, "good");
+    debtHint.textContent = "нет активных кредитов";
+  } else if (load == null) {
+    debtEl.textContent = "-";
+    fhSetTone(debtEl, null);
+    debtHint.textContent = debtMonthly.toFixed(0) + " EUR/мес - нет дохода для оценки";
+  } else {
+    debtEl.textContent = Math.round(load) + "%";
+    fhSetTone(debtEl, load < 15 ? "good" : load <= 35 ? "warn" : "bad");
+    debtHint.textContent = debtMonthly.toFixed(0) + " EUR/мес по кредитам";
+  }
+}
+
 async function loadKpis() {
   const r = await api("/api-stats?" + periodQuery()).then((r) => r.json());
   $("#kpi-total").textContent = (r.total_eur || 0).toFixed(2) + " EUR";
@@ -600,6 +660,8 @@ async function loadKpis() {
     unit: "EUR",
     higherIsWorse: false,
   });
+
+  renderFinanceHealth({ income: incomeTotal, prevIncome: incomePrev, net, prevNet, r });
   // Month-end forecast (only meaningful for month-to-date view).
   const fcEl = $("#kpi-forecast");
   if (fcEl) {
