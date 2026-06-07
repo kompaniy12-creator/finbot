@@ -897,8 +897,9 @@ footer {
   display: none;
 }
 body.tab-dashboard .tab-only.show-on-dashboard,
-body.tab-income .tab-only.show-on-income,
-body.tab-expense .tab-only.show-on-expense,
+body.tab-ops .tab-only.show-on-ops,
+body.tab-ops.txkind-expense .tab-only.show-on-ops-expense,
+body.tab-ops.txkind-income .tab-only.show-on-ops-income,
 body.tab-settings .tab-only.show-on-settings,
 body.tab-planning .tab-only.show-on-planning,
 body.tab-debts .tab-only.show-on-debts,
@@ -907,9 +908,33 @@ body.tab-credits .tab-only.show-on-credits {
 }
 /* Grid/flex containers need their original display value, not block. */
 body.tab-dashboard .tab-only.show-on-dashboard.kpi,
-body.tab-income .tab-only.show-on-income.kpi,
-body.tab-expense .tab-only.show-on-expense.kpi {
+body.tab-ops.txkind-expense .tab-only.show-on-ops-expense.kpi,
+body.tab-ops.txkind-income .tab-only.show-on-ops-income.kpi {
   display: block;
+}
+
+/* ---- Income/Expense toggle (Операции tab) -------------------------- */
+.ops-toggle {
+  display: flex;
+  gap: 8px;
+  margin: 0 0 10px;
+}
+.ops-kind-btn {
+  flex: 1;
+  padding: 9px 12px;
+  border: 1px solid var(--border, #2c2c2e);
+  border-radius: 10px;
+  background: var(--card, #1c1c1e);
+  color: var(--text, #fff);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.ops-kind-btn.active {
+  background: var(--accent, #0a84ff);
+  border-color: var(--accent, #0a84ff);
+  color: #fff;
 }
 
 /* ---- Settings panel ------------------------------------------------ */

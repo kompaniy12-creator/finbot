@@ -6,14 +6,14 @@
       name="viewport"
       content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover"
     />
-    <!-- Cache hints for Telegram WebView - the bottom-nav rev-bumped to 7 -->
+    <!-- Cache hints for Telegram WebView - the income+expense merged into one Операции tab with top toggle -->
     <meta http-equiv="cache-control" content="no-cache, no-store, must-revalidate" />
     <meta http-equiv="pragma" content="no-cache" />
     <meta http-equiv="expires" content="0" />
     <title>FinBot Dashboard</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
-    <link rel="stylesheet" href="./styles.css?v=20260604y" />
+    <link rel="stylesheet" href="./styles.css?v=20260607a" />
   </head>
   <body>
     <div id="gate" class="gate">
@@ -30,7 +30,11 @@
     <main id="app" class="app hidden">
       <header class="app-header">
         <h1 id="hello">FinBot</h1>
-        <div class="period-tabs tab-only show-on-dashboard show-on-income show-on-expense">
+        <div class="ops-toggle tab-only show-on-ops">
+          <button type="button" class="ops-kind-btn active" data-txkind="expense">💸 Расход</button>
+          <button type="button" class="ops-kind-btn" data-txkind="income">💰 Доход</button>
+        </div>
+        <div class="period-tabs tab-only show-on-dashboard show-on-ops">
           <button data-period="day">День</button>
           <button data-period="week">Неделя</button>
           <button class="active" data-period="month">Месяц</button>
@@ -38,7 +42,7 @@
         </div>
         <div
           id="custom-range"
-          class="custom-range hidden tab-only show-on-dashboard show-on-income show-on-expense"
+          class="custom-range hidden tab-only show-on-dashboard show-on-ops"
         >
           <input type="date" id="range-from" />
           <span>-</span>
@@ -47,7 +51,7 @@
         </div>
         <div
           id="month-picker"
-          class="month-picker tab-only show-on-dashboard show-on-income show-on-expense"
+          class="month-picker tab-only show-on-dashboard show-on-ops"
         >
           <select id="month-select"></select>
         </div>
@@ -59,14 +63,14 @@
           <strong id="kpi-net">- EUR</strong>
           <div id="kpi-net-delta" class="kpi-delta"></div>
         </div>
-        <div class="kpi kpi-total tab-only show-on-dashboard show-on-expense">
+        <div class="kpi kpi-total tab-only show-on-dashboard show-on-ops-expense">
           <label>Расход</label>
           <strong id="kpi-total">- EUR</strong>
           <div id="kpi-total-delta" class="kpi-delta"></div>
           <div id="kpi-forecast" class="kpi-forecast"></div>
           <ul id="kpi-by-currency" class="kpi-currency-list"></ul>
         </div>
-        <div class="kpi kpi-income tab-only show-on-dashboard show-on-income">
+        <div class="kpi kpi-income tab-only show-on-dashboard show-on-ops-income">
           <label>Доход</label>
           <strong id="kpi-income">- EUR</strong>
           <div id="kpi-income-delta" class="kpi-delta"></div>
@@ -142,7 +146,7 @@
         <ul id="cat-list" class="cat-list"></ul>
       </section>
 
-      <section class="transactions tab-only show-on-income show-on-expense">
+      <section class="transactions tab-only show-on-ops">
         <header class="tx-header">
           <h3>Транзакции</h3>
           <input id="search" type="search" placeholder="поиск" />
@@ -385,13 +389,9 @@
         <span class="nav-icon">📊</span>
         <span class="nav-label">Дашборд</span>
       </button>
-      <button class="nav-btn" data-tab="income">
-        <span class="nav-icon">💰</span>
-        <span class="nav-label">Доходы</span>
-      </button>
-      <button class="nav-btn" data-tab="expense">
+      <button class="nav-btn" data-tab="ops">
         <span class="nav-icon">💸</span>
-        <span class="nav-label">Расходы</span>
+        <span class="nav-label">Операции</span>
       </button>
       <button class="nav-btn" data-tab="planning">
         <span class="nav-icon">📅</span>
@@ -993,7 +993,7 @@
       </div>
     </div>
 
-    <script src="./tg-webapp.js?v=20260604y"></script>
-    <script src="./app.js?v=20260604y"></script>
+    <script src="./tg-webapp.js?v=20260607a"></script>
+    <script src="./app.js?v=20260607a"></script>
   </body>
 </html>

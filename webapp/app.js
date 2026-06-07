@@ -153,16 +153,37 @@ function gateOrApp() {
 // "Доходы"/"Расходы" show only matching rows; "Дашборд" shows everything.
 const VALID_TABS = [
   "dashboard",
-  "income",
-  "expense",
+  "ops",
   "planning",
   "debts",
   "credits",
   "settings",
 ];
 state.tab = "dashboard";
+// Within the unified "Операции" tab, which side is shown: "expense" | "income".
+state.txKind = "expense";
+
+// Set the income/expense side of the ops tab. Drives a body class (CSS reveals
+// the matching KPI), the toggle button highlight, and the tx-feed filter.
+function setTxKind(kind) {
+  state.txKind = kind === "income" ? "income" : "expense";
+  document.body.classList.toggle("txkind-income", state.txKind === "income");
+  document.body.classList.toggle("txkind-expense", state.txKind === "expense");
+  for (const b of document.querySelectorAll(".ops-toggle .ops-kind-btn")) {
+    b.classList.toggle("active", b.dataset.txkind === state.txKind);
+  }
+  if (typeof renderTransactions === "function") renderTransactions();
+}
 
 function setActiveTab(tab) {
+  // Map legacy income/expense deep-links onto the unified ops tab.
+  if (tab === "income") {
+    setTxKind("income");
+    tab = "ops";
+  } else if (tab === "expense") {
+    setTxKind("expense");
+    tab = "ops";
+  }
   if (!VALID_TABS.includes(tab)) tab = "dashboard";
   state.tab = tab;
   // Body class drives CSS visibility for all `.tab-only` sections.
@@ -188,8 +209,16 @@ function bindNav() {
   for (const btn of document.querySelectorAll("#bottom-nav .nav-btn")) {
     btn.addEventListener("click", () => setActiveTab(btn.dataset.tab));
   }
+  // Income/expense toggle inside the unified ops tab.
+  for (const btn of document.querySelectorAll(".ops-toggle .ops-kind-btn")) {
+    btn.addEventListener("click", () => setTxKind(btn.dataset.txkind));
+  }
+  setTxKind(state.txKind); // sync body class + button highlight
   const initial = (location.hash || "").replace("#", "");
-  setActiveTab(VALID_TABS.includes(initial) ? initial : "dashboard");
+  // Accept legacy #income / #expense deep-links (setActiveTab maps them to ops).
+  const allowed = initial === "income" || initial === "expense" ||
+    VALID_TABS.includes(initial);
+  setActiveTab(allowed ? initial : "dashboard");
 }
 
 // Hook the settings "Отозвать сессии" button into api-* surface.
@@ -907,13 +936,14 @@ function categoryMetaHtml(catId) {
 function renderTransactions() {
   const ul = $("#tx-list");
   ul.innerHTML = "";
-  // Active tab restricts the feed: "income" → only income rows, "expense" →
-  // only expense rows, "dashboard" → mixed. Receipts have tx_kind='expense'
-  // by definition (you don't photograph a paycheck).
-  const tabFilter = state.tab === "income"
-    ? (t) => t.tx_kind === "income"
-    : state.tab === "expense"
-    ? (t) => t.tx_kind !== "income"
+  // Feed filter. On the unified "Операции" tab the income/expense toggle
+  // (state.txKind) restricts the feed; "dashboard" shows everything mixed.
+  // Receipts have tx_kind='expense' by definition (you don't photograph a
+  // paycheck).
+  const tabFilter = state.tab === "ops"
+    ? (state.txKind === "income"
+      ? (t) => t.tx_kind === "income"
+      : (t) => t.tx_kind !== "income")
     : () => true;
   // "Только сверённые" toggle (state.filterReconciled). When true, only
   // rows the bot matched against a PDF bank statement are shown.
