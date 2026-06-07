@@ -914,10 +914,14 @@ body.tab-ops.txkind-income .tab-only.show-on-ops-income.kpi {
 }
 
 /* ---- Income/Expense toggle (Операции tab) -------------------------- */
+/* No unconditional display: the .tab-only rule above hides it everywhere,
+   and the ops tab reveals it as a flex row (must override display:block). */
 .ops-toggle {
-  display: flex;
   gap: 8px;
   margin: 0 0 10px;
+}
+body.tab-ops .tab-only.show-on-ops.ops-toggle {
+  display: flex;
 }
 .ops-kind-btn {
   flex: 1;
