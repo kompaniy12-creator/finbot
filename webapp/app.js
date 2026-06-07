@@ -941,9 +941,7 @@ function renderTransactions() {
   // Receipts have tx_kind='expense' by definition (you don't photograph a
   // paycheck).
   const tabFilter = state.tab === "ops"
-    ? (state.txKind === "income"
-      ? (t) => t.tx_kind === "income"
-      : (t) => t.tx_kind !== "income")
+    ? (state.txKind === "income" ? (t) => t.tx_kind === "income" : (t) => t.tx_kind !== "income")
     : () => true;
   // "Только сверённые" toggle (state.filterReconciled). When true, only
   // rows the bot matched against a PDF bank statement are shown.
