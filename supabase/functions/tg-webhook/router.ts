@@ -565,8 +565,11 @@ function formatPhotoReply(outcome: PhotoOutcome): string {
       const warn = outcome.reconciled
         ? ""
         : "\n\n⚠ Сумма позиций не совпала с итогом (±5%), пометил для ревью.";
+      const trunc = outcome.truncated
+        ? "\n\n⚠ Чек длинный, прочитал не все позиции (обрезка). Пришли фото покрупнее или двумя частями, чтобы захватить остальное."
+        : "";
       const hint = "\n\n_Категорию можно поправить в Mini App, если что-то ушло не туда._";
-      return `${header}\n\n${lines.join("\n")}${warn}${hint}`;
+      return `${header}\n\n${lines.join("\n")}${warn}${trunc}${hint}`;
     }
     case "partial": {
       const isIncome = outcome.tx_kind === "income";
@@ -576,7 +579,10 @@ function formatPhotoReply(outcome: PhotoOutcome): string {
         `⚠ ${merchantStr}сохранил ${outcome.expense_count} из ${outcome.expected_count} поз. (итог ${sign}${
           outcome.total.toFixed(2)
         } ${outcome.currency})`;
-      return `${header}\n\nЧасть позиций не сохранилась. Удали чек в Mini App и пришли фото заново, либо проверь руками что записалось.`;
+      const trunc = outcome.truncated
+        ? "\n\n⚠ Чек длинный, Vision прочитал не все позиции (обрезка). Пришли фото покрупнее или двумя частями."
+        : "";
+      return `${header}\n\nЧасть позиций не сохранилась. Удали чек в Mini App и пришли фото заново, либо проверь руками что записалось.${trunc}`;
     }
   }
 }

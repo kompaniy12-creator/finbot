@@ -61,6 +61,8 @@ export type PhotoOutcome =
     currency: string;
     items: ReceiptLineSummary[];
     tx_kind?: "expense" | "income";
+    /** Vision hit the token cap; some positions may be missing. */
+    truncated?: boolean;
   }
   | {
     kind: "partial";
@@ -72,6 +74,8 @@ export type PhotoOutcome =
     currency: string;
     items: ReceiptLineSummary[];
     tx_kind?: "expense" | "income";
+    /** Vision hit the token cap; some positions may be missing. */
+    truncated?: boolean;
   };
 
 const DEDUP_WINDOW_DAYS = 30;
@@ -217,6 +221,13 @@ export async function processPhotoMessage(args: {
     ? `Parse this receipt. Дополнительный контекст от пользователя (учти его при выборе категорий для позиций): "${visionContext}"`
     : "Parse this receipt.";
 
+  // A long supermarket receipt can hold 40-60 line items; at the old 4096 cap
+  // the record_receipt tool call was truncated mid-array, so only the first
+  // ~16 items survived ("не считало все позиции"). We only pay for tokens
+  // actually generated, so a generous cap is safe. Override via
+  // RECEIPT_PARSE_MAX_TOKENS.
+  const maxTokens = Number(Deno.env.get("RECEIPT_PARSE_MAX_TOKENS")) || 16000;
+
   let resp;
   try {
     resp = await callClaude({
@@ -225,7 +236,7 @@ export async function processPhotoMessage(args: {
       model,
       system,
       tools,
-      maxTokens: 4096,
+      maxTokens,
       toolChoice: { type: "tool", name: "record_receipt" },
       messages: [{
         role: "user",
@@ -243,6 +254,14 @@ export async function processPhotoMessage(args: {
     });
   } catch (err) {
     return { kind: "vision_failed", error: (err as Error).message };
+  }
+
+  // If Vision hit the output cap, the items array was cut off - we got fewer
+  // positions than the receipt actually has. Surface it so the user can resend
+  // a clearer / split photo instead of silently under-counting.
+  const truncated = resp.response.stop_reason === "max_tokens";
+  if (truncated) {
+    log("warn", "photo_parse_truncated", { maxTokens });
   }
 
   const toolUse = resp.response.content.find((c) => c.type === "tool_use");
@@ -529,6 +548,7 @@ export async function processPhotoMessage(args: {
       currency: receipt.currency,
       items: summary,
       tx_kind: photoKind,
+      truncated,
     };
   }
 
@@ -544,6 +564,7 @@ export async function processPhotoMessage(args: {
     currency: receipt.currency,
     items: summary,
     tx_kind: photoKind,
+    truncated,
   };
 }
 
