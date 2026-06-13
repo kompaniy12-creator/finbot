@@ -214,6 +214,12 @@ function bindNav() {
     btn.addEventListener("click", () => setTxKind(btn.dataset.txkind));
   }
   setTxKind(state.txKind); // sync body class + button highlight
+  // Telegram keeps the Mini App webview alive in the background; when it is
+  // brought back to the foreground, reload the current tab so the user never
+  // sees stale data (e.g. a debt that was already repaid).
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") refreshCurrentTab();
+  });
   const initial = (location.hash || "").replace("#", "");
   // Accept legacy #income / #expense deep-links (setActiveTab maps them to ops).
   const allowed = initial === "income" || initial === "expense" ||
@@ -1590,6 +1596,23 @@ async function refresh() {
   await loadCharts();
 }
 
+// Reload whatever the current tab shows. Used when Telegram resumes a
+// backgrounded webview (which keeps stale JS state) so the user never acts on
+// out-of-date data - the root cause of the "debt already closed" confusion.
+async function refreshCurrentTab() {
+  try {
+    if (state.tab === "debts") {
+      if (typeof loadDebts === "function") await loadDebts();
+    } else if (state.tab === "credits") {
+      if (typeof loadCredits === "function") await loadCredits();
+    } else if (state.tab === "planning") {
+      if (typeof loadPlanned === "function") await loadPlanned();
+    } else {
+      await refresh();
+    }
+  } catch (_) { /* best-effort */ }
+}
+
 // --- Planned payments ("📅 План" tab) ---------------------------------
 // CRUD against api-planned-payments. The form mirrors the layout from
 // the reference app but drops the fields we don't have (account, payee
@@ -2768,7 +2791,15 @@ async function saveCreditPay() {
     );
     const data = await resp.json();
     if (!resp.ok || data.error) {
-      alert("Ошибка: " + (data.error || resp.status));
+      // Stale view: credit already gone/closed server-side. Refresh truth.
+      if (data.error === "not_found" || data.error === "credit_closed") {
+        closeCreditPay();
+        closeCreditForm();
+        await loadCredits();
+        alert("Кредит уже закрыт или изменён - обновил список.");
+      } else {
+        alert("Ошибка: " + (data.error || resp.status));
+      }
       return;
     }
     closeCreditPay();
@@ -3103,7 +3134,16 @@ async function saveDebtPay() {
     );
     const data = await resp.json();
     if (!resp.ok || data.error) {
-      alert("Ошибка: " + (data.error || resp.status));
+      // Stale view: the debt was already fully repaid (closed) server-side but
+      // the cached list still showed it open. Refresh so the truth shows.
+      if (data.error === "debt_closed" || data.error === "not_found") {
+        closeDebtPay();
+        closeDebtForm();
+        await loadDebts();
+        alert("Этот долг уже погашен - обновил список.");
+      } else {
+        alert("Ошибка: " + (data.error || resp.status));
+      }
       return;
     }
     closeDebtPay();
