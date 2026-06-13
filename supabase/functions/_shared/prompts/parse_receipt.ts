@@ -19,6 +19,16 @@ export const ParseReceiptTool: Anthropic.Messages.Tool = {
       },
       currency: { type: "string", enum: ["PLN", "EUR", "ALL", "USD"] },
       total: { type: "number", minimum: 0.01 },
+      kind: {
+        type: "string",
+        enum: ["expense", "income"],
+        description: "Direction of money for the WHOLE document. 'income' = money RECEIVED: " +
+          "a bank-app screenshot of an incoming/credited transfer ('wpływy', " +
+          "'uznanie', 'przychodzący', 'wynagrodzenie', 'przelew przychodzący', a green " +
+          "or '+' amount), a salary/dividend/payout deposit, money-in notification. " +
+          "'expense' (DEFAULT) = a normal purchase receipt from a shop/restaurant, or " +
+          "an outgoing/debited transfer ('obciążenie', 'wychodzący', a '-' amount).",
+      },
       items: {
         type: "array",
         minItems: 1,
@@ -61,7 +71,12 @@ Rules:
 - If receipt is blurry/unreadable in parts: still emit what you can, set 'note' field describing what's missing.
 - Date format on Polish receipts is usually DD-MM-YYYY or YYYY-MM-DD. Convert to ISO YYYY-MM-DD.
 - Receipt date should be very close to today's date (typically within the last few days). If the printed year is partly cut off or ambiguous (e.g. "25/05/26" could be 2025 or 2026), assume it is THIS year - the year given as "today" in the system prompt. Never emit a date more than 60 days in the past or more than 1 day in the future; if unsure, use today's date.
-- Currency: Polish receipts use 'zł' suffix or 'PLN'. Default PLN if unclear.`;
+- Currency: Polish receipts use 'zł' suffix or 'PLN'. Default PLN if unclear.
+- kind: set 'income' ONLY when the photo is clearly MONEY RECEIVED - a bank-app
+  screenshot of an incoming/credited transfer (wpływy, uznanie, przychodzący,
+  wynagrodzenie, a green or '+' amount, salary/dividend/payout deposit). A normal
+  shop/restaurant purchase receipt, or an outgoing/debited transfer, is 'expense'
+  (the default). When in doubt, use 'expense'.`;
 
 export interface VisionCategoryHint {
   id: string;
@@ -104,6 +119,7 @@ export const ParsedReceiptSchema = z.object({
   receipt_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   currency: z.enum(["PLN", "EUR", "ALL", "USD"]),
   total: z.number().positive(),
+  kind: z.enum(["expense", "income"]).default("expense"),
   items: z.array(ParsedReceiptItemSchema).min(1),
   note: z.string().optional(),
 });

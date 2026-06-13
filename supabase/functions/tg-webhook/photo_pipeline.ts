@@ -183,7 +183,9 @@ export async function processPhotoMessage(args: {
   // strong income keywords. Detected before loading categories so we can
   // load the right kind's pool for Vision.
   const captionRawForKind = (args.caption ?? "").trim();
-  const photoKind = detectPhotoKind(captionRawForKind);
+  // Caption-based first guess; Vision may override to income below if the photo
+  // is clearly money-in (a bank inflow screenshot).
+  let photoKind = detectPhotoKind(captionRawForKind);
 
   // Preload categories so Vision can assign one per item in a single call.
   // This collapses the old N-item Claude-fallback loop into 0 extra calls.
@@ -196,8 +198,8 @@ export async function processPhotoMessage(args: {
   const categories = (catRows.data ?? []) as Array<
     { id: string; name: string; kind: string; is_fallback: boolean }
   >;
-  const catById = new Map(categories.map((c) => [c.id, c]));
-  const fallbackCatId = categories.find((c) => c.is_fallback)?.id ?? categories[0]?.id ?? null;
+  let catById = new Map(categories.map((c) => [c.id, c]));
+  let fallbackCatId = categories.find((c) => c.is_fallback)?.id ?? categories[0]?.id ?? null;
   if (!fallbackCatId) {
     log("error", "photo_no_categories", { kind: photoKind });
     return { kind: "parse_failed" };
@@ -273,6 +275,29 @@ export async function processPhotoMessage(args: {
     return { kind: "parse_failed" };
   }
   const receipt = parsed.data;
+
+  // Vision detected money-IN (a bank inflow screenshot) but the caption did not
+  // flag it, so we loaded expense categories. Flip to income and reload the
+  // income category pool; the expense category_ids Vision picked won't be in
+  // the new pool, so every row falls back to the income fallback category
+  // (correct kind beats precise category - the user can recategorize). This is
+  // the fix for incoming transfers landing in Расход.
+  if (receipt.kind === "income" && photoKind !== "income") {
+    photoKind = "income";
+    const incCats = await db.from("categories")
+      .select("id, name, kind, is_fallback")
+      .eq("kind", "income")
+      .order("is_fallback", { ascending: true })
+      .order("name", { ascending: true });
+    const incRows = (incCats.data ?? []) as Array<
+      { id: string; name: string; kind: string; is_fallback: boolean }
+    >;
+    if (incRows.length > 0) {
+      catById = new Map(incRows.map((c) => [c.id, c]));
+      fallbackCatId = incRows.find((c) => c.is_fallback)?.id ?? incRows[0]!.id;
+    }
+    log("info", "photo_kind_overridden_to_income", { receipt_total: receipt.total });
+  }
 
   // Sanity-clamp the receipt date. Vision occasionally misreads the printed
   // year (e.g. "26" interpreted as 2025 instead of 2026) and a single-character
