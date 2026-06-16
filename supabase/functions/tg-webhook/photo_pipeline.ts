@@ -23,6 +23,9 @@ import { detectPhotoKind } from "../_shared/intent.ts";
 // gte-small in Supabase.ai is fast (~50-200ms per call), so 6 concurrent
 // embeddings on a 38-item receipt finish in ~1-2s.
 const EMBED_CONCURRENCY = 6;
+// Above this item count we skip per-line embeddings to stay within the Edge
+// Function CPU budget (gte-small runs in-process). Override via env.
+const EMBED_MAX_ITEMS = Number(Deno.env.get("PHOTO_EMBED_MAX_ITEMS")) || 8;
 
 const SIGNED_URL_TTL_SEC = 300;
 const STORAGE_BUCKET = "receipts";
@@ -401,25 +404,37 @@ export async function processPhotoMessage(args: {
   // Same currency+date as the receipt total, so reuse the rate we already loaded.
   const toPlnLocal = (amount: number) => Math.round(amount * receiptRate * 100) / 100;
 
-  // Embed every item name in parallel so the row contributes to future kNN
-  // matching (a "молоко" in a receipt should help auto-classify a "молоко"
-  // typed by the user later).
+  // Embed every item name so the row contributes to future kNN matching (a
+  // "молоко" in a receipt helps auto-classify a "молоко" typed later).
+  //
+  // gte-small runs IN this Edge Function (Supabase.ai), so it is CPU-heavy.
+  // On a long grocery receipt, embedding 20-40 items blew the function's CPU
+  // budget and the save was killed mid-flight - the receipt row was created
+  // but ZERO expense lines were inserted ("останавливается на сохранении").
+  // Embeddings are a nice-to-have for kNN, never required to save, so for big
+  // receipts we skip them: every line still saves, just without an embedding.
   const embedFn = defaultEmbedFn();
-  const embeddings = await mapWithConcurrency(
-    receipt.items,
-    EMBED_CONCURRENCY,
-    async (item) => {
-      try {
-        return await embedFn(item.name_normalized_en);
-      } catch (err) {
-        log("warn", "photo_embed_failed", {
-          name: item.name_normalized_en,
-          error: (err as Error).message,
-        });
-        return null;
-      }
-    },
-  );
+  const skipEmbeddings = receipt.items.length > EMBED_MAX_ITEMS;
+  if (skipEmbeddings) {
+    log("info", "photo_embeddings_skipped_large_receipt", { items: receipt.items.length });
+  }
+  const embeddings: Array<number[] | null> = skipEmbeddings
+    ? receipt.items.map(() => null)
+    : await mapWithConcurrency(
+      receipt.items,
+      EMBED_CONCURRENCY,
+      async (item) => {
+        try {
+          return await embedFn(item.name_normalized_en);
+        } catch (err) {
+          log("warn", "photo_embed_failed", {
+            name: item.name_normalized_en,
+            error: (err as Error).message,
+          });
+          return null;
+        }
+      },
+    );
 
   // Build all rows in memory, then ONE atomic bulk INSERT.
   // Vision already assigned category_id to each item; validate against the
