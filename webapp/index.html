@@ -20,7 +20,7 @@
     <title>FinBot Dashboard</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
-    <link rel="stylesheet" href="./styles.css?v=1.17.0" />
+    <link rel="stylesheet" href="./styles.css?v=1.18.0" />
   </head>
   <body>
     <div id="gate" class="gate">
@@ -58,7 +58,7 @@
           <input type="date" id="range-from" />
           <span>-</span>
           <input type="date" id="range-to" />
-          <button id="range-apply" type="button">OK</button>
+          <button id="range-apply" type="button" data-i18n="ok">OK</button>
         </div>
         <div
           id="month-picker"
@@ -151,13 +151,13 @@
           <span data-i18n="chart_activity_sub">ярче ячейка = больше расход</span>
         </div>
         <div class="hm-dow-row">
-          <div>пн</div>
-          <div>вт</div>
-          <div>ср</div>
-          <div>чт</div>
-          <div>пт</div>
-          <div>сб</div>
-          <div>вс</div>
+          <div data-i18n="dow_mon">пн</div>
+          <div data-i18n="dow_tue">вт</div>
+          <div data-i18n="dow_wed">ср</div>
+          <div data-i18n="dow_thu">чт</div>
+          <div data-i18n="dow_fri">пт</div>
+          <div data-i18n="dow_sat">сб</div>
+          <div data-i18n="dow_sun">вс</div>
         </div>
         <div id="heatmap" class="heatmap"></div>
         <div class="hm-legend">
@@ -198,7 +198,14 @@
             <option value="text" data-i18n="src_text">текст</option>
             <option value="voice" data-i18n="src_voice">голос</option>
           </select>
-          <button id="filter-reset" type="button" title="Сбросить фильтры">↺</button>
+          <button
+            id="filter-reset"
+            type="button"
+            title="Сбросить фильтры"
+            data-i18n-title="tx_reset"
+          >
+            ↺
+          </button>
           <button
             id="filter-reconciled"
             type="button"
@@ -210,21 +217,34 @@
         </div>
         <ul id="tx-list" class="tx-list"></ul>
         <div class="tx-pagination">
-          <button id="load-more">Ещё...</button>
+          <button id="load-more" data-i18n="tx_more">Ещё...</button>
         </div>
       </section>
 
       <section id="settings-panel" class="tab-only show-on-settings">
         <header class="categories-head">
-          <h3>Настройки</h3>
+          <h3 data-i18n="set_title">Настройки</h3>
         </header>
 
         <div class="settings-section settings-section-static">
-          <header class="settings-section-head"><h4>👤 Профиль</h4></header>
-          <p class="settings-hint">Имя, которым бот к тебе обращается.</p>
+          <header class="settings-section-head"><h4 data-i18n="set_profile">👤 Профиль</h4></header>
+          <p class="settings-hint" data-i18n="set_profile_hint">
+            Имя, которым бот к тебе обращается.
+          </p>
           <div class="profile-row">
-            <input id="settings-name-input" type="text" maxlength="60" placeholder="Имя" />
-            <button id="settings-name-save" type="button" class="settings-add-btn">
+            <input
+              id="settings-name-input"
+              type="text"
+              maxlength="60"
+              placeholder="Имя"
+              data-i18n-ph="ph_name"
+            />
+            <button
+              id="settings-name-save"
+              type="button"
+              class="settings-add-btn"
+              data-i18n="set_save"
+            >
               Сохранить
             </button>
           </div>
@@ -232,12 +252,17 @@
         </div>
 
         <div class="settings-section settings-section-static">
-          <header class="settings-section-head"><h4>🎨 Тема</h4></header>
-          <p class="settings-hint">«Авто» подхватывает тему из Telegram.</p>
+          <header class="settings-section-head"><h4 data-i18n="set_theme">🎨 Тема</h4></header>
+          <p class="settings-hint" data-i18n="set_theme_hint">
+            «Авто» подхватывает тему из Telegram.
+          </p>
           <div class="theme-options">
-            <label><input type="radio" name="theme" value="auto" /> Авто (Telegram)</label>
-            <label><input type="radio" name="theme" value="light" /> Светлая</label>
-            <label><input type="radio" name="theme" value="dark" /> Тёмная</label>
+            <label><input type="radio" name="theme" value="auto" /> <span data-i18n="theme_auto"
+              >Авто (Telegram)</span></label>
+            <label><input type="radio" name="theme" value="light" /> <span data-i18n="theme_light"
+              >Светлая</span></label>
+            <label><input type="radio" name="theme" value="dark" /> <span data-i18n="theme_dark"
+              >Тёмная</span></label>
           </div>
         </div>
 
@@ -246,48 +271,60 @@
           class="settings-section settings-section-static"
           style="display: none"
         >
-          <header class="settings-section-head"><h4>👥 Пользователи</h4></header>
-          <p class="settings-hint">Управление доступом к боту (только для админа).</p>
+          <header class="settings-section-head">
+            <h4 data-i18n="set_users">👥 Пользователи</h4>
+          </header>
+          <p class="settings-hint" data-i18n="set_users_hint">
+            Управление доступом к боту (только для админа).
+          </p>
           <ul id="settings-users-list" class="cat-list"></ul>
           <button id="settings-user-add" type="button" class="settings-add-btn">
-            + Добавить пользователя
+            <span data-i18n="set_user_add">+ Добавить пользователя</span>
           </button>
         </div>
 
         <details class="settings-section">
           <summary class="settings-section-head">
-            <h4>💸 Настройки расходов</h4>
+            <h4 data-i18n="set_exp">💸 Настройки расходов</h4>
           </summary>
-          <p class="settings-hint">Категории, по которым ты записываешь траты.</p>
+          <p class="settings-hint" data-i18n="set_exp_hint">
+            Категории, по которым ты записываешь траты.
+          </p>
           <button id="settings-add-expense" type="button" class="settings-add-btn">
-            + Категория
+            <span data-i18n="set_add_cat">+ Категория</span>
           </button>
           <ul id="settings-cat-expense" class="cat-list"></ul>
         </details>
 
         <details class="settings-section">
           <summary class="settings-section-head">
-            <h4>💰 Настройки доходов</h4>
+            <h4 data-i18n="set_inc">💰 Настройки доходов</h4>
           </summary>
-          <p class="settings-hint">Категории доходов: зарплата, дивиденды, подарки и т.д.</p>
+          <p class="settings-hint" data-i18n="set_inc_hint">
+            Категории доходов: зарплата, дивиденды, подарки и т.д.
+          </p>
           <button id="settings-add-income" type="button" class="settings-add-btn">
-            + Категория
+            <span data-i18n="set_add_cat">+ Категория</span>
           </button>
           <ul id="settings-cat-income" class="cat-list"></ul>
         </details>
 
         <div class="settings-section settings-section-static">
-          <header class="settings-section-head"><h4>⚙️ Другое</h4></header>
+          <header class="settings-section-head"><h4 data-i18n="set_other">⚙️ Другое</h4></header>
           <ul class="settings-list">
             <li>
-              <strong>Веб-сессии</strong>
-              <p>Отозвать все активные браузерные сессии (на других устройствах).</p>
-              <button id="settings-web-logout" type="button">Отозвать сессии</button>
+              <strong data-i18n="set_websessions">Веб-сессии</strong>
+              <p data-i18n="set_websessions_hint">
+                Отозвать все активные браузерные сессии (на других устройствах).
+              </p>
+              <button id="settings-web-logout" type="button" data-i18n="set_logout">
+                Отозвать сессии
+              </button>
               <span id="settings-web-logout-status" class="settings-status"></span>
             </li>
             <li>
-              <strong>Версия</strong>
-              <p id="settings-version">FinBot v1.17.0</p>
+              <strong data-i18n="set_version">Версия</strong>
+              <p id="settings-version">FinBot v1.18.0</p>
             </li>
           </ul>
         </div>
@@ -295,25 +332,25 @@
 
       <section class="planning-panel tab-only show-on-planning">
         <div class="planning-hub" data-subview="hub">
-          <h2 class="planning-title">Планирование</h2>
+          <h2 class="planning-title" data-i18n="planning_title">Планирование</h2>
           <button class="planning-hub-card" data-go="planned" type="button">
             <div class="planning-hub-text">
-              <strong>Запланированные платежи</strong>
-              <span>Ваши будущие платежи</span>
+              <strong data-i18n="plan_planned">Запланированные платежи</strong>
+              <span data-i18n="plan_planned_sub">Ваши будущие платежи</span>
             </div>
             <span class="planning-hub-icon icon-orange">🕒</span>
           </button>
           <button class="planning-hub-card" data-go="budgets" type="button">
             <div class="planning-hub-text">
-              <strong>Бюджеты</strong>
-              <span>Ваш план расходов</span>
+              <strong data-i18n="plan_budgets">Бюджеты</strong>
+              <span data-i18n="plan_budgets_sub">Ваш план расходов</span>
             </div>
             <span class="planning-hub-icon icon-blue">💰</span>
           </button>
           <button class="planning-hub-card" data-go="calendar" type="button">
             <div class="planning-hub-text">
-              <strong>Платёжный календарь</strong>
-              <span>Все платежи на месяц вперёд</span>
+              <strong data-i18n="plan_calendar">Платёжный календарь</strong>
+              <span data-i18n="plan_calendar_sub">Все платежи на месяц вперёд</span>
             </div>
             <span class="planning-hub-icon icon-green">📅</span>
           </button>
@@ -322,12 +359,33 @@
         <div class="planning-sub planning-planned" data-subview="planned">
           <header class="planning-sub-head">
             <button class="planning-back" data-back type="button" aria-label="Назад">‹</button>
-            <h3>Запланированные платежи</h3>
+            <h3 data-i18n="plan_planned">Запланированные платежи</h3>
           </header>
           <div class="plan-filters">
-            <button class="plan-filter active" data-filter="all" type="button">Все</button>
-            <button class="plan-filter" data-filter="income" type="button">Доход</button>
-            <button class="plan-filter" data-filter="expense" type="button">Расход</button>
+            <button
+              class="plan-filter active"
+              data-filter="all"
+              type="button"
+              data-i18n="plan_f_all"
+            >
+              Все
+            </button>
+            <button
+              class="plan-filter"
+              data-filter="income"
+              type="button"
+              data-i18n="plan_f_income"
+            >
+              Доход
+            </button>
+            <button
+              class="plan-filter"
+              data-filter="expense"
+              type="button"
+              data-i18n="plan_f_expense"
+            >
+              Расход
+            </button>
           </div>
           <ul id="plan-list" class="plan-list"></ul>
         </div>
@@ -335,7 +393,7 @@
         <div class="planning-sub planning-budgets" data-subview="budgets">
           <header class="planning-sub-head">
             <button class="planning-back" data-back type="button" aria-label="Назад">‹</button>
-            <h3>Бюджеты</h3>
+            <h3 data-i18n="plan_budgets">Бюджеты</h3>
           </header>
           <ul id="budgets-list" class="budgets-list"></ul>
         </div>
@@ -343,7 +401,7 @@
         <div class="planning-sub planning-calendar" data-subview="calendar">
           <header class="planning-sub-head">
             <button class="planning-back" data-back type="button" aria-label="Назад">‹</button>
-            <h3>Платёжный календарь</h3>
+            <h3 data-i18n="plan_calendar">Платёжный календарь</h3>
           </header>
           <div class="cal-month-nav">
             <button id="cal-prev" type="button" aria-label="Предыдущий">‹</button>
@@ -351,21 +409,21 @@
             <button id="cal-next" type="button" aria-label="Следующий">›</button>
           </div>
           <div class="cal-dow-row">
-            <div>пн</div>
-            <div>вт</div>
-            <div>ср</div>
-            <div>чт</div>
-            <div>пт</div>
-            <div>сб</div>
-            <div>вс</div>
+            <div data-i18n="dow_mon">пн</div>
+            <div data-i18n="dow_tue">вт</div>
+            <div data-i18n="dow_wed">ср</div>
+            <div data-i18n="dow_thu">чт</div>
+            <div data-i18n="dow_fri">пт</div>
+            <div data-i18n="dow_sat">сб</div>
+            <div data-i18n="dow_sun">вс</div>
           </div>
           <div id="cal-grid" class="cal-grid"></div>
           <div class="cal-legend">
-            <span class="cal-dot src-credit"></span>кредит
-            <span class="cal-dot src-debt"></span>долг
-            <span class="cal-dot src-planned"></span>план
+            <span class="cal-dot src-credit"></span><span data-i18n="cal_credit">кредит</span>
+            <span class="cal-dot src-debt"></span><span data-i18n="cal_debt">долг</span>
+            <span class="cal-dot src-planned"></span><span data-i18n="cal_planned">план</span>
           </div>
-          <h4 id="cal-day-title" class="cal-day-title">События</h4>
+          <h4 id="cal-day-title" class="cal-day-title" data-i18n="cal_events">События</h4>
           <ul id="cal-day-list" class="cal-day-list"></ul>
         </div>
 
@@ -381,12 +439,23 @@
 
       <section class="debts-panel tab-only show-on-debts">
         <header class="credits-head">
-          <h3>🤝 Долги</h3>
+          <h3 data-i18n="debts_title">🤝 Долги</h3>
         </header>
         <div class="credits-filters">
-          <button class="debts-filter active" data-filter="all" type="button">Все</button>
-          <button class="debts-filter" data-filter="i_owe" type="button">Должен я</button>
-          <button class="debts-filter" data-filter="owed_to_me" type="button">Должны мне</button>
+          <button class="debts-filter active" data-filter="all" type="button" data-i18n="debts_all">
+            Все
+          </button>
+          <button class="debts-filter" data-filter="i_owe" type="button" data-i18n="debts_i_owe">
+            Должен я
+          </button>
+          <button
+            class="debts-filter"
+            data-filter="owed_to_me"
+            type="button"
+            data-i18n="debts_owed"
+          >
+            Должны мне
+          </button>
         </div>
         <ul id="debts-list" class="credits-list"></ul>
         <button id="debt-add-btn" type="button" class="plan-fab" aria-label="Добавить долг">
@@ -396,17 +465,19 @@
 
       <section class="credits-panel tab-only show-on-credits">
         <header class="credits-head">
-          <h3>🏦 Кредиты</h3>
+          <h3 data-i18n="credits_title">🏦 Кредиты</h3>
         </header>
         <div id="credits-stats" class="credits-stats"></div>
         <div class="credits-filters">
           <button class="credits-filter active" data-filter="active" type="button">
-            Активные
+            <span data-i18n="cr_active">Активные</span>
           </button>
           <button class="credits-filter" data-filter="closed" type="button">
-            Закрытые
+            <span data-i18n="cr_closed">Закрытые</span>
           </button>
-          <button class="credits-filter" data-filter="all" type="button">Все</button>
+          <button class="credits-filter" data-filter="all" type="button" data-i18n="cr_all">
+            Все
+          </button>
         </div>
         <ul id="credits-list" class="credits-list"></ul>
         <button id="credit-add-btn" type="button" class="plan-fab" aria-label="Добавить кредит">
@@ -416,47 +487,49 @@
 
       <section class="investments-panel tab-only show-on-investments">
         <header class="credits-head">
-          <h3>📈 Инвестиции</h3>
+          <h3 data-i18n="inv_title">📈 Инвестиции</h3>
         </header>
         <div id="investments-stub" class="investments-stub">
-          <p>Здесь будет учёт инвестиций: вклады, акции, крипта, доходность.</p>
-          <p class="settings-hint">
+          <p data-i18n="inv_stub1">
+            Здесь будет учёт инвестиций: вклады, акции, крипта, доходность.
+          </p>
+          <p class="settings-hint" data-i18n="inv_stub2">
             Раздел в разработке. Напиши, что хочешь видеть (портфель, текущая стоимость, доходность
             за период, цели), и я соберу.
           </p>
         </div>
       </section>
 
-      <footer><small id="version">FinBot v1.17.0</small></footer>
+      <footer><small id="version">FinBot v1.18.0</small></footer>
     </main>
 
     <nav id="bottom-nav" class="bottom-nav hidden">
       <button class="nav-btn active" data-tab="dashboard">
-        <span class="nav-icon"><img src="./icons/nav-dashboard.png?v=1.17.0" alt="" /></span>
+        <span class="nav-icon"><img src="./icons/nav-dashboard.png?v=1.18.0" alt="" /></span>
         <span class="nav-label" data-i18n="nav_dashboard">Дашборд</span>
       </button>
       <button class="nav-btn" data-tab="ops">
-        <span class="nav-icon"><img src="./icons/nav-ops.png?v=1.17.0" alt="" /></span>
+        <span class="nav-icon"><img src="./icons/nav-ops.png?v=1.18.0" alt="" /></span>
         <span class="nav-label" data-i18n="nav_ops">Операции</span>
       </button>
       <button class="nav-btn" data-tab="planning">
-        <span class="nav-icon"><img src="./icons/nav-planning.png?v=1.17.0" alt="" /></span>
+        <span class="nav-icon"><img src="./icons/nav-planning.png?v=1.18.0" alt="" /></span>
         <span class="nav-label" data-i18n="nav_planning">План</span>
       </button>
       <button class="nav-btn" data-tab="debts">
-        <span class="nav-icon"><img src="./icons/nav-debts.png?v=1.17.0" alt="" /></span>
+        <span class="nav-icon"><img src="./icons/nav-debts.png?v=1.18.0" alt="" /></span>
         <span class="nav-label" data-i18n="nav_debts">Долги</span>
       </button>
       <button class="nav-btn" data-tab="credits">
-        <span class="nav-icon"><img src="./icons/nav-credits.png?v=1.17.0" alt="" /></span>
+        <span class="nav-icon"><img src="./icons/nav-credits.png?v=1.18.0" alt="" /></span>
         <span class="nav-label" data-i18n="nav_credits">Кредит</span>
       </button>
       <button class="nav-btn" data-tab="investments">
-        <span class="nav-icon"><img src="./icons/nav-investments.png?v=1.17.0" alt="" /></span>
+        <span class="nav-icon"><img src="./icons/nav-investments.png?v=1.18.0" alt="" /></span>
         <span class="nav-label" data-i18n="nav_investments">Инвест.</span>
       </button>
       <button class="nav-btn" data-tab="settings">
-        <span class="nav-icon"><img src="./icons/nav-settings.png?v=1.17.0" alt="" /></span>
+        <span class="nav-icon"><img src="./icons/nav-settings.png?v=1.18.0" alt="" /></span>
         <span class="nav-label" data-i18n="nav_settings">Настр.</span>
       </button>
     </nav>
@@ -1043,8 +1116,8 @@
       </div>
     </div>
 
-    <script src="./i18n.js?v=1.17.0"></script>
-    <script src="./tg-webapp.js?v=1.17.0"></script>
-    <script src="./app.js?v=1.17.0"></script>
+    <script src="./i18n.js?v=1.18.0"></script>
+    <script src="./tg-webapp.js?v=1.18.0"></script>
+    <script src="./app.js?v=1.18.0"></script>
   </body>
 </html>
