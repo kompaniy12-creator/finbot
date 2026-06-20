@@ -26,6 +26,7 @@ import { type CommandReply, membersCommand, mintInvites, renderInvitesPanel } fr
 import { retrainCategory } from "../_shared/retrain.ts";
 import { log } from "../_shared/log.ts";
 import { recordAudit } from "../_shared/audit.ts";
+import { recordSecurityEvent } from "../_shared/security_audit.ts";
 import { notifyUser } from "../_shared/notify.ts";
 
 const UNDO_WINDOW_MIN = Number(Deno.env.get("UNDO_WINDOW_MINUTES") ?? "10");
@@ -586,6 +587,11 @@ async function doInvites(
       p_active: action === "res",
     });
     if (rpc.error) return { chatId, reply: { text: `Ошибка: ${rpc.error.message}` } };
+    await recordSecurityEvent(sb, {
+      actorTelegramId: actor.telegram_id,
+      tenantId,
+      action: action === "res" ? "access_granted" : "access_revoked",
+    });
     answer = action === "res" ? "Доступ возвращён" : "Доступ убран";
   } else {
     return { chatId, reply: { text: "Неизвестное действие." } };

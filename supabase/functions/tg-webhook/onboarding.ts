@@ -8,6 +8,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { FamilyMember } from "../_shared/types.ts";
 import { tenantDb } from "../_shared/tenant_db.ts";
 import { encryptSecret } from "../_shared/crypto_box.ts";
+import { recordSecurityEvent } from "../_shared/security_audit.ts";
 import { isLocale, type Locale, LOCALES, t } from "../_shared/i18n.ts";
 
 export interface OnbReply {
@@ -95,6 +96,12 @@ export async function advanceOnboarding(args: {
       anthropic_api_key: await encryptSecret(sb, member.tenant_id, text),
       onboarding_step: "groqkey",
     }).eq("id", member.tenant_id);
+    await recordSecurityEvent(sb, {
+      actorTelegramId: member.telegram_id,
+      tenantId: member.tenant_id,
+      action: "key_set",
+      details: { provider: "anthropic", via: "onboarding" },
+    });
     return { text: t(locale, "ask_groqkey"), reply_markup: skipKeyboard(locale) };
   }
 
@@ -109,6 +116,12 @@ export async function advanceOnboarding(args: {
         groq_api_key: await encryptSecret(sb, member.tenant_id, text),
       })
         .eq("id", member.tenant_id);
+      await recordSecurityEvent(sb, {
+        actorTelegramId: member.telegram_id,
+        tenantId: member.tenant_id,
+        action: "key_set",
+        details: { provider: "groq", via: "onboarding" },
+      });
       await finish(sb, member.tenant_id);
       return { text: t(locale, "done", { name }) };
     }

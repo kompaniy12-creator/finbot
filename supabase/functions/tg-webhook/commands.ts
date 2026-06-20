@@ -6,7 +6,8 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { FamilyMember } from "../_shared/types.ts";
 import { tenantDb } from "../_shared/tenant_db.ts";
-import { encryptSecret } from "../_shared/crypto_box.ts";
+import { encryptSecret, shredTenantKeys } from "../_shared/crypto_box.ts";
+import { recordSecurityEvent } from "../_shared/security_audit.ts";
 import { recordAudit } from "../_shared/audit.ts";
 import { notifyUser } from "../_shared/notify.ts";
 import { buildAnalystSnapshot } from "../_shared/analyst_snapshot.ts";
@@ -96,6 +97,7 @@ export function helpCommand(member: FamilyMember): CommandReply {
       "/ask ВОПРОС - то же, что просто написать вопрос",
       "/undo - отменить последнюю",
       "/recurring - регулярные траты",
+      "/delete_keys - удалить свои API-ключи (крипто-уничтожение)",
     ].join("\n") + adminOnly,
   };
 }
@@ -641,9 +643,16 @@ export async function apiKeyCommand(
   })
     .eq("id", actor.tenant_id);
   if (upd.error) return { text: `Не смог сохранить ключ: ${upd.error.message}` };
+  await recordSecurityEvent(sb, {
+    actorTelegramId: actor.telegram_id,
+    tenantId: actor.tenant_id,
+    action: "key_set",
+    details: { provider: "anthropic" },
+  });
   return {
     text: "✅ Ключ Anthropic сохранён. Теперь пиши траты - я их распознаю.\n\n" +
-      "🔒 Совет: удали сообщение с ключом из чата (ключ уже сохранён).",
+      "🔒 Совет: удали сообщение с ключом из чата (ключ уже сохранён).\n" +
+      "Удалить ключи в любой момент: /delete_keys",
   };
 }
 
@@ -667,9 +676,44 @@ export async function groqKeyCommand(
   })
     .eq("id", actor.tenant_id);
   if (upd.error) return { text: `Не смог сохранить ключ: ${upd.error.message}` };
+  await recordSecurityEvent(sb, {
+    actorTelegramId: actor.telegram_id,
+    tenantId: actor.tenant_id,
+    action: "key_set",
+    details: { provider: "groq" },
+  });
   return {
     text: "✅ Ключ Groq сохранён. Теперь можно слать голосовые.\n\n" +
       "🔒 Совет: удали сообщение с ключом из чата.",
+  };
+}
+
+// /delete_keys - the user erases their stored API keys. We crypto-shred the
+// tenant's DEK (so any v2 ciphertext becomes unrecoverable) and null the key
+// columns. Basis for GDPR "right to erasure" of the AI credentials.
+export async function deleteKeysCommand(
+  sb: SupabaseClient,
+  actor: FamilyMember,
+): Promise<CommandReply> {
+  const upd = await sb.from("tenants")
+    .update({ anthropic_api_key: null, groq_api_key: null })
+    .eq("id", actor.tenant_id);
+  if (upd.error) return { text: `Не смог удалить ключи: ${upd.error.message}` };
+  // Crypto-shred the DEK: even DB backups of the old ciphertext become useless.
+  await shredTenantKeys(sb, actor.tenant_id);
+  await recordSecurityEvent(sb, {
+    actorTelegramId: actor.telegram_id,
+    tenantId: actor.tenant_id,
+    action: "key_deleted",
+  });
+  await recordSecurityEvent(sb, {
+    actorTelegramId: actor.telegram_id,
+    tenantId: actor.tenant_id,
+    action: "crypto_shred",
+  });
+  return {
+    text: "🗑 Ключи удалены и крипто-уничтожены (восстановить нельзя).\n\n" +
+      "Чтобы снова пользоваться ИИ, пришли новый ключ: <code>/apikey sk-ant-...</code>",
   };
 }
 

@@ -12,6 +12,7 @@ import {
   categoriesCommand,
   type CommandReply,
   dashboardCommand,
+  deleteKeysCommand,
   demoteCommand,
   grantCommand,
   groqKeyCommand,
@@ -137,6 +138,8 @@ export async function routeCommand(
       return await apiKeyCommand(ctx.sb, args, ctx.member);
     case "groqkey":
       return await groqKeyCommand(ctx.sb, args, ctx.member);
+    case "delete_keys":
+      return await deleteKeysCommand(ctx.sb, ctx.member);
     case "web":
       return await webCommand(ctx.sb, ctx.member);
     case "web_logout":

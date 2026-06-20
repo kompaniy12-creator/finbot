@@ -24,6 +24,10 @@ import { dispatch, parseCommand, refuseUnauthorized } from "./router.ts";
 import { handleCallback } from "./callbacks.ts";
 import { advanceOnboarding, onboardingGreeting } from "./onboarding.ts";
 import { isLocale } from "../_shared/i18n.ts";
+import { recentEventCount, recordSecurityEvent } from "../_shared/security_audit.ts";
+
+// Alert the admin when this many webhook auth failures happen within 10 minutes.
+const AUTH_FAIL_ALERT_THRESHOLD = 20;
 
 const envSchema = z.object({
   TELEGRAM_BOT_TOKEN: z.string().min(40),
@@ -228,6 +232,20 @@ Deno.serve(async (req: Request) => {
     !bot.matched && !checkSecret(req, env.TELEGRAM_WEBHOOK_SECRET ?? "", env.TELEGRAM_BOT_TOKEN)
   ) {
     log("warn", "webhook_unauthorized", { ip: clientIp || "unknown" });
+    await recordSecurityEvent(sb, {
+      action: "webhook_auth_fail",
+      result: "fail",
+      details: { ip: clientIp || "unknown" },
+    });
+    // Anomaly alert: a burst of auth failures (possible probing). Alert once when
+    // the threshold is first crossed in the window, to avoid spamming the admin.
+    const fails = await recentEventCount(sb, "webhook_auth_fail", 10 * 60 * 1000);
+    if (fails === AUTH_FAIL_ALERT_THRESHOLD) {
+      await notifyAdminWithButtons(
+        `⚠️ Безопасность: ${fails} неудачных аутентификаций вебхука за 10 минут (возможно сканирование).`,
+        [],
+      ).catch(() => {});
+    }
     return new Response("unauthorized", { status: 401 });
   }
 
