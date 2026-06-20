@@ -19,6 +19,19 @@ import { PER_TENANT_TABLES } from "../supabase/functions/_shared/tenant_db.ts";
 // PERMANENT entries (identity resolution: they query family_members /
 // web_sessions to FIND the tenant, so they cannot be tenant-scoped):
 // _shared/auth.ts, _shared/webapp_auth.ts, api-web-exchange/index.ts.
+// Minimized to the files that MUST do cross-tenant or identity-resolution raw
+// access - every entry is permanent-by-nature, not tracked debt. Anything that
+// could be tenant-scoped has been moved to tenantDb (e.g. setup-once).
+//
+// Identity resolution - these query family_members / web_sessions precisely to
+// FIND the tenant, so they cannot be tenant-scoped:
+//   auth.ts, webapp_auth.ts, api-web-exchange.
+// Budget - enforces a cross-tenant global spend cap (sum over all
+// anthropic_usage) plus a per-member cap keyed on family_member_id (already
+// unique to one tenant): budget.ts.
+// System cron jobs - run on a schedule and sweep ALL tenants; their driving
+// SELECT is cross-tenant by design, and per-row work is scoped with
+// tenantDb(sb, row.tenant_id): cron-*.
 const ALLOWED_RAW = new Set<string>([
   "supabase/functions/_shared/auth.ts",
   "supabase/functions/_shared/webapp_auth.ts",
@@ -34,7 +47,6 @@ const ALLOWED_RAW = new Set<string>([
   "supabase/functions/cron-retention/index.ts",
   "supabase/functions/cron-retraining/index.ts",
   "supabase/functions/cron-retry-failed/index.ts",
-  "supabase/functions/setup-once/index.ts",
 ]);
 
 const ROOT = "supabase/functions";
