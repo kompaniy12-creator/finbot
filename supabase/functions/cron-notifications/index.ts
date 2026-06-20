@@ -15,15 +15,12 @@ import { adminClient } from "../_shared/supabase.ts";
 import { log } from "../_shared/log.ts";
 import { checkCronAuth } from "../_shared/retry.ts";
 import { todayWarsawIso } from "../_shared/dates.ts";
-import { loadBotTokens, sendTg } from "../_shared/cron_tenants.ts";
+import { notifyUser } from "../_shared/notify.ts";
 
 interface Member {
   id: string;
   telegram_id: number;
   name: string;
-  tenant_id: string;
-  bot_id: string | null;
-  token?: string; // resolved bot token for this member's bot
 }
 
 interface PlannedPayment {
@@ -144,7 +141,6 @@ async function sendOnce(
     entity_id: entityId,
     event_key: eventKey,
     family_member_id: member.id,
-    tenant_id: member.tenant_id,
   });
   if (ins.error) {
     // 23505 unique_violation means we already sent it.
@@ -157,8 +153,7 @@ async function sendOnce(
     });
     return false;
   }
-  // Deliver via the member's OWN bot (family vs SaaS).
-  await sendTg(member.token, member.telegram_id, text);
+  await notifyUser(member.telegram_id, text);
   return true;
 }
 
@@ -188,16 +183,11 @@ Deno.serve(async (req: Request) => {
   const today = todayWarsawIso();
   const in3 = isoAdd(today, 3);
 
-  // Look up active members (with tenant + bot) once. Each notification is sent
-  // via the member's OWN bot, so SaaS testers get their reminders too.
-  const botTokens = await loadBotTokens(sb);
+  // Look up family members once - we need telegram_id to message.
   const membersRes = await sb.from("family_members")
-    .select("id, telegram_id, name, tenant_id, bot_id").eq("active", true);
+    .select("id, telegram_id, name").eq("active", true);
   const members = new Map<string, Member>();
-  for (const m of (membersRes.data ?? []) as Member[]) {
-    m.token = botTokens.get(m.bot_id ?? "");
-    members.set(m.id, m);
-  }
+  for (const m of (membersRes.data ?? []) as Member[]) members.set(m.id, m);
 
   const stats = {
     planned_3d: 0,
@@ -271,7 +261,6 @@ Deno.serve(async (req: Request) => {
             amount_pln: p.currency === "PLN" ? p.amount : p.amount,
             category_id: p.category_id,
             family_member_id: p.family_member_id,
-            tenant_id: m.tenant_id,
             source: "text",
             payment_method: p.payment_method,
             description: `Auto: planned payment "${p.name}"`,
@@ -282,11 +271,9 @@ Deno.serve(async (req: Request) => {
               entity_id: p.id,
               event_key: `auto_executed_${p.next_due_date}`,
               family_member_id: p.family_member_id,
-              tenant_id: m.tenant_id,
             });
             stats.planned_auto_executed++;
-            await sendTg(
-              m.token,
+            await notifyUser(
               m.telegram_id,
               `✅ Авто-проведено: ${verb} «${p.name}» ${sign}${
                 formatAmount(p.amount, p.currency)
