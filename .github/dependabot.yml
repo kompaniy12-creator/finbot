@@ -1,0 +1,12 @@
+version: 2
+updates:
+  # Keep GitHub Actions (CI) patched. Deno deps are pinned in deno.json and not
+  # covered by Dependabot ecosystems, so they are reviewed manually.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "ci"
