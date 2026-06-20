@@ -29,6 +29,7 @@ interface FamilyMemberRow {
   name: string;
   role: "admin" | "member";
   active: boolean;
+  locale: string;
 }
 
 Deno.serve(async (req: Request) => {
@@ -60,7 +61,7 @@ Deno.serve(async (req: Request) => {
 
   const fmIds = [...new Set(rows.map((r) => r.family_member_id))];
   const fmsRes = await sb.from("family_members").select(
-    "id, tenant_id, bot_id, telegram_id, name, role, active",
+    "id, tenant_id, bot_id, telegram_id, name, role, active, locale",
   )
     .in("id", fmIds);
   const fmsMap = new Map<string, FamilyMemberRow>(

@@ -16,6 +16,7 @@ import type { FamilyMember } from "./types.ts";
 import { tenantDb } from "./tenant_db.ts";
 import { callClaude } from "./claude.ts";
 import { buildAnalystSnapshot } from "./analyst_snapshot.ts";
+import { type Locale, LOCALE_ENGLISH_NAME } from "./i18n.ts";
 import { log } from "./log.ts";
 
 const MAX_TOOL_CALLS = 8; // hard cap per /ask to bound latency + cost
@@ -386,6 +387,9 @@ export async function runAskAgent(args: {
       {
         type: "text",
         text:
+          `ВАЖНО: отвечай пользователю на языке "${
+            LOCALE_ENGLISH_NAME[(viewer.locale ?? "ru") as Locale] ?? "Russian"
+          }".\n` +
           `Контекст: viewer_id=${viewer.id}, viewer_name=${viewer.name}, viewer_role=${viewer.role}.\n` +
           `Финансовый snapshot (только для общих вопросов; для точечных действий используй tool query_expenses):\n` +
           "```json\n" + JSON.stringify(snapshot) + "\n```\n\n" +

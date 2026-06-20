@@ -75,6 +75,9 @@ export async function advanceOnboarding(args: {
       locale = isLocale(code) ? code : "ru";
       await sb.from("tenants").update({ locale, onboarding_step: "name" })
         .eq("id", member.tenant_id);
+      // Keep the member's denormalized locale in sync so replies localize.
+      await tenantDb(sb, member.tenant_id).from("family_members").update({ locale })
+        .eq("id", member.id);
       return { text: t(locale, "ask_name") };
     }
     return { text: t("ru", "choose_lang"), reply_markup: langKeyboard() };

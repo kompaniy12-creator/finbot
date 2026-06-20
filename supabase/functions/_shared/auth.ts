@@ -12,7 +12,7 @@ export async function authorize(
   // the lookup by bot so we return the right membership.
   let q = sb
     .from("family_members")
-    .select("id, tenant_id, bot_id, telegram_id, name, role, active")
+    .select("id, tenant_id, bot_id, telegram_id, name, role, active, locale")
     .eq("telegram_id", telegramId)
     .eq("active", true);
   if (botId) q = q.eq("bot_id", botId);

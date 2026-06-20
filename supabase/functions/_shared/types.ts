@@ -18,6 +18,9 @@ export const FamilyMemberSchema = z.object({
   name: z.string(),
   role: RoleSchema,
   active: z.boolean(),
+  // Preferred language for bot replies (uk/ru/pl/en). Defaults to ru so older
+  // rows / fixtures without the column still parse.
+  locale: z.string().default("ru"),
   created_at: z.string().optional(),
 });
 export type FamilyMember = z.infer<typeof FamilyMemberSchema>;

@@ -29,6 +29,7 @@ const ADMIN: FamilyMember = {
   name: "Серхий",
   role: "admin",
   active: true,
+  locale: "ru",
 };
 const MEMBER: FamilyMember = {
   id: "fm-member",
@@ -37,6 +38,7 @@ const MEMBER: FamilyMember = {
   name: "Viktoriia",
   role: "member",
   active: true,
+  locale: "ru",
 };
 
 // Minimal table mock that supports order().order() and head-count selects.
