@@ -325,15 +325,16 @@ export async function dispatch(
       });
       return { chatId: msg.chat.id, reply };
     }
-    const kb = highAmountKeyboard(result);
+    const loc = input.member.locale;
+    const kb = highAmountKeyboard(result, loc);
     return {
       chatId: msg.chat.id,
       reply: kb
         ? {
-          text: formatReply(result),
+          text: formatReply(result, loc),
           reply_markup: kb as unknown as CommandReply["reply_markup"],
         }
-        : { text: formatReply(result) },
+        : { text: formatReply(result, loc) },
     };
   }
 
@@ -347,7 +348,7 @@ export async function dispatch(
       botToken: input.botToken,
       progress: prog ?? undefined,
     });
-    const text = formatVoiceReply(outcome);
+    const text = formatVoiceReply(outcome, input.member.locale);
     if (prog) {
       await prog.update(text);
       return null; // already edited the bubble, no extra reply needed
@@ -637,6 +638,7 @@ function formatPhotoReply(outcome: PhotoOutcome): string {
 
 function formatVoiceReply(
   outcome: Awaited<ReturnType<typeof processVoiceMessage>>,
+  locale = "ru",
 ): string {
   switch (outcome.kind) {
     case "too_long":
@@ -651,7 +653,7 @@ function formatVoiceReply(
       return "Не понял, что записать. Скажи как «кофе 12 zł».";
     case "ok": {
       const head = `Распознал: ${outcome.transcript.slice(0, 100)}\n\n`;
-      return head + formatReply(outcome.result);
+      return head + formatReply(outcome.result, locale);
     }
   }
 }

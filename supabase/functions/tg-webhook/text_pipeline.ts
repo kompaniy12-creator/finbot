@@ -8,6 +8,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { FamilyMember } from "../_shared/types.ts";
 import { tenantDb } from "../_shared/tenant_db.ts";
 import { callClaude } from "../_shared/claude.ts";
+import { t } from "../_shared/i18n.ts";
 import {
   buildParseExpensePrompt,
   type ParsedExpenseRow,
@@ -185,19 +186,19 @@ async function processSingleItem(
   };
 }
 
-export function formatReply(result: PipelineResult): string {
+export function formatReply(result: PipelineResult, locale = "ru"): string {
   if (result.expenses.length === 0) {
-    return "Не понял, что записать. Попробуй: «кофе 12 zł».";
+    return t(locale, "not_understood");
   }
   const lines = result.expenses.map((e) => {
     let tag = "";
     if (e.needs_confirmation) {
       if (e.high_amount && e.confidence !== "high") {
-        tag = " (крупная сумма + не уверен в категории)";
+        tag = t(locale, "tag_high_uncat");
       } else if (e.high_amount) {
-        tag = " (крупная сумма)";
+        tag = t(locale, "tag_high");
       } else {
-        tag = " (категория не точно)";
+        tag = t(locale, "tag_uncat");
       }
     }
     // ➕ green plus for income, plain "-" bullet for expense, so a glance at
@@ -213,11 +214,11 @@ export function formatReply(result: PipelineResult): string {
   const n = result.expenses.length;
   let head: string;
   if (hasIncome && !hasExpense) {
-    head = n === 1 ? "💰 Доход:" : `💰 ${n} дохода:`;
+    head = n === 1 ? t(locale, "rec_income_1") : t(locale, "rec_income_n", { n: String(n) });
   } else if (hasIncome && hasExpense) {
-    head = `Записал ${n} (доход + расход):`;
+    head = t(locale, "rec_mixed", { n: String(n) });
   } else {
-    head = n === 1 ? "Записал:" : `Записал ${n}:`;
+    head = n === 1 ? t(locale, "rec_saved") : t(locale, "rec_saved_n", { n: String(n) });
   }
 
   // Show the total in the SOURCE currency when all items share one (so "3*400 лек"
@@ -232,18 +233,20 @@ export function formatReply(result: PipelineResult): string {
     const outSum = result.expenses
       .filter((e) => e.kind !== "income")
       .reduce((acc, e) => acc + e.amount_pln, 0);
-    totalLine = `\nДоход: +${inSum.toFixed(2)} PLN\nРасход: -${outSum.toFixed(2)} PLN`;
+    totalLine = `\n${t(locale, "lbl_income")}: +${inSum.toFixed(2)} PLN\n${
+      t(locale, "lbl_expense")
+    }: -${outSum.toFixed(2)} PLN`;
   } else if (currencies.size === 1) {
     const cur = result.expenses[0]!.currency;
     const sourceTotal = result.expenses.reduce((acc, e) => acc + Number(e.amount), 0);
     const sign = hasIncome ? "+" : "";
-    const label = hasIncome ? "Получил" : "Всего";
+    const label = hasIncome ? t(locale, "total_got") : t(locale, "total_all");
     totalLine = `\n${label}: ${sign}${sourceTotal.toFixed(2)} ${cur}`;
   } else {
     const totalPln = result.expenses.reduce((acc, e) => acc + e.amount_pln, 0);
     const sign = hasIncome ? "+" : "";
-    const label = hasIncome ? "Получил" : "Всего";
-    totalLine = `\n${label}: ${sign}${totalPln.toFixed(2)} PLN (смешанные валюты)`;
+    const label = hasIncome ? t(locale, "total_got") : t(locale, "total_all");
+    totalLine = `\n${label}: ${sign}${totalPln.toFixed(2)} PLN${t(locale, "mixed_ccy")}`;
   }
 
   // Heads-up if any row was dated outside the current Warsaw month (the
@@ -258,7 +261,7 @@ export function formatReply(result: PipelineResult): string {
     ),
   ];
   const dateHint = outOfMonth.length > 0
-    ? `\n\n_Учтено за ${outOfMonth.join(", ")}. В дашборде переключи на «Период» чтобы увидеть._`
+    ? t(locale, "date_hint", { months: outOfMonth.join(", ") })
     : "";
 
   const warns = result.warnings.length ? "\n\nWarn: " + result.warnings.join("; ") : "";
@@ -269,7 +272,7 @@ export function formatReply(result: PipelineResult): string {
  * Build the inline keyboard markup for high-amount confirmation
  * (per SPEC §6.6). Returns null if none of the expenses need confirmation.
  */
-export function highAmountKeyboard(result: PipelineResult): {
+export function highAmountKeyboard(result: PipelineResult, locale = "ru"): {
   inline_keyboard: Array<Array<{ text: string; callback_data: string }>>;
 } | null {
   const needs = result.expenses.find((e) => e.needs_confirmation);
@@ -277,9 +280,9 @@ export function highAmountKeyboard(result: PipelineResult): {
   return {
     inline_keyboard: [
       [
-        { text: "Да", callback_data: `conf_yes:${needs.id}` },
-        { text: "Изменить", callback_data: `conf_edit:${needs.id}` },
-        { text: "Отмена", callback_data: `conf_no:${needs.id}` },
+        { text: t(locale, "btn_yes"), callback_data: `conf_yes:${needs.id}` },
+        { text: t(locale, "btn_edit"), callback_data: `conf_edit:${needs.id}` },
+        { text: t(locale, "btn_cancel"), callback_data: `conf_no:${needs.id}` },
       ],
     ],
   };
