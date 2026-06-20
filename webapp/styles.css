@@ -878,6 +878,13 @@ footer {
   font-size: 18px;
   line-height: 1;
 }
+/* Inline SVG nav icons inherit the button color (grey when idle, brand green
+   when active), so they track the theme and the selected-tab highlight. */
+.bottom-nav .nav-btn .nav-icon svg {
+  width: 24px;
+  height: 24px;
+  display: block;
+}
 .bottom-nav .nav-btn .nav-label {
   font-weight: 500;
   white-space: nowrap;
