@@ -878,18 +878,27 @@ footer {
   font-size: 18px;
   line-height: 1;
 }
-/* 3D brand icons (PNG with transparent background). Idle tabs are dimmed a
-   touch; the active tab shows the icon at full strength to pair with the green
-   label + pill highlight. */
+/* 3D brand icons (PNG with transparent background). Idle tabs are slightly
+   muted; tapping a tab lights its icon up with a green glow and the label
+   glows green to make the selection obvious. */
 .bottom-nav .nav-btn .nav-icon img {
-  width: 26px;
-  height: 26px;
+  width: 27px;
+  height: 27px;
   display: block;
-  opacity: 0.7;
-  transition: opacity 0.15s ease;
+  opacity: 0.82;
+  transition: opacity 0.18s ease, transform 0.18s ease, filter 0.18s ease;
 }
 .bottom-nav .nav-btn.active .nav-icon img {
   opacity: 1;
+  transform: scale(1.12);
+  filter: drop-shadow(0 0 7px rgba(47, 224, 74, 0.75)) brightness(1.12);
+}
+.bottom-nav .nav-btn .nav-label {
+  transition: text-shadow 0.18s ease, color 0.18s ease;
+}
+.bottom-nav .nav-btn.active .nav-label {
+  color: var(--neon-green);
+  text-shadow: 0 0 9px rgba(47, 224, 74, 0.7);
 }
 .bottom-nav .nav-btn .nav-label {
   font-weight: 500;
