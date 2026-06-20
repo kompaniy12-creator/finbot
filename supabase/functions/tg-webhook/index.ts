@@ -12,6 +12,7 @@ import { z } from "zod";
 import { adminClient } from "../_shared/supabase.ts";
 import { log } from "../_shared/log.ts";
 import { authorize } from "../_shared/auth.ts";
+import { seedCategoriesForTenant } from "../_shared/seed_categories.ts";
 import { dedupe, markDone, markError } from "../_shared/idempotency.ts";
 import { checkSecret } from "../_shared/webhook_secret.ts";
 import { isTelegramIp } from "../_shared/telegram_ip.ts";
@@ -42,32 +43,50 @@ function getEnv() {
   return envCached;
 }
 
-// Resolve which bot this request belongs to from the webhook secret header,
-// and return that bot's reply token. Falls back to the family bot's token
-// (legacy ?secret= path or the single-bot case). Cached per cold start.
-let botsCache:
-  | Array<{ id: string; webhook_secret_name: string; token_secret_name: string }>
-  | null = null;
-async function resolveBotToken(
+// Resolve which bot this request belongs to from the webhook secret header.
+// Returns that bot's id (for tenant/member scoping), reply token, and mode.
+// Matching is by X-Telegram-Bot-Api-Secret-Token; the family bot uses the
+// legacy ?secret= path (no header), so when nothing matches we fall back to the
+// family-mode bot row. Cached per cold start.
+interface BotRow {
+  id: string;
+  mode: "family" | "saas";
+  webhook_secret_name: string;
+  token_secret_name: string;
+}
+let botsCache: BotRow[] | null = null;
+
+async function loadBots(sb: ReturnType<typeof adminClient>): Promise<BotRow[]> {
+  if (!botsCache) {
+    const r = await sb.from("bots")
+      .select("id, mode, webhook_secret_name, token_secret_name")
+      .eq("active", true);
+    botsCache = (r.data ?? []) as BotRow[];
+  }
+  return botsCache;
+}
+
+async function resolveBot(
   sb: ReturnType<typeof adminClient>,
   req: Request,
-): Promise<{ botId: string | null; token: string }> {
-  const fallback = getEnv().TELEGRAM_BOT_TOKEN;
+): Promise<
+  { botId: string | null; token: string; mode: "family" | "saas"; matched: boolean }
+> {
+  const fallbackToken = getEnv().TELEGRAM_BOT_TOKEN;
+  const bots = await loadBots(sb);
   const header = req.headers.get("x-telegram-bot-api-secret-token") ?? "";
-  if (!header) return { botId: null, token: fallback };
-  if (!botsCache) {
-    const r = await sb.from("bots").select("id, webhook_secret_name, token_secret_name")
-      .eq("active", true);
-    botsCache = (r.data ?? []) as Array<
-      { id: string; webhook_secret_name: string; token_secret_name: string }
-    >;
-  }
-  for (const b of botsCache ?? []) {
-    if (Deno.env.get(b.webhook_secret_name) === header) {
-      return { botId: b.id, token: Deno.env.get(b.token_secret_name) ?? fallback };
-    }
-  }
-  return { botId: null, token: fallback };
+  const matched = header
+    ? bots.find((b) => Deno.env.get(b.webhook_secret_name) === header)
+    : undefined;
+  // No header match -> the family bot (legacy ?secret= path).
+  const bot = matched ?? bots.find((b) => b.mode === "family");
+  if (!bot) return { botId: null, token: fallbackToken, mode: "family", matched: false };
+  return {
+    botId: bot.id,
+    token: Deno.env.get(bot.token_secret_name) ?? fallbackToken,
+    mode: bot.mode,
+    matched: !!matched,
+  };
 }
 
 async function tgRequest(
@@ -194,9 +213,17 @@ Deno.serve(async (req: Request) => {
     log("warn", "webhook_non_telegram_ip", { ip: clientIp });
   }
 
-  // P1: webhook secret. Prefer Telegram's secret_token header; accept the
-  // legacy URL ?secret=<bot_token> until the webhook is re-registered.
-  if (!checkSecret(req, env.TELEGRAM_WEBHOOK_SECRET ?? "", env.TELEGRAM_BOT_TOKEN)) {
+  // Identify the bot this request belongs to (by webhook secret header). Needed
+  // both to authorize the request and to reply with the right token.
+  const sb = adminClient();
+  const bot = await resolveBot(sb, req);
+  const botToken = bot.token;
+
+  // P1: webhook secret. Valid if the secret_token header matches an active bot
+  // (the SaaS bot's path), OR the legacy ?secret=<family_bot_token> URL param.
+  if (
+    !bot.matched && !checkSecret(req, env.TELEGRAM_WEBHOOK_SECRET ?? "", env.TELEGRAM_BOT_TOKEN)
+  ) {
     log("warn", "webhook_unauthorized", { ip: clientIp || "unknown" });
     return new Response("unauthorized", { status: 401 });
   }
@@ -223,9 +250,6 @@ Deno.serve(async (req: Request) => {
     return new Response("ok", { status: 200 });
   }
 
-  const sb = adminClient();
-  const { token: botToken } = await resolveBotToken(sb, req);
-
   // P2: cheap webhook-wide rate limit BEFORE we authorize - even unauthorized
   // hits go in the bucket so a spam attack from a known telegram_id can't
   // hammer authorize().
@@ -240,8 +264,51 @@ Deno.serve(async (req: Request) => {
     return new Response("rate_limited", { status: 429 });
   }
 
-  const member = await authorize(fromId, sb);
+  const member = await authorize(bot.botId, fromId, sb);
   if (!member) {
+    // SaaS bot: self-serve onboarding via invite code. An unknown user must
+    // send "/start <code>"; a valid code creates their own tenant + seeds
+    // categories. No code -> instructions. The family bot keeps the
+    // pending-access / admin-approval flow below.
+    if (bot.mode === "saas") {
+      const chatId = msg?.chat?.id ?? update.callback_query?.from.id ?? fromId;
+      const parsedCmd = parseCommand(msg?.text);
+      const code = parsedCmd?.cmd === "start" ? parsedCmd.args.trim() : "";
+      if (!code) {
+        await sendReply(chatId, {
+          text: "Привет! Это FinBot. Чтобы начать, пришли код приглашения так:\n" +
+            "<code>/start ТВОЙ_КОД</code>",
+        }, botToken);
+        return new Response("ok", { status: 200 });
+      }
+      const firstName = msg?.from?.first_name ?? "Tester";
+      const rpc = await sb.rpc("redeem_invite", {
+        p_code: code,
+        p_telegram_id: fromId,
+        p_bot_id: bot.botId,
+        p_first_name: firstName,
+      });
+      const res = (rpc.data ?? {}) as { tenant_id?: string; created?: boolean; error?: string };
+      if (rpc.error || res.error || !res.tenant_id) {
+        await sendReply(chatId, {
+          text: "Код недействителен или уже использован. Проверь и пришли заново:\n" +
+            "<code>/start ТВОЙ_КОД</code>",
+        }, botToken);
+        return new Response("ok", { status: 200 });
+      }
+      if (res.created) {
+        await seedCategoriesForTenant(sb, res.tenant_id);
+        log("info", "saas_onboarded", { telegram_id: fromId, tenant_id: res.tenant_id });
+      }
+      await sendReply(chatId, {
+        text: "✅ Готово, твой FinBot настроен!\n\n" +
+          "Просто пиши траты текстом («кофе 12 zł»), шли фото чеков или голосовые - " +
+          "я всё запишу и разложу по категориям. Открой «Дашборд» в меню бота, чтобы " +
+          "видеть статистику, доходы, долги и кредиты.",
+      }, botToken);
+      return new Response("ok", { status: 200 });
+    }
+
     log("warn", "webhook_unauthorized_telegram_user", { telegram_id: fromId });
     const out = refuseUnauthorized(update);
     if (out) await sendReply(out.chatId, out.reply, botToken);

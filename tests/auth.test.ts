@@ -36,14 +36,14 @@ Deno.test("authorize: returns FamilyMember for active whitelisted telegram_id", 
       active: true,
     },
   ]);
-  const m = await authorize(1436806270, sb);
+  const m = await authorize(null, 1436806270, sb);
   assertEquals(m?.name, "Серхий");
   assertEquals(m?.role, "admin");
 });
 
 Deno.test("authorize: returns null for unknown telegram_id", async () => {
   const sb = mockSb([]);
-  const m = await authorize(99999, sb);
+  const m = await authorize(null, 99999, sb);
   assertEquals(m, null);
 });
 
@@ -57,7 +57,7 @@ Deno.test("authorize: returns null when active=false", async () => {
       active: false,
     },
   ]);
-  const m = await authorize(555, sb);
+  const m = await authorize(null, 555, sb);
   assertEquals(m, null);
 });
 

@@ -101,16 +101,39 @@ export async function authenticateInitData(
   initData: string,
   sb: SupabaseClient,
 ): Promise<FamilyMember | null> {
-  const token = Deno.env.get("TELEGRAM_BOT_TOKEN");
-  if (!token) return null;
-  const valid = await verifyInitData(initData, token);
-  if (!valid) return null;
-  const { data, error } = await sb
+  // The Mini App can be launched by any of our bots, so initData may be signed
+  // by the family bot or the SaaS bot. Try each active bot's token; the one
+  // whose HMAC validates identifies the bot, and we scope the member lookup to
+  // that bot so a SaaS user resolves to their own tenant.
+  const botsRes = await sb.from("bots").select("id, token_secret_name").eq("active", true);
+  const bots = (botsRes.data ?? []) as Array<{ id: string; token_secret_name: string }>;
+  const candidates: Array<{ botId: string | null; token: string }> = [];
+  for (const b of bots) {
+    const t = Deno.env.get(b.token_secret_name);
+    if (t) candidates.push({ botId: b.id, token: t });
+  }
+  if (candidates.length === 0) {
+    const t = Deno.env.get("TELEGRAM_BOT_TOKEN");
+    if (t) candidates.push({ botId: null, token: t });
+  }
+
+  let matched: { botId: string | null; userId: number } | null = null;
+  for (const c of candidates) {
+    const valid = await verifyInitData(initData, c.token);
+    if (valid) {
+      matched = { botId: c.botId, userId: valid.userId };
+      break;
+    }
+  }
+  if (!matched) return null;
+
+  let q = sb
     .from("family_members")
     .select("id, tenant_id, bot_id, telegram_id, name, role, active")
-    .eq("telegram_id", valid.userId)
-    .eq("active", true)
-    .maybeSingle();
+    .eq("telegram_id", matched.userId)
+    .eq("active", true);
+  if (matched.botId) q = q.eq("bot_id", matched.botId);
+  const { data, error } = await q.maybeSingle();
   if (error) {
     log("error", "webapp_auth_db_error", { error: error.message });
     return null;

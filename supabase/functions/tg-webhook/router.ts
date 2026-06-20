@@ -18,6 +18,7 @@ import {
   historyCommand,
   meCommand,
   membersCommand,
+  mintInviteCommand,
   promoteCommand,
   revokeCommand,
   runAskAndBuildReply,
@@ -71,6 +72,7 @@ const ADMIN_COMMANDS = new Set([
   "promote",
   "demote",
   "subscriptions",
+  "mint_invite",
 ]);
 
 export async function routeCommand(
@@ -123,6 +125,8 @@ export async function routeCommand(
       return await demoteCommand(ctx.sb, args, ctx.member);
     case "subscriptions":
       return await subscriptionsCommand(ctx.sb, ctx.member);
+    case "mint_invite":
+      return await mintInviteCommand(ctx.sb, args, ctx.member);
     case "web":
       return await webCommand(ctx.sb, ctx.member);
     case "web_logout":

@@ -516,6 +516,42 @@ async function changeRoleCommand(
   return { text: `✅ ${m.name} ${verb}.` };
 }
 
+// Generate a short, human-friendly invite code (no ambiguous chars).
+function genInviteCode(): string {
+  const bytes = new Uint8Array(6);
+  crypto.getRandomValues(bytes);
+  const alphabet = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+  let s = "";
+  for (const b of bytes) s += alphabet[b % alphabet.length];
+  return "FB-" + s;
+}
+
+// /mint_invite [N] - admin only. Creates N single-use invite codes for the SaaS
+// bot and returns them. invite_codes is a global table (not per-tenant).
+export async function mintInviteCommand(
+  sb: SupabaseClient,
+  args: string,
+  actor: FamilyMember,
+): Promise<CommandReply> {
+  const n = Math.min(Math.max(parseInt(args.trim(), 10) || 1, 1), 10);
+  const codes = Array.from({ length: n }, genInviteCode);
+  const rows = codes.map((code) => ({
+    code,
+    created_by_telegram_id: actor.telegram_id,
+    max_uses: 1,
+  }));
+  const ins = await sb.from("invite_codes").insert(rows);
+  if (ins.error) {
+    return { text: `Не смог создать коды: ${ins.error.message}` };
+  }
+  return {
+    text: `🎟 ${n === 1 ? "Код приглашения" : `Коды приглашения (${n})`} ` +
+      `для публичного бота (по одному использованию):\n\n` +
+      codes.map((c) => `<code>${c}</code>`).join("\n") +
+      `\n\nОтдай тестеру: пусть напишет публичному боту <code>/start КОД</code>.`,
+  };
+}
+
 export function unsupportedReply(): CommandReply {
   return {
     text:
