@@ -20,15 +20,15 @@
     <title>FinBot Dashboard</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
-    <link rel="stylesheet" href="./styles.css?v=1.16.2" />
+    <link rel="stylesheet" href="./styles.css?v=1.17.0" />
   </head>
   <body>
     <div id="gate" class="gate">
       <div class="gate-card">
         <h1>FinBot</h1>
-        <p>Войти в дашборд:</p>
+        <p data-i18n="gate_login">Войти в дашборд:</p>
         <ul style="text-align: left; padding-left: 20px; line-height: 1.6">
-          <li>в Telegram → нажми «Дашборд» в меню бота;</li>
+          <li data-i18n="gate_tg">в Telegram → нажми «Дашборд» в меню бота;</li>
           <li>в браузере на компе → попроси у бота ссылку командой <code>/web</code>.</li>
         </ul>
       </div>
@@ -38,14 +38,18 @@
       <header class="app-header">
         <h1 id="hello">FinBot</h1>
         <div class="ops-toggle tab-only show-on-ops">
-          <button type="button" class="ops-kind-btn active" data-txkind="expense">💸 Расход</button>
-          <button type="button" class="ops-kind-btn" data-txkind="income">💰 Доход</button>
+          <button type="button" class="ops-kind-btn active" data-txkind="expense">
+            💸 <span data-i18n="kind_expense">Расход</span>
+          </button>
+          <button type="button" class="ops-kind-btn" data-txkind="income">
+            💰 <span data-i18n="kind_income">Доход</span>
+          </button>
         </div>
         <div class="period-tabs tab-only show-on-dashboard show-on-ops">
-          <button data-period="day">День</button>
-          <button data-period="week">Неделя</button>
-          <button class="active" data-period="month">Месяц</button>
-          <button data-period="custom">Период</button>
+          <button data-period="day" data-i18n="period_day">День</button>
+          <button data-period="week" data-i18n="period_week">Неделя</button>
+          <button class="active" data-period="month" data-i18n="period_month">Месяц</button>
+          <button data-period="custom" data-i18n="period_custom">Период</button>
         </div>
         <div
           id="custom-range"
@@ -66,48 +70,48 @@
 
       <section class="kpis">
         <div class="kpi kpi-net tab-only show-on-dashboard">
-          <label>Нетто</label>
+          <label data-i18n="kpi_net">Нетто</label>
           <strong id="kpi-net">- EUR</strong>
           <div id="kpi-net-delta" class="kpi-delta"></div>
         </div>
         <div class="kpi kpi-total tab-only show-on-dashboard show-on-ops-expense">
-          <label>Расход</label>
+          <label data-i18n="kpi_expense">Расход</label>
           <strong id="kpi-total">- EUR</strong>
           <div id="kpi-total-delta" class="kpi-delta"></div>
           <div id="kpi-forecast" class="kpi-forecast"></div>
           <ul id="kpi-by-currency" class="kpi-currency-list"></ul>
         </div>
         <div class="kpi kpi-income tab-only show-on-dashboard show-on-ops-income">
-          <label>Доход</label>
+          <label data-i18n="kpi_income">Доход</label>
           <strong id="kpi-income">- EUR</strong>
           <div id="kpi-income-delta" class="kpi-delta"></div>
         </div>
         <div class="kpi tab-only show-on-dashboard">
-          <label>Записей</label>
+          <label data-i18n="kpi_count">Записей</label>
           <strong id="kpi-count">-</strong>
           <div id="kpi-count-delta" class="kpi-delta"></div>
         </div>
         <div class="kpi tab-only show-on-dashboard">
-          <label>Топ-категория</label><strong id="kpi-top">-</strong>
+          <label data-i18n="kpi_top">Топ-категория</label><strong id="kpi-top">-</strong>
         </div>
       </section>
 
       <section class="finance-health tab-only show-on-dashboard">
-        <h3 class="fh-title">Здоровье финансов</h3>
+        <h3 class="fh-title" data-i18n="fh_title">Здоровье финансов</h3>
         <div class="fh-grid">
           <div class="fh-card" id="fh-savings-card">
-            <label>Норма сбережений</label>
+            <label data-i18n="fh_savings">Норма сбережений</label>
             <strong id="fh-savings-rate">-</strong>
             <div id="fh-savings-delta" class="kpi-delta"></div>
             <small id="fh-savings-hint" class="fh-hint"></small>
           </div>
           <div class="fh-card" id="fh-free-card">
-            <label>Свободно за период</label>
+            <label data-i18n="fh_free">Свободно за период</label>
             <strong id="fh-free">-</strong>
-            <small class="fh-hint">доход минус расход</small>
+            <small class="fh-hint" data-i18n="fh_free_hint">доход минус расход</small>
           </div>
           <div class="fh-card" id="fh-debt-card">
-            <label>Долговая нагрузка</label>
+            <label data-i18n="fh_debt">Долговая нагрузка</label>
             <strong id="fh-debt-load">-</strong>
             <small id="fh-debt-hint" class="fh-hint"></small>
           </div>
@@ -117,15 +121,15 @@
       <section class="chart-row tab-only show-on-dashboard">
         <div class="chart-card chart-card-donut">
           <div class="chart-head">
-            <h3>По категориям</h3>
-            <span>доля расходов</span>
+            <h3 data-i18n="chart_by_cat">По категориям</h3>
+            <span data-i18n="chart_by_cat_sub">доля расходов</span>
           </div>
           <canvas id="donut"></canvas>
         </div>
         <div class="chart-card chart-card-line">
           <div class="chart-head">
-            <h3>По дням</h3>
-            <span>динамика периода</span>
+            <h3 data-i18n="chart_by_day">По дням</h3>
+            <span data-i18n="chart_by_day_sub">динамика периода</span>
           </div>
           <canvas id="line"></canvas>
         </div>
@@ -133,8 +137,8 @@
 
       <section class="chart-card chart-card-wide tab-only show-on-dashboard">
         <div class="chart-head">
-          <h3>Топ-5</h3>
-          <span>главные категории</span>
+          <h3 data-i18n="chart_top5">Топ-5</h3>
+          <span data-i18n="chart_top5_sub">главные категории</span>
         </div>
         <canvas id="bar"></canvas>
       </section>
@@ -143,8 +147,8 @@
         class="chart-card chart-card-wide heatmap-card tab-only show-on-dashboard"
       >
         <div class="chart-head">
-          <h3>Активность по дням</h3>
-          <span>ярче ячейка = больше расход</span>
+          <h3 data-i18n="chart_activity">Активность по дням</h3>
+          <span data-i18n="chart_activity_sub">ярче ячейка = больше расход</span>
         </div>
         <div class="hm-dow-row">
           <div>пн</div>
@@ -157,42 +161,42 @@
         </div>
         <div id="heatmap" class="heatmap"></div>
         <div class="hm-legend">
-          <span>меньше</span>
+          <span data-i18n="hm_less">меньше</span>
           <div class="hm-cell hm-lvl-0"></div>
           <div class="hm-cell hm-lvl-1"></div>
           <div class="hm-cell hm-lvl-2"></div>
           <div class="hm-cell hm-lvl-3"></div>
           <div class="hm-cell hm-lvl-4"></div>
-          <span>больше</span>
+          <span data-i18n="hm_more">больше</span>
         </div>
       </section>
 
       <section class="categories tab-only show-on-dashboard">
         <header class="categories-head">
-          <h3>Категории за период</h3>
-          <small style="color: var(--hint)">только с тратами</small>
+          <h3 data-i18n="cats_period">Категории за период</h3>
+          <small style="color: var(--hint)" data-i18n="cats_only_spent">только с тратами</small>
         </header>
         <ul id="cat-list" class="cat-list"></ul>
       </section>
 
       <section class="transactions tab-only show-on-ops">
         <header class="tx-header">
-          <h3>Транзакции</h3>
-          <input id="search" type="search" placeholder="поиск" />
+          <h3 data-i18n="tx_title">Транзакции</h3>
+          <input id="search" type="search" placeholder="поиск" data-i18n-ph="tx_search" />
           <button id="export">CSV</button>
         </header>
         <div class="tx-filters">
           <select id="filter-category">
-            <option value="">все категории</option>
+            <option value="" data-i18n="tx_all_cats">все категории</option>
           </select>
           <select id="filter-member">
-            <option value="">вся семья</option>
+            <option value="" data-i18n="tx_all_family">вся семья</option>
           </select>
           <select id="filter-source">
-            <option value="">все источники</option>
-            <option value="photo">фото</option>
-            <option value="text">текст</option>
-            <option value="voice">голос</option>
+            <option value="" data-i18n="tx_all_sources">все источники</option>
+            <option value="photo" data-i18n="src_photo">фото</option>
+            <option value="text" data-i18n="src_text">текст</option>
+            <option value="voice" data-i18n="src_voice">голос</option>
           </select>
           <button id="filter-reset" type="button" title="Сбросить фильтры">↺</button>
           <button
@@ -283,7 +287,7 @@
             </li>
             <li>
               <strong>Версия</strong>
-              <p id="settings-version">FinBot v1.16.2</p>
+              <p id="settings-version">FinBot v1.17.0</p>
             </li>
           </ul>
         </div>
@@ -423,37 +427,37 @@
         </div>
       </section>
 
-      <footer><small id="version">FinBot v1.16.2</small></footer>
+      <footer><small id="version">FinBot v1.17.0</small></footer>
     </main>
 
     <nav id="bottom-nav" class="bottom-nav hidden">
       <button class="nav-btn active" data-tab="dashboard">
-        <span class="nav-icon"><img src="./icons/nav-dashboard.png?v=1.16.2" alt="" /></span>
-        <span class="nav-label">Дашборд</span>
+        <span class="nav-icon"><img src="./icons/nav-dashboard.png?v=1.17.0" alt="" /></span>
+        <span class="nav-label" data-i18n="nav_dashboard">Дашборд</span>
       </button>
       <button class="nav-btn" data-tab="ops">
-        <span class="nav-icon"><img src="./icons/nav-ops.png?v=1.16.2" alt="" /></span>
-        <span class="nav-label">Операции</span>
+        <span class="nav-icon"><img src="./icons/nav-ops.png?v=1.17.0" alt="" /></span>
+        <span class="nav-label" data-i18n="nav_ops">Операции</span>
       </button>
       <button class="nav-btn" data-tab="planning">
-        <span class="nav-icon"><img src="./icons/nav-planning.png?v=1.16.2" alt="" /></span>
-        <span class="nav-label">План</span>
+        <span class="nav-icon"><img src="./icons/nav-planning.png?v=1.17.0" alt="" /></span>
+        <span class="nav-label" data-i18n="nav_planning">План</span>
       </button>
       <button class="nav-btn" data-tab="debts">
-        <span class="nav-icon"><img src="./icons/nav-debts.png?v=1.16.2" alt="" /></span>
-        <span class="nav-label">Долги</span>
+        <span class="nav-icon"><img src="./icons/nav-debts.png?v=1.17.0" alt="" /></span>
+        <span class="nav-label" data-i18n="nav_debts">Долги</span>
       </button>
       <button class="nav-btn" data-tab="credits">
-        <span class="nav-icon"><img src="./icons/nav-credits.png?v=1.16.2" alt="" /></span>
-        <span class="nav-label">Кредит</span>
+        <span class="nav-icon"><img src="./icons/nav-credits.png?v=1.17.0" alt="" /></span>
+        <span class="nav-label" data-i18n="nav_credits">Кредит</span>
       </button>
       <button class="nav-btn" data-tab="investments">
-        <span class="nav-icon"><img src="./icons/nav-investments.png?v=1.16.2" alt="" /></span>
-        <span class="nav-label">Инвест.</span>
+        <span class="nav-icon"><img src="./icons/nav-investments.png?v=1.17.0" alt="" /></span>
+        <span class="nav-label" data-i18n="nav_investments">Инвест.</span>
       </button>
       <button class="nav-btn" data-tab="settings">
-        <span class="nav-icon"><img src="./icons/nav-settings.png?v=1.16.2" alt="" /></span>
-        <span class="nav-label">Настр.</span>
+        <span class="nav-icon"><img src="./icons/nav-settings.png?v=1.17.0" alt="" /></span>
+        <span class="nav-label" data-i18n="nav_settings">Настр.</span>
       </button>
     </nav>
 
@@ -1039,7 +1043,8 @@
       </div>
     </div>
 
-    <script src="./tg-webapp.js?v=1.16.2"></script>
-    <script src="./app.js?v=1.16.2"></script>
+    <script src="./i18n.js?v=1.17.0"></script>
+    <script src="./tg-webapp.js?v=1.17.0"></script>
+    <script src="./app.js?v=1.17.0"></script>
   </body>
 </html>

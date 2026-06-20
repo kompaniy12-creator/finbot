@@ -10,7 +10,7 @@ const TX_PAGE = 50;
 // version.json on the server carries the latest published version; when it is
 // newer than what this loaded build reports, we hard-reload so every user picks
 // up changes automatically without reinstalling anything.
-const APP_VERSION = "1.16.2";
+const APP_VERSION = "1.17.0";
 
 // Poll the published version and reload once if the server moved ahead. Telegram
 // keeps the webview alive in the background and may serve a cached index.html, so
@@ -599,6 +599,11 @@ async function loadCategoriesAndFamily() {
   state.family = new Map();
   for (const fm of f.items || []) state.family.set(fm.id, fm);
   state.me = m.me ?? null;
+  // Apply the member's UI language to the static interface.
+  if (globalThis.setLocale) {
+    globalThis.setLocale((state.me && state.me.locale) || "ru");
+    globalThis.applyI18n();
+  }
 }
 
 function fhSetTone(el, tone) {
