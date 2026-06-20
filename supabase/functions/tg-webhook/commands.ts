@@ -121,7 +121,7 @@ export function dashboardCommand(): CommandReply {
   return {
     text: "Открой дашборд:",
     reply_markup: {
-      inline_keyboard: [[{ text: "Дашборд", web_app: { url } }]],
+      inline_keyboard: [[{ text: "FinApp", web_app: { url } }]],
     },
   };
 }

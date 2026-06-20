@@ -2,16 +2,20 @@
   --bg: var(--tg-theme-bg-color, #ffffff);
   --text: var(--tg-theme-text-color, #000000);
   --hint: var(--tg-theme-hint-color, #999999);
-  --link: var(--tg-theme-link-color, #2481cc);
-  --button: var(--tg-theme-button-color, #2481cc);
-  --button-text: var(--tg-theme-button-text-color, #ffffff);
+  /* Brand accent: the neon green from the FinBot logo/avatar. We pin the
+     primary accent (links + buttons) to the brand green instead of inheriting
+     Telegram's theme button color, so the app carries a consistent identity. */
+  --brand: #16c24a;
+  --link: var(--brand);
+  --button: var(--brand);
+  --button-text: #ffffff;
   --secondary-bg: var(--tg-theme-secondary-bg-color, #efeff3);
   --card-bg: color-mix(in srgb, var(--secondary-bg) 70%, var(--bg));
   --line: color-mix(in srgb, var(--hint) 18%, transparent);
   --shadow: 0 18px 48px rgba(8, 18, 36, 0.18);
   --neon-blue: #2f80ff;
   --neon-cyan: #00e5ff;
-  --neon-green: #20f39b;
+  --neon-green: #2fe04a;
   --neon-pink: #ff4fd8;
 }
 
@@ -882,8 +886,8 @@ footer {
   max-width: 100%;
 }
 .bottom-nav .nav-btn.active {
-  color: var(--neon-blue);
-  background: color-mix(in srgb, var(--neon-blue) 12%, transparent);
+  color: var(--neon-green);
+  background: color-mix(in srgb, var(--neon-green) 14%, transparent);
 }
 
 /* Lift main content above the fixed nav so the last section isn't covered. */
@@ -1246,8 +1250,8 @@ body.theme-light {
   --bg: #ffffff;
   --text: #111111;
   --hint: #808080;
-  --link: #2481cc;
-  --button: #2481cc;
+  --link: var(--brand);
+  --button: var(--brand);
   --button-text: #ffffff;
   --secondary-bg: #f4f4f7;
   --card-bg: #ffffff;
@@ -1257,8 +1261,8 @@ body.theme-dark {
   --bg: #18181a;
   --text: #f0f0f3;
   --hint: #8a8a8f;
-  --link: #6cb4ff;
-  --button: #2481cc;
+  --link: #2fe06a;
+  --button: var(--brand);
   --button-text: #ffffff;
   --secondary-bg: #25262a;
   --card-bg: #1f1f24;

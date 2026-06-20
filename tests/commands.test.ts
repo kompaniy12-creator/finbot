@@ -117,7 +117,7 @@ Deno.test("helpCommand: shows admin section for admin only", () => {
 Deno.test("dashboardCommand: returns web_app button", () => {
   const r = dashboardCommand();
   const btn = r.reply_markup!.inline_keyboard[0]![0]!;
-  assertEquals(btn.text, "Дашборд");
+  assertEquals(btn.text, "FinApp");
   assertStringIncludes(btn.web_app!.url, "github.io");
 });
 

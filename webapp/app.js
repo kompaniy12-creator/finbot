@@ -5,6 +5,36 @@ const SUPABASE_URL = "https://bltbuptzsswaislqagwe.supabase.co";
 const API_BASE = SUPABASE_URL + "/functions/v1";
 const TX_PAGE = 50;
 
+// Single source of truth for the running build. Bumped on every release via
+// scripts/bump_version.sh (which also rewrites the ?v= cache-bust and CHANGELOG).
+// version.json on the server carries the latest published version; when it is
+// newer than what this loaded build reports, we hard-reload so every user picks
+// up changes automatically without reinstalling anything.
+const APP_VERSION = "1.3.0";
+
+// Poll the published version and reload once if the server moved ahead. Telegram
+// keeps the webview alive in the background and may serve a cached index.html, so
+// a plain ?v= bump is not always enough - this guarantees propagation to all
+// users. Guarded so we reload at most once per foreground.
+let updateReloadDone = false;
+async function checkForUpdate() {
+  if (updateReloadDone) return;
+  try {
+    const r = await fetch("./version.json?t=" + Date.now(), { cache: "no-store" });
+    if (!r.ok) return;
+    const published = (await r.json())?.version;
+    if (published && published !== APP_VERSION) {
+      updateReloadDone = true;
+      // Cache-bust the document itself so we don't get the stale cached shell.
+      const u = new URL(location.href);
+      u.searchParams.set("v", published);
+      location.replace(u.toString());
+    }
+  } catch (_e) {
+    // Offline or version.json missing: keep running the current build.
+  }
+}
+
 function todayMonth() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
@@ -219,8 +249,12 @@ function bindNav() {
   // brought back to the foreground, reload the current tab so the user never
   // sees stale data (e.g. a debt that was already repaid).
   document.addEventListener("visibilitychange", () => {
-    if (document.visibilityState === "visible") refreshCurrentTab();
+    if (document.visibilityState === "visible") {
+      checkForUpdate();
+      refreshCurrentTab();
+    }
   });
+  checkForUpdate();
   const initial = (location.hash || "").replace("#", "");
   // Accept legacy #income / #expense deep-links (setActiveTab maps them to ops).
   const allowed = initial === "income" || initial === "expense" ||
