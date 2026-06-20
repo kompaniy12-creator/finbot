@@ -13,7 +13,7 @@
     <title>FinBot Dashboard</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
-    <link rel="stylesheet" href="./styles.css?v=1.5.0" />
+    <link rel="stylesheet" href="./styles.css?v=1.6.0" />
   </head>
   <body>
     <div id="gate" class="gate">
@@ -276,7 +276,7 @@
             </li>
             <li>
               <strong>Версия</strong>
-              <p id="settings-version">FinBot v1.5.0</p>
+              <p id="settings-version">FinBot v1.6.0</p>
             </li>
           </ul>
         </div>
@@ -416,143 +416,36 @@
         </div>
       </section>
 
-      <footer><small id="version">FinBot v1.5.0</small></footer>
+      <footer><small id="version">FinBot v1.6.0</small></footer>
     </main>
 
     <nav id="bottom-nav" class="bottom-nav hidden">
       <button class="nav-btn active" data-tab="dashboard">
-        <span class="nav-icon">
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            aria-hidden="true"
-          >
-            <path d="M3 3v18h18" />
-            <rect x="7" y="12" width="3.2" height="6" rx="1" fill="currentColor" stroke="none" />
-            <rect x="12.4" y="8" width="3.2" height="10" rx="1" fill="currentColor" stroke="none" />
-            <rect x="17.8" y="5" width="3.2" height="13" rx="1" fill="currentColor" stroke="none" />
-          </svg>
-        </span>
+        <span class="nav-icon"><img src="./icons/nav-dashboard.png?v=1.6.0" alt="" /></span>
         <span class="nav-label">Дашборд</span>
       </button>
       <button class="nav-btn" data-tab="ops">
-        <span class="nav-icon">
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            aria-hidden="true"
-          >
-            <path d="M21 12a9 9 0 0 0-15.5-6.3L3 8" />
-            <path d="M3 4v4h4" />
-            <path d="M3 12a9 9 0 0 0 15.5 6.3L21 16" />
-            <path d="M21 20v-4h-4" />
-          </svg>
-        </span>
+        <span class="nav-icon"><img src="./icons/nav-ops.png?v=1.6.0" alt="" /></span>
         <span class="nav-label">Операции</span>
       </button>
       <button class="nav-btn" data-tab="planning">
-        <span class="nav-icon">
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            aria-hidden="true"
-          >
-            <rect x="3" y="4.5" width="18" height="16.5" rx="2.5" />
-            <path d="M8 2.5v4" />
-            <path d="M16 2.5v4" />
-            <path d="M3 9.5h18" />
-            <path d="M7.5 14h2M11 14h2M14.5 14h2M7.5 17.5h2M11 17.5h2" />
-          </svg>
-        </span>
+        <span class="nav-icon"><img src="./icons/nav-planning.png?v=1.6.0" alt="" /></span>
         <span class="nav-label">План</span>
       </button>
       <button class="nav-btn" data-tab="debts">
-        <span class="nav-icon">
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            aria-hidden="true"
-          >
-            <path d="m11 17 2 2a1 1 0 1 0 3-3" />
-            <path
-              d="m14 14 2.5 2.5a1 1 0 1 0 3-3l-3.9-3.9a3 3 0 0 0-4.2 0l-.9.9a1 1 0 1 1-3-3l2.8-2.8a5.8 5.8 0 0 1 7 -.9l.5.3a2 2 0 0 0 1.4.3L21 4"
-            />
-            <path d="m21 3 1 11h-2" />
-            <path d="M3 3 2 14l6.5 6.5a1 1 0 1 0 3-3" />
-            <path d="M3 4h8" />
-          </svg>
-        </span>
+        <span class="nav-icon"><img src="./icons/nav-debts.png?v=1.6.0" alt="" /></span>
         <span class="nav-label">Долги</span>
       </button>
       <button class="nav-btn" data-tab="credits">
-        <span class="nav-icon">
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            aria-hidden="true"
-          >
-            <path d="M3 21h18" />
-            <path d="M5 21v-9M9.5 21v-9M14.5 21v-9M19 21v-9" />
-            <path d="M3.5 12h17" />
-            <path d="M12 3 3.5 7.5h17z" />
-          </svg>
-        </span>
+        <span class="nav-icon"><img src="./icons/nav-credits.png?v=1.6.0" alt="" /></span>
         <span class="nav-label">Кредит</span>
       </button>
       <button class="nav-btn" data-tab="investments">
-        <span class="nav-icon">
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            aria-hidden="true"
-          >
-            <path d="m3 17 6-6 4 4 8-8" />
-            <path d="M15 7h6v6" />
-          </svg>
-        </span>
+        <span class="nav-icon"><img src="./icons/nav-investments.png?v=1.6.0" alt="" /></span>
         <span class="nav-label">Инвест.</span>
       </button>
       <button class="nav-btn" data-tab="settings">
-        <span class="nav-icon">
-          <svg
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="2"
-            stroke-linecap="round"
-            stroke-linejoin="round"
-            aria-hidden="true"
-          >
-            <circle cx="12" cy="12" r="3.2" />
-            <path
-              d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 1 1-4 0v-.2A1.6 1.6 0 0 0 7 19.6l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0-1.1-2.7H3a2 2 0 1 1 0-4h.2A1.6 1.6 0 0 0 4.4 7l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.6 1.6 0 0 0 1.8.3H9a1.6 1.6 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.2a1.6 1.6 0 0 0 1 1.5 1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8V9a1.6 1.6 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.2a1.6 1.6 0 0 0-1.4 1z"
-            />
-          </svg>
-        </span>
+        <span class="nav-icon"><img src="./icons/nav-settings.png?v=1.6.0" alt="" /></span>
         <span class="nav-label">Настр.</span>
       </button>
     </nav>
@@ -1139,7 +1032,7 @@
       </div>
     </div>
 
-    <script src="./tg-webapp.js?v=1.5.0"></script>
-    <script src="./app.js?v=1.5.0"></script>
+    <script src="./tg-webapp.js?v=1.6.0"></script>
+    <script src="./app.js?v=1.6.0"></script>
   </body>
 </html>
