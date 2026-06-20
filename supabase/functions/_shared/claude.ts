@@ -65,6 +65,38 @@ export function computeCost(model: string, usage: ClaudeUsage): number {
   return inputCost + outputCost + cacheWriteCost + cacheReadCost;
 }
 
+// The family tenant uses the owner's env key; SaaS tenants must supply their
+// own (so they pay for their own usage). Thrown when a SaaS tenant has no key.
+export const NO_API_KEY = "no_api_key";
+export const FAMILY_TENANT = "00000000-0000-0000-0000-000000000001";
+
+// Cache Anthropic clients by API key so we reuse connections across calls.
+const clientByKey = new Map<string, Anthropic>();
+function clientForKey(apiKey: string): Anthropic {
+  let c = clientByKey.get(apiKey);
+  if (!c) {
+    c = new Anthropic({ apiKey });
+    clientByKey.set(apiKey, c);
+  }
+  return c;
+}
+
+// Resolve the Anthropic client for a tenant: the tenant's own key if set,
+// otherwise the env key for the family tenant. A SaaS tenant without a key
+// throws NO_API_KEY (we never bill the owner for a tester's usage).
+async function resolveAnthropicClient(
+  sb: SupabaseClient,
+  tenantId?: string,
+): Promise<Anthropic> {
+  if (tenantId && tenantId !== FAMILY_TENANT) {
+    const r = await sb.from("tenants").select("anthropic_api_key").eq("id", tenantId).maybeSingle();
+    const key = (r.data as { anthropic_api_key: string | null } | null)?.anthropic_api_key;
+    if (key) return clientForKey(key);
+    throw new Error(NO_API_KEY);
+  }
+  return getAnthropicClient();
+}
+
 let cachedClient: Anthropic | null = null;
 export function getAnthropicClient(): Anthropic {
   if (cachedClient) return cachedClient;
@@ -86,6 +118,8 @@ export interface CallClaudeOpts {
   maxTokens?: number;
   toolChoice?: Anthropic.Messages.MessageCreateParams["tool_choice"];
   familyMemberId: string;
+  /** Tenant whose API key to bill. Omit/family-sentinel uses the owner's env key. */
+  tenantId?: string;
   sb: SupabaseClient;
 }
 
@@ -101,7 +135,7 @@ export interface CallClaudeResult {
  */
 export async function callClaude(opts: CallClaudeOpts): Promise<CallClaudeResult> {
   const enforce = await enforceBudget(opts.sb, opts.familyMemberId);
-  const client = getAnthropicClient();
+  const client = await resolveAnthropicClient(opts.sb, opts.tenantId);
 
   const params: Anthropic.Messages.MessageCreateParamsNonStreaming = {
     model: opts.model,

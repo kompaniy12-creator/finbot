@@ -54,6 +54,7 @@ export async function processBudgetMessage(args: {
     resp = await callClaude({
       sb: args.sb,
       familyMemberId: args.member.id,
+      tenantId: args.member.tenant_id,
       model,
       system: buildBudgetSystemPrompt(),
       tools: [ParseBudgetTool],

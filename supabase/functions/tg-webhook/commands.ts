@@ -552,6 +552,54 @@ export async function mintInviteCommand(
   };
 }
 
+// /apikey <key> - the tester stores their own Anthropic key so their AI usage
+// is billed to them, not the owner. Stored on tenants.anthropic_api_key.
+export async function apiKeyCommand(
+  sb: SupabaseClient,
+  args: string,
+  actor: FamilyMember,
+): Promise<CommandReply> {
+  const key = args.trim();
+  if (!key.startsWith("sk-ant-")) {
+    return {
+      text: "Это не похоже на ключ Anthropic (он начинается с <code>sk-ant-</code>).\n" +
+        "Получи его на https://console.anthropic.com/settings/keys и пришли:\n" +
+        "<code>/apikey sk-ant-...</code>",
+    };
+  }
+  const upd = await sb.from("tenants").update({ anthropic_api_key: key })
+    .eq("id", actor.tenant_id);
+  if (upd.error) return { text: `Не смог сохранить ключ: ${upd.error.message}` };
+  return {
+    text: "✅ Ключ Anthropic сохранён. Теперь пиши траты - я их распознаю.\n\n" +
+      "🔒 Совет: удали сообщение с ключом из чата (ключ уже сохранён).",
+  };
+}
+
+// /groqkey <key> - the tester's own Groq key for voice transcription (Whisper).
+// Stored on tenants.groq_api_key. Groq has a free tier.
+export async function groqKeyCommand(
+  sb: SupabaseClient,
+  args: string,
+  actor: FamilyMember,
+): Promise<CommandReply> {
+  const key = args.trim();
+  if (!key.startsWith("gsk_")) {
+    return {
+      text: "Это не похоже на ключ Groq (он начинается с <code>gsk_</code>).\n" +
+        "Получи его бесплатно на https://console.groq.com/keys и пришли:\n" +
+        "<code>/groqkey gsk_...</code>",
+    };
+  }
+  const upd = await sb.from("tenants").update({ groq_api_key: key })
+    .eq("id", actor.tenant_id);
+  if (upd.error) return { text: `Не смог сохранить ключ: ${upd.error.message}` };
+  return {
+    text: "✅ Ключ Groq сохранён. Теперь можно слать голосовые.\n\n" +
+      "🔒 Совет: удали сообщение с ключом из чата.",
+  };
+}
+
 export function unsupportedReply(): CommandReply {
   return {
     text:

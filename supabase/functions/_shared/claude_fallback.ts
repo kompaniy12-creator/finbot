@@ -15,6 +15,7 @@ import { log } from "./log.ts";
 export function buildClaudeFallback(
   sb: SupabaseClient,
   familyMemberId: string,
+  tenantId?: string,
 ): FallbackResolver {
   return async ({ topCategories, similarExamples, itemName, itemNormalizedEn }) => {
     const { system, tools } = buildCategorizeFallbackPrompt({
@@ -26,6 +27,7 @@ export function buildClaudeFallback(
     const { response } = await callClaude({
       sb,
       familyMemberId,
+      tenantId,
       model,
       system,
       tools,

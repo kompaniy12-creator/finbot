@@ -7,7 +7,12 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { FamilyMember, TelegramMessageSchema } from "../_shared/types.ts";
 import type { z } from "zod";
-import { languageAllowed, maxDurationSec, transcribe } from "../_shared/groq.ts";
+import {
+  languageAllowed,
+  maxDurationSec,
+  resolveTenantGroqKey,
+  transcribe,
+} from "../_shared/groq.ts";
 import { log } from "../_shared/log.ts";
 import { type PipelineResult, processTextMessage } from "./text_pipeline.ts";
 import type { ProgressEmitter } from "../_shared/progress.ts";
@@ -48,9 +53,11 @@ export async function processVoiceMessage(args: {
   }
 
   if (p) await p.update("🎙 Распознаю через Whisper...");
+  // SaaS tenants transcribe with their own Groq key; family uses env key.
+  const groqKey = await resolveTenantGroqKey(args.sb, args.member.tenant_id);
   let transcript;
   try {
-    transcript = await transcribe(buf, { language: "auto" });
+    transcript = await transcribe(buf, { language: "auto", apiKey: groqKey });
   } catch (err) {
     return { kind: "transcribe_failed", error: (err as Error).message };
   }

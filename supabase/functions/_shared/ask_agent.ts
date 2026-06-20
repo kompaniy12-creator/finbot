@@ -403,6 +403,7 @@ export async function runAskAgent(args: {
     const { response } = await callClaude({
       sb,
       familyMemberId: viewer.id,
+      tenantId: viewer.tenant_id,
       model: Deno.env.get("CLAUDE_MODEL_FAST") ?? "claude-haiku-4-5-20251001",
       system: [{
         type: "text",

@@ -6,6 +6,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { FamilyMember, TelegramUpdate } from "../_shared/types.ts";
 import { tenantDb } from "../_shared/tenant_db.ts";
 import {
+  apiKeyCommand,
   askCommand,
   auditCommand,
   categoriesCommand,
@@ -13,6 +14,7 @@ import {
   dashboardCommand,
   demoteCommand,
   grantCommand,
+  groqKeyCommand,
   healthCommand,
   helpCommand,
   historyCommand,
@@ -127,6 +129,10 @@ export async function routeCommand(
       return await subscriptionsCommand(ctx.sb, ctx.member);
     case "mint_invite":
       return await mintInviteCommand(ctx.sb, args, ctx.member);
+    case "apikey":
+      return await apiKeyCommand(ctx.sb, args, ctx.member);
+    case "groqkey":
+      return await groqKeyCommand(ctx.sb, args, ctx.member);
     case "web":
       return await webCommand(ctx.sb, ctx.member);
     case "web_logout":

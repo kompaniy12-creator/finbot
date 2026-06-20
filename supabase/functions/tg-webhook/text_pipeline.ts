@@ -58,6 +58,7 @@ export async function processTextMessage(args: {
     resp = await callClaude({
       sb: args.sb,
       familyMemberId: args.member.id,
+      tenantId: args.member.tenant_id,
       model,
       system,
       tools,
@@ -85,7 +86,7 @@ export async function processTextMessage(args: {
 
   const out: ProcessedExpense[] = [];
   const embedFn = defaultEmbedFn();
-  const fallback = buildClaudeFallback(args.sb, args.member.id);
+  const fallback = buildClaudeFallback(args.sb, args.member.id, args.member.tenant_id);
 
   for (let i = 0; i < items.length; i++) {
     const item = items[i]!;

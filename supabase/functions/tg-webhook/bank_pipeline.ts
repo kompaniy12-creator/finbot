@@ -125,6 +125,7 @@ export async function processBankStatement(args: {
     resp = await callClaude({
       sb,
       familyMemberId: member.id,
+      tenantId: member.tenant_id,
       model,
       system,
       tools,
@@ -274,7 +275,7 @@ async function autoCreateUnmatched(
   if (lines.length === 0) return 0;
 
   const embedFn = defaultEmbedFn();
-  const fallback = buildClaudeFallback(sb, member.id);
+  const fallback = buildClaudeFallback(sb, member.id, member.tenant_id);
 
   let created = 0;
   for (const line of lines) {

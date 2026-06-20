@@ -12,6 +12,7 @@ import { z } from "zod";
 import { adminClient } from "../_shared/supabase.ts";
 import { log } from "../_shared/log.ts";
 import { authorize } from "../_shared/auth.ts";
+import { NO_API_KEY } from "../_shared/claude.ts";
 import { seedCategoriesForTenant } from "../_shared/seed_categories.ts";
 import { dedupe, markDone, markError } from "../_shared/idempotency.ts";
 import { checkSecret } from "../_shared/webhook_secret.ts";
@@ -302,7 +303,13 @@ Deno.serve(async (req: Request) => {
       }
       await sendReply(chatId, {
         text: "✅ Готово, твой FinBot настроен!\n\n" +
-          "Просто пиши траты текстом («кофе 12 zł»), шли фото чеков или голосовые - " +
+          "🔑 Последний шаг: подключи свой ключ Anthropic, чтобы я мог распознавать траты " +
+          "(каждый платит за свой расход на ИИ). Получи ключ на " +
+          "https://console.anthropic.com/settings/keys и пришли:\n" +
+          "<code>/apikey sk-ant-...</code>\n\n" +
+          "Для голосовых нужен бесплатный ключ Groq (https://console.groq.com/keys):\n" +
+          "<code>/groqkey gsk_...</code>\n\n" +
+          "После этого просто пиши траты текстом («кофе 12 zł»), шли фото чеков или голосовые - " +
           "я всё запишу и разложу по категориям. Открой «Дашборд» в меню бота, чтобы " +
           "видеть статистику, доходы, долги и кредиты.",
       }, botToken);
@@ -417,9 +424,26 @@ Deno.serve(async (req: Request) => {
     if (out) await sendReply(out.chatId, out.reply, botToken);
     if (msg && !cmd) await markDone(msg.message_id, member.id, member.tenant_id, sb);
   } catch (err) {
-    log("error", "webhook_dispatch_failed", { error: (err as Error).message });
+    const errMsg = (err as Error).message;
+    // SaaS tenant has not set their own API key yet: tell them how, ack 200 so
+    // Telegram does not retry (the key, not a transient fault, is missing).
+    if (errMsg === NO_API_KEY) {
+      log("info", "webhook_no_api_key", { tenant_id: member.tenant_id });
+      if (msg && !cmd) await markError(msg.message_id, member.id, member.tenant_id, sb, errMsg);
+      if (msg?.chat?.id) {
+        await sendReply(msg.chat.id, {
+          text: "🔑 Чтобы я мог распознавать траты, нужен твой ключ Anthropic.\n\n" +
+            "Получи его на https://console.anthropic.com/settings/keys и пришли командой:\n" +
+            "<code>/apikey sk-ant-...</code>\n\n" +
+            "Для голосовых нужен ещё ключ Groq (бесплатный, https://console.groq.com/keys):\n" +
+            "<code>/groqkey gsk_...</code>",
+        }, botToken);
+      }
+      return new Response("ok", { status: 200 });
+    }
+    log("error", "webhook_dispatch_failed", { error: errMsg });
     if (msg && !cmd) {
-      await markError(msg.message_id, member.id, member.tenant_id, sb, (err as Error).message);
+      await markError(msg.message_id, member.id, member.tenant_id, sb, errMsg);
     }
     return new Response("error", { status: 500 });
   }

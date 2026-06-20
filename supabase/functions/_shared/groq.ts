@@ -2,7 +2,24 @@
 // Per SPEC §6.2: download voice .ogg from Telegram (limit duration first),
 // POST as multipart to Groq audio/transcriptions, get { text, language }.
 
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { log } from "./log.ts";
+import { FAMILY_TENANT, NO_API_KEY } from "./claude.ts";
+
+// Resolve the Groq key for a tenant: the tenant's own key (SaaS) or undefined
+// for the family tenant (caller falls back to the env key). Throws NO_API_KEY
+// for a SaaS tenant that has not set a key yet, so voice gives a friendly
+// "set your key" message instead of charging the owner.
+export async function resolveTenantGroqKey(
+  sb: SupabaseClient,
+  tenantId?: string,
+): Promise<string | undefined> {
+  if (!tenantId || tenantId === FAMILY_TENANT) return undefined;
+  const r = await sb.from("tenants").select("groq_api_key").eq("id", tenantId).maybeSingle();
+  const key = (r.data as { groq_api_key: string | null } | null)?.groq_api_key;
+  if (key) return key;
+  throw new Error(NO_API_KEY);
+}
 
 export interface TranscribeResult {
   text: string;
@@ -14,9 +31,11 @@ const DEFAULT_MODEL = "whisper-large-v3-turbo";
 
 export async function transcribe(
   audio: Uint8Array | ArrayBuffer,
-  opts: { language?: string; filename?: string; model?: string } = {},
+  opts: { language?: string; filename?: string; model?: string; apiKey?: string } = {},
 ): Promise<TranscribeResult> {
-  const apiKey = Deno.env.get("GROQ_API_KEY");
+  // SaaS tenants supply their own Groq key (opts.apiKey); the family tenant
+  // falls back to the owner's env key.
+  const apiKey = opts.apiKey ?? Deno.env.get("GROQ_API_KEY");
   if (!apiKey) throw new Error("GROQ_API_KEY not set");
 
   const model = opts.model ?? Deno.env.get("GROQ_MODEL") ?? DEFAULT_MODEL;

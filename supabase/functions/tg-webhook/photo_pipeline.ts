@@ -238,6 +238,7 @@ export async function processPhotoMessage(args: {
     resp = await callClaude({
       sb: args.sb,
       familyMemberId: args.member.id,
+      tenantId: args.member.tenant_id,
       model,
       system,
       tools,
