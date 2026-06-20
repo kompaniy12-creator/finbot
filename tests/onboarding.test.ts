@@ -1,7 +1,9 @@
+// deno-lint-ignore-file no-explicit-any
 import { assertEquals, assertStringIncludes } from "@std/assert";
+import { makeMockSb } from "./helpers/mock_sb.ts";
 
-// The wizard encrypts API keys before storing; give crypto_box a test key.
-Deno.env.set("KEY_ENC_SECRET", btoa("secret-test-key-32-bytes-long!!!"));
+// The wizard encrypts API keys (envelope) before storing; give crypto_box a KEK.
+const KEK = btoa("envelope-master-kek-32bytes-ok!!");
 
 import {
   advanceOnboarding,
@@ -10,7 +12,7 @@ import {
 import { decryptSecret } from "../supabase/functions/_shared/crypto_box.ts";
 import type { FamilyMember } from "../supabase/functions/_shared/types.ts";
 
-const TENANT = "00000000-0000-0000-0000-0000000000aa";
+const TENANT = "00000000-0000-0000-0000-0000000000a1";
 
 const member = {
   id: "m1",
@@ -22,42 +24,13 @@ const member = {
   active: true,
 } as unknown as FamilyMember;
 
-// Minimal Supabase mock: records tenant updates and serves the tenant row.
-function makeSb(tenant: Record<string, unknown>) {
-  const updates: Array<Record<string, unknown>> = [];
-  // deno-lint-ignore no-explicit-any
-  const sb: any = {
-    from(table: string) {
-      let op = "";
-      let payload: Record<string, unknown> = {};
-      const chain: Record<string, unknown> = {
-        update(p: Record<string, unknown>) {
-          op = "update";
-          payload = p;
-          return chain;
-        },
-        select() {
-          op = "select";
-          return chain;
-        },
-        eq() {
-          return chain;
-        },
-        maybeSingle() {
-          return Promise.resolve({ data: table === "tenants" ? tenant : null, error: null });
-        },
-        then(resolve: (v: unknown) => void) {
-          if (op === "update") {
-            updates.push({ table, payload });
-            if (table === "tenants") Object.assign(tenant, payload);
-          }
-          resolve({ data: null, error: null });
-        },
-      };
-      return chain;
-    },
-  };
-  return { sb, updates, tenant };
+function setup(extra: Record<string, unknown> = {}) {
+  const sb = makeMockSb({
+    kekBase64: KEK,
+    seed: { tenants: [{ id: TENANT, name: "Tester", ...extra }] },
+  });
+  const tenant = () => (sb._store.tenants ?? [])[0]!;
+  return { sb: sb as any, tenant };
 }
 
 Deno.test("onboarding: greeting offers all four languages", () => {
@@ -67,7 +40,7 @@ Deno.test("onboarding: greeting offers all four languages", () => {
 });
 
 Deno.test("onboarding: lang selection saves locale and advances to name", async () => {
-  const { sb, tenant } = makeSb({ name: "Tester" });
+  const { sb, tenant } = setup();
   const reply = await advanceOnboarding({
     sb,
     member,
@@ -75,23 +48,22 @@ Deno.test("onboarding: lang selection saves locale and advances to name", async 
     locale: "ru",
     callbackData: "ob:lang:uk",
   });
-  assertEquals(tenant.locale, "uk");
-  assertEquals(tenant.onboarding_step, "name");
-  // Reply is the Ukrainian name prompt.
+  assertEquals(tenant().locale, "uk");
+  assertEquals(tenant().onboarding_step, "name");
   assertStringIncludes(reply.text, "звертатися");
 });
 
 Deno.test("onboarding: name step stores name and asks for the key", async () => {
-  const { sb, tenant } = makeSb({ name: "Tester" });
+  const { sb, tenant } = setup();
   const reply = await advanceOnboarding({ sb, member, step: "name", locale: "en", text: "Serhii" });
-  assertEquals(tenant.name, "Serhii");
-  assertEquals(tenant.onboarding_step, "apikey");
+  assertEquals(tenant().name, "Serhii");
+  assertEquals(tenant().onboarding_step, "apikey");
   assertStringIncludes(reply.text, "Serhii");
   assertStringIncludes(reply.text, "sk-ant-");
 });
 
 Deno.test("onboarding: apikey step rejects a non-key without advancing", async () => {
-  const { sb, tenant } = makeSb({ name: "Serhii", onboarding_step: "apikey" });
+  const { sb, tenant } = setup({ onboarding_step: "apikey" });
   const reply = await advanceOnboarding({
     sb,
     member,
@@ -99,22 +71,22 @@ Deno.test("onboarding: apikey step rejects a non-key without advancing", async (
     locale: "en",
     text: "hello",
   });
-  assertEquals(tenant.onboarding_step, "apikey");
+  assertEquals(tenant().onboarding_step, "apikey");
   assertStringIncludes(reply.text, "sk-ant-");
 });
 
-Deno.test("onboarding: apikey step accepts a key and advances to groqkey", async () => {
-  const { sb, tenant } = makeSb({ name: "Serhii", onboarding_step: "apikey" });
+Deno.test("onboarding: apikey step encrypts the key (v2) and advances", async () => {
+  const { sb, tenant } = setup({ onboarding_step: "apikey" });
   const key = "sk-ant-api03-" + "x".repeat(30);
   await advanceOnboarding({ sb, member, step: "apikey", locale: "ru", text: key });
-  // Stored encrypted, not in plaintext.
-  assertEquals(tenant.anthropic_api_key === key, false);
-  assertEquals(await decryptSecret(tenant.anthropic_api_key as string), key);
-  assertEquals(tenant.onboarding_step, "groqkey");
+  const stored = tenant().anthropic_api_key as string;
+  assertEquals(stored.startsWith("v2:"), true);
+  assertEquals(await decryptSecret(sb, TENANT, stored), key);
+  assertEquals(tenant().onboarding_step, "groqkey");
 });
 
 Deno.test("onboarding: groqkey skip finishes onboarding", async () => {
-  const { sb, tenant } = makeSb({ name: "Serhii", onboarding_step: "groqkey" });
+  const { sb, tenant } = setup({ name: "Serhii", onboarding_step: "groqkey" });
   const reply = await advanceOnboarding({
     sb,
     member,
@@ -122,15 +94,16 @@ Deno.test("onboarding: groqkey skip finishes onboarding", async () => {
     locale: "ru",
     callbackData: "ob:skip",
   });
-  assertEquals(tenant.onboarding_step, null);
+  assertEquals(tenant().onboarding_step, null);
   assertStringIncludes(reply.text, "Serhii");
 });
 
-Deno.test("onboarding: groqkey accepts a key and finishes", async () => {
-  const { sb, tenant } = makeSb({ name: "Serhii", onboarding_step: "groqkey" });
+Deno.test("onboarding: groqkey encrypts the key (v2) and finishes", async () => {
+  const { sb, tenant } = setup({ name: "Serhii", onboarding_step: "groqkey" });
   const key = "gsk_" + "a".repeat(40);
   await advanceOnboarding({ sb, member, step: "groqkey", locale: "ru", text: key });
-  assertEquals(tenant.groq_api_key === key, false);
-  assertEquals(await decryptSecret(tenant.groq_api_key as string), key);
-  assertEquals(tenant.onboarding_step, null);
+  const stored = tenant().groq_api_key as string;
+  assertEquals(stored.startsWith("v2:"), true);
+  assertEquals(await decryptSecret(sb, TENANT, stored), key);
+  assertEquals(tenant().onboarding_step, null);
 });

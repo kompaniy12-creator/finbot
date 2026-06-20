@@ -18,7 +18,7 @@ export async function resolveTenantGroqKey(
   if (!tenantId || tenantId === FAMILY_TENANT) return undefined;
   const r = await sb.from("tenants").select("groq_api_key").eq("id", tenantId).maybeSingle();
   const stored = (r.data as { groq_api_key: string | null } | null)?.groq_api_key;
-  const key = await decryptSecret(stored);
+  const key = await decryptSecret(sb, tenantId, stored);
   if (key) return key;
   throw new Error(NO_API_KEY);
 }

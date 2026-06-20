@@ -92,7 +92,7 @@ export async function advanceOnboarding(args: {
   if (step === "apikey") {
     if (!/^sk-ant-\S{20,}$/.test(text)) return { text: t(locale, "bad_apikey") };
     await sb.from("tenants").update({
-      anthropic_api_key: await encryptSecret(text),
+      anthropic_api_key: await encryptSecret(sb, member.tenant_id, text),
       onboarding_step: "groqkey",
     }).eq("id", member.tenant_id);
     return { text: t(locale, "ask_groqkey"), reply_markup: skipKeyboard(locale) };
@@ -105,7 +105,9 @@ export async function advanceOnboarding(args: {
       return { text: t(locale, "done_nogroq", { name }) };
     }
     if (/^gsk_[A-Za-z0-9]{20,}$/.test(text)) {
-      await sb.from("tenants").update({ groq_api_key: await encryptSecret(text) })
+      await sb.from("tenants").update({
+        groq_api_key: await encryptSecret(sb, member.tenant_id, text),
+      })
         .eq("id", member.tenant_id);
       await finish(sb, member.tenant_id);
       return { text: t(locale, "done", { name }) };

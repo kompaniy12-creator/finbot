@@ -92,7 +92,7 @@ async function resolveAnthropicClient(
   if (tenantId && tenantId !== FAMILY_TENANT) {
     const r = await sb.from("tenants").select("anthropic_api_key").eq("id", tenantId).maybeSingle();
     const stored = (r.data as { anthropic_api_key: string | null } | null)?.anthropic_api_key;
-    const key = await decryptSecret(stored);
+    const key = await decryptSecret(sb, tenantId, stored);
     if (key) return clientForKey(key);
     throw new Error(NO_API_KEY);
   }

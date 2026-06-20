@@ -43,6 +43,7 @@ export const PER_TENANT_TABLES: ReadonlySet<string> = new Set([
   "debts",
   "notifications_log",
   "anthropic_usage",
+  "tenant_deks",
   "expense_audit",
   "budget_categories",
   "credit_payments",

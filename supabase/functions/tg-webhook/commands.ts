@@ -636,7 +636,9 @@ export async function apiKeyCommand(
         "<code>/apikey sk-ant-...</code>",
     };
   }
-  const upd = await sb.from("tenants").update({ anthropic_api_key: await encryptSecret(key) })
+  const upd = await sb.from("tenants").update({
+    anthropic_api_key: await encryptSecret(sb, actor.tenant_id, key),
+  })
     .eq("id", actor.tenant_id);
   if (upd.error) return { text: `Не смог сохранить ключ: ${upd.error.message}` };
   return {
@@ -660,7 +662,9 @@ export async function groqKeyCommand(
         "<code>/groqkey gsk_...</code>",
     };
   }
-  const upd = await sb.from("tenants").update({ groq_api_key: await encryptSecret(key) })
+  const upd = await sb.from("tenants").update({
+    groq_api_key: await encryptSecret(sb, actor.tenant_id, key),
+  })
     .eq("id", actor.tenant_id);
   if (upd.error) return { text: `Не смог сохранить ключ: ${upd.error.message}` };
   return {
