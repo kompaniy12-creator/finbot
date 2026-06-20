@@ -18,6 +18,7 @@ import {
   healthCommand,
   helpCommand,
   historyCommand,
+  invitesCommand,
   meCommand,
   membersCommand,
   mintInviteCommand,
@@ -75,6 +76,7 @@ const ADMIN_COMMANDS = new Set([
   "demote",
   "subscriptions",
   "mint_invite",
+  "invites",
 ]);
 
 export async function routeCommand(
@@ -129,6 +131,8 @@ export async function routeCommand(
       return await subscriptionsCommand(ctx.sb, ctx.member);
     case "mint_invite":
       return await mintInviteCommand(ctx.sb, args, ctx.member);
+    case "invites":
+      return await invitesCommand(ctx.sb);
     case "apikey":
       return await apiKeyCommand(ctx.sb, args, ctx.member);
     case "groqkey":

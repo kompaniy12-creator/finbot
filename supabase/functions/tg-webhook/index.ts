@@ -273,12 +273,18 @@ Deno.serve(async (req: Request) => {
     // pending-access / admin-approval flow below.
     if (bot.mode === "saas") {
       const chatId = msg?.chat?.id ?? update.callback_query?.from.id ?? fromId;
+      // Accept the invite code either bare (user just pastes "FB-XXXXXX") or via
+      // "/start FB-XXXXXX". Anything else from an unknown user -> instructions.
       const parsedCmd = parseCommand(msg?.text);
-      const code = parsedCmd?.cmd === "start" ? parsedCmd.args.trim() : "";
-      if (!code) {
+      const rawCode = parsedCmd?.cmd === "start"
+        ? parsedCmd.args.trim()
+        : (!parsedCmd ? (msg?.text ?? "").trim() : "");
+      const code = rawCode.toUpperCase();
+      const looksLikeCode = /^FB-[A-Z0-9]{6}$/.test(code);
+      if (!looksLikeCode) {
         await sendReply(chatId, {
-          text: "Привет! Это FinBot. Чтобы начать, пришли код приглашения так:\n" +
-            "<code>/start ТВОЙ_КОД</code>",
+          text: "Привет! Это FinBot. Пришли код приглашения, который тебе выдали " +
+            "(например, <code>FB-AB23CD</code>).",
         }, botToken);
         return new Response("ok", { status: 200 });
       }
@@ -292,8 +298,7 @@ Deno.serve(async (req: Request) => {
       const res = (rpc.data ?? {}) as { tenant_id?: string; created?: boolean; error?: string };
       if (rpc.error || res.error || !res.tenant_id) {
         await sendReply(chatId, {
-          text: "Код недействителен или уже использован. Проверь и пришли заново:\n" +
-            "<code>/start ТВОЙ_КОД</code>",
+          text: "Код недействителен или уже использован. Проверь и пришли заново.",
         }, botToken);
         return new Response("ok", { status: 200 });
       }

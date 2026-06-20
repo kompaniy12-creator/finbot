@@ -66,6 +66,8 @@ export function helpCommand(member: FamilyMember): CommandReply {
       "/promote TID - сделать админом",
       "/demote TID - снять админа",
       "/subscriptions - найти подписки и добавить в регулярные",
+      "/invites - доступы и коды публичного бота",
+      "/mint_invite [N] - создать N кодов приглашения",
     ].join("\n")
     : "";
   return {
@@ -526,30 +528,95 @@ function genInviteCode(): string {
   return "FB-" + s;
 }
 
-// /mint_invite [N] - admin only. Creates N single-use invite codes for the SaaS
-// bot and returns them. invite_codes is a global table (not per-tenant).
+// Mint N single-use invite codes for the SaaS bot. invite_codes is a global
+// table (not per-tenant). Shared by /mint_invite and the /invites panel button.
+export async function mintInvites(
+  sb: SupabaseClient,
+  createdByTelegramId: number,
+  n: number,
+): Promise<{ codes: string[]; error?: string }> {
+  const count = Math.min(Math.max(n, 1), 10);
+  const codes = Array.from({ length: count }, genInviteCode);
+  const rows = codes.map((code) => ({
+    code,
+    created_by_telegram_id: createdByTelegramId,
+    max_uses: 1,
+  }));
+  const ins = await sb.from("invite_codes").insert(rows);
+  if (ins.error) return { codes: [], error: ins.error.message };
+  return { codes };
+}
+
+// /mint_invite [N] - admin only. Creates N single-use invite codes and returns
+// them ready to hand to a tester.
 export async function mintInviteCommand(
   sb: SupabaseClient,
   args: string,
   actor: FamilyMember,
 ): Promise<CommandReply> {
-  const n = Math.min(Math.max(parseInt(args.trim(), 10) || 1, 1), 10);
-  const codes = Array.from({ length: n }, genInviteCode);
-  const rows = codes.map((code) => ({
-    code,
-    created_by_telegram_id: actor.telegram_id,
-    max_uses: 1,
-  }));
-  const ins = await sb.from("invite_codes").insert(rows);
-  if (ins.error) {
-    return { text: `Не смог создать коды: ${ins.error.message}` };
-  }
+  const n = parseInt(args.trim(), 10) || 1;
+  const { codes, error } = await mintInvites(sb, actor.telegram_id, n);
+  if (error) return { text: `Не смог создать коды: ${error}` };
   return {
-    text: `🎟 ${n === 1 ? "Код приглашения" : `Коды приглашения (${n})`} ` +
+    text: `🎟 ${codes.length === 1 ? "Код приглашения" : `Коды приглашения (${codes.length})`} ` +
       `для публичного бота (по одному использованию):\n\n` +
       codes.map((c) => `<code>${c}</code>`).join("\n") +
-      `\n\nОтдай тестеру: пусть напишет публичному боту <code>/start КОД</code>.`,
+      `\n\nОтдай тестеру: пусть просто пришлёт этот код публичному боту.`,
   };
+}
+
+interface InvitesSnapshot {
+  free: Array<{ code: string }>;
+  testers: Array<{
+    tenant_id: string;
+    tenant_name: string;
+    tenant_status: string;
+    code: string;
+    telegram_id: number | null;
+    redeemed_at: string | null;
+    active: boolean;
+  }>;
+}
+
+// Build the /invites control panel: free codes + testers, with inline buttons to
+// mint a code and grant/revoke each tester. Shared by the command and the
+// callback handler (which re-renders after an action). Admin-only upstream.
+export async function renderInvitesPanel(sb: SupabaseClient): Promise<CommandReply> {
+  const rpc = await sb.rpc("admin_list_invites");
+  if (rpc.error) return { text: `DB error: ${rpc.error.message}` };
+  const snap = (rpc.data ?? { free: [], testers: [] }) as InvitesSnapshot;
+
+  const lines: string[] = ["🎟 <b>Доступы FinApp</b>", ""];
+  lines.push(`<b>Свободные коды (${snap.free.length}):</b>`);
+  if (snap.free.length === 0) lines.push("нет - нажми «Создать код»");
+  else lines.push(...snap.free.map((c) => `<code>${c.code}</code>`));
+  lines.push("");
+  lines.push(`<b>Тестеры (${snap.testers.length}):</b>`);
+  if (snap.testers.length === 0) lines.push("пока никто не активировал код");
+
+  const inlineRows: Array<Array<{ text: string; callback_data: string }>> = [];
+  for (const t of snap.testers) {
+    const when = t.redeemed_at ? t.redeemed_at.slice(0, 10) : "?";
+    const dot = t.active ? "🟢" : "⚪";
+    const tag = t.telegram_id ? ` [${t.telegram_id}]` : "";
+    lines.push(`${dot} ${t.tenant_name}${tag} - код ${t.code}, c ${when}`);
+    inlineRows.push([
+      t.active
+        ? { text: `🚫 Убрать ${t.tenant_name}`, callback_data: `inv:rev:${t.tenant_id}` }
+        : { text: `✅ Вернуть ${t.tenant_name}`, callback_data: `inv:res:${t.tenant_id}` },
+    ]);
+  }
+  inlineRows.push([{ text: "➕ Создать код", callback_data: "inv:mint" }]);
+
+  return {
+    text: lines.join("\n"),
+    reply_markup: { inline_keyboard: inlineRows } as CommandReply["reply_markup"],
+  };
+}
+
+// /invites - admin-only control panel for SaaS access.
+export function invitesCommand(sb: SupabaseClient): Promise<CommandReply> {
+  return renderInvitesPanel(sb);
 }
 
 // /apikey <key> - the tester stores their own Anthropic key so their AI usage

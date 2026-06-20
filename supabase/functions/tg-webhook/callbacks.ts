@@ -22,7 +22,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { FamilyMember } from "../_shared/types.ts";
 import { tenantDb } from "../_shared/tenant_db.ts";
-import { type CommandReply, membersCommand } from "./commands.ts";
+import { type CommandReply, membersCommand, mintInvites, renderInvitesPanel } from "./commands.ts";
 import { retrainCategory } from "../_shared/retrain.ts";
 import { log } from "../_shared/log.ts";
 import { recordAudit } from "../_shared/audit.ts";
@@ -177,6 +177,15 @@ export async function handleCallback(args: {
         args.chatId,
         "demote",
         cb.parts[0]!,
+        args.messageId,
+      );
+    case "inv":
+      return await doInvites(
+        args.sb,
+        args.member,
+        args.chatId,
+        cb.parts[0]!,
+        cb.parts[1],
         args.messageId,
       );
     case "subadd":
@@ -551,6 +560,38 @@ async function doAccessGrant(
     edit_message_id: editMessageId,
     answer_text: "Доступ выдан",
   };
+}
+
+// /invites panel actions: mint a new code, or grant/revoke a tester. Admin-only.
+// Re-renders the panel in place after the action.
+async function doInvites(
+  sb: SupabaseClient,
+  actor: FamilyMember,
+  chatId: number,
+  action: string,
+  tenantId: string | undefined,
+  editMessageId?: number,
+): Promise<CallbackOutput> {
+  if (actor.role !== "admin") {
+    return { chatId, reply: { text: "Только админ может управлять доступами." } };
+  }
+  let answer = "Готово";
+  if (action === "mint") {
+    const { error } = await mintInvites(sb, actor.telegram_id, 1);
+    if (error) return { chatId, reply: { text: `Ошибка: ${error}` } };
+    answer = "Код создан";
+  } else if ((action === "rev" || action === "res") && tenantId) {
+    const rpc = await sb.rpc("admin_set_tenant_access", {
+      p_tenant_id: tenantId,
+      p_active: action === "res",
+    });
+    if (rpc.error) return { chatId, reply: { text: `Ошибка: ${rpc.error.message}` } };
+    answer = action === "res" ? "Доступ возвращён" : "Доступ убран";
+  } else {
+    return { chatId, reply: { text: "Неизвестное действие." } };
+  }
+  const panel = await renderInvitesPanel(sb);
+  return { chatId, reply: panel, edit_message_id: editMessageId, answer_text: answer };
 }
 
 async function doAccessDeny(

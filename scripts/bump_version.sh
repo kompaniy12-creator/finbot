@@ -49,10 +49,23 @@ perl -0pi -e "s/const APP_VERSION = \"[0-9.]+\";/const APP_VERSION = \"$NEW\";/"
 perl -0pi -e "s/\?v=\Q$OLD\E\b/?v=$NEW/g" webapp/index.html
 perl -0pi -e "s/FinBot v\Q$OLD\E\b/FinBot v$NEW/g" webapp/index.html
 
-# 4) CHANGELOG.md - prepend a dated entry under the header.
-ENTRY="## v$NEW - $TODAY\n"
-for line in "$@"; do ENTRY="$ENTRY\n- $line"; done
-ENTRY="$ENTRY\n\n"
-perl -0pi -e "s/(автоматически\.\n\n)/\$1${ENTRY}/" CHANGELOG.md
+# 4) CHANGELOG.md - prepend a dated entry under the header. Done in Python so
+# arbitrary text (slashes, Cyrillic, quotes) in the summary can't break it.
+NEW="$NEW" TODAY="$TODAY" python3 - "$@" <<'PY'
+import os, sys, re
+new, today = os.environ["NEW"], os.environ["TODAY"]
+lines = sys.argv[1:]
+entry = f"## v{new} - {today}\n\n" + "".join(f"- {l}\n" for l in lines) + "\n"
+p = "CHANGELOG.md"
+s = open(p, encoding="utf-8").read()
+# Insert right after the intro paragraph (first blank line that precedes a
+# "## v" heading), so the newest release sits on top of the history.
+m = re.search(r"\n\n(?=## v)", s)
+if not m:
+    raise SystemExit("[bump] could not find changelog insertion point")
+s = s[: m.end()] + entry + s[m.end():]
+open(p, "w", encoding="utf-8").write(s)
+print(f"[bump] changelog entry for v{new} added")
+PY
 
 echo "[bump] done. Review the diff, then commit + push."
