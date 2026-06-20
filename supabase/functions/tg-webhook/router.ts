@@ -45,6 +45,7 @@ import { type PhotoOutcome, processPhotoMessage } from "./photo_pipeline.ts";
 import { type BankPipelineOutcome, processBankStatement } from "./bank_pipeline.ts";
 import { startProgress } from "../_shared/progress.ts";
 import { checkAndBump } from "../_shared/rate_limit.ts";
+import { t } from "../_shared/i18n.ts";
 
 export interface RouteContext {
   sb: SupabaseClient;
@@ -295,7 +296,10 @@ export async function dispatch(
         member: input.member,
         text: msg.text,
       });
-      return { chatId: msg.chat.id, reply: { text: formatDebtReply(outcome) } };
+      return {
+        chatId: msg.chat.id,
+        reply: { text: formatDebtReply(outcome, input.member.locale) },
+      };
     }
 
     if (intent === "budget") {
@@ -304,7 +308,10 @@ export async function dispatch(
         member: input.member,
         text: msg.text,
       });
-      return { chatId: msg.chat.id, reply: { text: formatBudgetReply(outcome) } };
+      return {
+        chatId: msg.chat.id,
+        reply: { text: formatBudgetReply(outcome, input.member.locale) },
+      };
     }
 
     const result = await processTextMessage({
@@ -642,17 +649,21 @@ function formatVoiceReply(
 ): string {
   switch (outcome.kind) {
     case "too_long":
-      return `Голосовое слишком длинное (${outcome.duration}s, лимит ${outcome.maxAllowed}s).`;
+      return t(locale, "voice_too_long", {
+        dur: String(outcome.duration),
+        max: String(outcome.maxAllowed),
+      });
     case "download_failed":
-      return `Не смог скачать голосовое: ${outcome.error}`;
+      return t(locale, "voice_download_failed", { err: outcome.error });
     case "transcribe_failed":
-      return `Не смог распознать: ${outcome.error}`;
+      return t(locale, "voice_transcribe_failed", { err: outcome.error });
     case "language_rejected":
-      return `Распознал язык "${outcome.detected}" - не в whitelist (ru/uk/pl/en).`;
+      return t(locale, "voice_lang_rejected", { lang: outcome.detected });
     case "no_text":
-      return "Не понял, что записать. Скажи как «кофе 12 zł».";
+      return t(locale, "voice_no_text");
     case "ok": {
-      const head = `Распознал: ${outcome.transcript.slice(0, 100)}\n\n`;
+      const head = t(locale, "voice_recognized", { text: outcome.transcript.slice(0, 100) }) +
+        "\n\n";
       return head + formatReply(outcome.result, locale);
     }
   }

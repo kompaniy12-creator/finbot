@@ -29,6 +29,28 @@ type Dict = Record<string, string>;
 // {name} style placeholders are substituted from params.
 const STRINGS: Record<Locale, Dict> = {
   uk: {
+    debt_parse_failed:
+      "Не зрозумів борг ({reason}). Спробуй чіткіше: «дав у борг Паші 1000 PLN до 15 липня».",
+    debt_owed_to_me: "Винен мені",
+    debt_i_owe: "Я винен",
+    lbl_date: "Дата",
+    lbl_due: "Термін",
+    debt_saved: "✅ {verb}: {who} - {sum}\n{dateLbl}: {date}{due}",
+    budget_parse_failed:
+      "Не зрозумів бюджет ({reason}). Спробуй: «додай бюджет їжа 2000 PLN на місяць».",
+    budget_cat_not_found:
+      "Не знайшов категорію «{wanted}». Доступні:\n{list}\n\nПовтори з точною назвою, напр.: «бюджет {ex} 500 EUR».",
+    per_weekly: "на тиждень",
+    per_monthly: "на місяць",
+    per_yearly: "на рік",
+    budget_created:
+      "✅ Бюджет створено: {cat} - {sum} {period}.\nПрогрес у вкладці Планування -> Бюджети.",
+    voice_too_long: "Голосове задовге ({dur}s, ліміт {max}s).",
+    voice_download_failed: "Не зміг завантажити голосове: {err}",
+    voice_transcribe_failed: "Не зміг розпізнати: {err}",
+    voice_lang_rejected: 'Розпізнав мову "{lang}" - не в списку (ru/uk/pl/en).',
+    voice_no_text: "Не зрозумів, що записати. Скажи як «кава 12 zł».",
+    voice_recognized: "Розпізнав: {text}",
     not_understood: "Не зрозумів, що записати. Спробуй: «кава 12 zł».",
     rec_saved: "Записав:",
     rec_saved_n: "Записав {n}:",
@@ -73,6 +95,28 @@ const STRINGS: Record<Locale, Dict> = {
       "А поки пиши витрати текстом або надсилай фото чеків. Відкрий «FinApp» у меню бота.",
   },
   ru: {
+    debt_parse_failed:
+      "Не смог распознать долг ({reason}). Попробуй явнее: «дал в долг Паше 1000 PLN до 15 июля».",
+    debt_owed_to_me: "Должен мне",
+    debt_i_owe: "Я должен",
+    lbl_date: "Дата",
+    lbl_due: "Срок",
+    debt_saved: "✅ {verb}: {who} - {sum}\n{dateLbl}: {date}{due}",
+    budget_parse_failed:
+      "Не смог распознать бюджет ({reason}). Попробуй: «добавь бюджет еда 2000 PLN в месяц».",
+    budget_cat_not_found:
+      "Не нашёл категорию «{wanted}». Доступные:\n{list}\n\nПовтори с точным названием, например: «бюджет {ex} 500 EUR».",
+    per_weekly: "в неделю",
+    per_monthly: "в месяц",
+    per_yearly: "в год",
+    budget_created:
+      "✅ Бюджет создан: {cat} - {sum} {period}.\nПрогресс смотри во вкладке Планирование -> Бюджеты.",
+    voice_too_long: "Голосовое слишком длинное ({dur}s, лимит {max}s).",
+    voice_download_failed: "Не смог скачать голосовое: {err}",
+    voice_transcribe_failed: "Не смог распознать: {err}",
+    voice_lang_rejected: 'Распознал язык "{lang}" - не в whitelist (ru/uk/pl/en).',
+    voice_no_text: "Не понял, что записать. Скажи как «кофе 12 zł».",
+    voice_recognized: "Распознал: {text}",
     not_understood: "Не понял, что записать. Попробуй: «кофе 12 zł».",
     rec_saved: "Записал:",
     rec_saved_n: "Записал {n}:",
@@ -117,6 +161,28 @@ const STRINGS: Record<Locale, Dict> = {
       "А пока пиши траты текстом или шли фото чеков. Открой «FinApp» в меню бота.",
   },
   pl: {
+    debt_parse_failed:
+      "Nie zrozumiałem długu ({reason}). Spróbuj wyraźniej: «pożyczyłem Pawłowi 1000 PLN do 15 lipca».",
+    debt_owed_to_me: "Winni mi",
+    debt_i_owe: "Jestem winien",
+    lbl_date: "Data",
+    lbl_due: "Termin",
+    debt_saved: "✅ {verb}: {who} - {sum}\n{dateLbl}: {date}{due}",
+    budget_parse_failed:
+      "Nie zrozumiałem budżetu ({reason}). Spróbuj: «dodaj budżet jedzenie 2000 PLN na miesiąc».",
+    budget_cat_not_found:
+      "Nie znalazłem kategorii «{wanted}». Dostępne:\n{list}\n\nPowtórz z dokładną nazwą, np.: «budżet {ex} 500 EUR».",
+    per_weekly: "na tydzień",
+    per_monthly: "na miesiąc",
+    per_yearly: "na rok",
+    budget_created:
+      "✅ Budżet utworzony: {cat} - {sum} {period}.\nPostęp w zakładce Planowanie -> Budżety.",
+    voice_too_long: "Wiadomość głosowa za długa ({dur}s, limit {max}s).",
+    voice_download_failed: "Nie udało się pobrać głosówki: {err}",
+    voice_transcribe_failed: "Nie udało się rozpoznać: {err}",
+    voice_lang_rejected: 'Wykryto język "{lang}" - poza listą (ru/uk/pl/en).',
+    voice_no_text: "Nie zrozumiałem, co zapisać. Powiedz np. «kawa 12 zł».",
+    voice_recognized: "Rozpoznano: {text}",
     not_understood: "Nie zrozumiałem, co zapisać. Spróbuj: «kawa 12 zł».",
     rec_saved: "Zapisałem:",
     rec_saved_n: "Zapisałem {n}:",
@@ -161,6 +227,28 @@ const STRINGS: Record<Locale, Dict> = {
       "Na razie pisz wydatki tekstem lub wysyłaj zdjęcia paragonów. Otwórz «FinApp» w menu bota.",
   },
   en: {
+    debt_parse_failed:
+      'Couldn\'t parse the debt ({reason}). Try clearer: "lent Pasha 1000 PLN until July 15".',
+    debt_owed_to_me: "Owes me",
+    debt_i_owe: "I owe",
+    lbl_date: "Date",
+    lbl_due: "Due",
+    debt_saved: "✅ {verb}: {who} - {sum}\n{dateLbl}: {date}{due}",
+    budget_parse_failed:
+      'Couldn\'t parse the budget ({reason}). Try: "add budget food 2000 PLN per month".',
+    budget_cat_not_found:
+      'Category «{wanted}» not found. Available:\n{list}\n\nRetry with the exact name, e.g.: "budget {ex} 500 EUR".',
+    per_weekly: "per week",
+    per_monthly: "per month",
+    per_yearly: "per year",
+    budget_created:
+      "✅ Budget created: {cat} - {sum} {period}.\nSee progress in Planning -> Budgets.",
+    voice_too_long: "Voice message too long ({dur}s, limit {max}s).",
+    voice_download_failed: "Couldn't download the voice: {err}",
+    voice_transcribe_failed: "Couldn't transcribe: {err}",
+    voice_lang_rejected: 'Detected language "{lang}" - not in whitelist (ru/uk/pl/en).',
+    voice_no_text: 'Didn\'t catch what to record. Say e.g. "coffee 12 zł".',
+    voice_recognized: "Recognized: {text}",
     not_understood: 'Didn\'t catch what to record. Try: "coffee 12 zł".',
     rec_saved: "Recorded:",
     rec_saved_n: "Recorded {n}:",

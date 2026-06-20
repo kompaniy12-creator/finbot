@@ -6,6 +6,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { FamilyMember } from "../_shared/types.ts";
 import { tenantDb } from "../_shared/tenant_db.ts";
 import { callClaude } from "../_shared/claude.ts";
+import { t } from "../_shared/i18n.ts";
 import {
   buildDebtSystemPrompt,
   ParseDebtOutputSchema,
@@ -103,12 +104,21 @@ export async function processDebtMessage(args: {
   };
 }
 
-export function formatDebtReply(o: DebtPipelineOutcome): string {
+export function formatDebtReply(o: DebtPipelineOutcome, locale = "ru"): string {
   if (o.kind === "parse_failed") {
-    return `Не смог распознать долг (${o.reason}). Попробуй явнее: «дал в долг Паше 1000 PLN до 15 июля».`;
+    return t(locale, "debt_parse_failed", { reason: o.reason });
   }
-  const verb = o.direction === "owed_to_me" ? "Должен мне" : "Я должен";
+  const verb = o.direction === "owed_to_me"
+    ? t(locale, "debt_owed_to_me")
+    : t(locale, "debt_i_owe");
   const sumStr = Number(o.amount).toFixed(2).replace(/\.00$/, "") + " " + o.currency;
-  const dueLine = o.due_date ? `\nСрок: ${o.due_date}` : "";
-  return `✅ ${verb}: ${o.counterparty} - ${sumStr}\nДата: ${o.borrowed_at}${dueLine}`;
+  const due = o.due_date ? `\n${t(locale, "lbl_due")}: ${o.due_date}` : "";
+  return t(locale, "debt_saved", {
+    verb,
+    who: o.counterparty,
+    sum: sumStr,
+    dateLbl: t(locale, "lbl_date"),
+    date: o.borrowed_at,
+    due,
+  });
 }

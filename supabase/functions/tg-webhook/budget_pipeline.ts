@@ -6,6 +6,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { FamilyMember } from "../_shared/types.ts";
 import { tenantDb } from "../_shared/tenant_db.ts";
 import { callClaude } from "../_shared/claude.ts";
+import { t } from "../_shared/i18n.ts";
 import {
   buildBudgetSystemPrompt,
   ParseBudgetOutputSchema,
@@ -131,20 +132,22 @@ export async function processBudgetMessage(args: {
   };
 }
 
-export function formatBudgetReply(o: BudgetPipelineOutcome): string {
+export function formatBudgetReply(o: BudgetPipelineOutcome, locale = "ru"): string {
   if (o.kind === "parse_failed") {
-    return `Не смог распознать бюджет (${o.reason}). ` +
-      `Попробуй: «добавь бюджет еда 2000 PLN в месяц».`;
+    return t(locale, "budget_parse_failed", { reason: o.reason });
   }
   if (o.kind === "category_not_found") {
-    const list = o.available.slice(0, 20).join(", ");
-    return `Не нашёл категорию «${o.wanted}». Доступные категории:\n${list}\n\n` +
-      `Повтори с точным названием, например: «бюджет ${
-        o.available[0] ?? "Питание продукты"
-      } 500 EUR».`;
+    return t(locale, "budget_cat_not_found", {
+      wanted: o.wanted,
+      list: o.available.slice(0, 20).join(", "),
+      ex: o.available[0] ?? "Питание продукты",
+    });
   }
-  const periodRu = o.period === "weekly" ? "в неделю" : o.period === "yearly" ? "в год" : "в месяц";
+  const period = o.period === "weekly"
+    ? t(locale, "per_weekly")
+    : o.period === "yearly"
+    ? t(locale, "per_yearly")
+    : t(locale, "per_monthly");
   const sumStr = Number(o.amount).toFixed(2).replace(/\.00$/, "") + " " + o.currency;
-  return `✅ Бюджет создан: ${o.category_name} - ${sumStr} ${periodRu}.\n` +
-    `Прогресс смотри во вкладке Планирование -> Бюджеты.`;
+  return t(locale, "budget_created", { cat: o.category_name, sum: sumStr, period });
 }
