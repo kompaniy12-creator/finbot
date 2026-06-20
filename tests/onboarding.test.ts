@@ -1,8 +1,13 @@
 import { assertEquals, assertStringIncludes } from "@std/assert";
+
+// The wizard encrypts API keys before storing; give crypto_box a test key.
+Deno.env.set("KEY_ENC_SECRET", btoa("secret-test-key-32-bytes-long!!!"));
+
 import {
   advanceOnboarding,
   onboardingGreeting,
 } from "../supabase/functions/tg-webhook/onboarding.ts";
+import { decryptSecret } from "../supabase/functions/_shared/crypto_box.ts";
 import type { FamilyMember } from "../supabase/functions/_shared/types.ts";
 
 const TENANT = "00000000-0000-0000-0000-0000000000aa";
@@ -102,7 +107,9 @@ Deno.test("onboarding: apikey step accepts a key and advances to groqkey", async
   const { sb, tenant } = makeSb({ name: "Serhii", onboarding_step: "apikey" });
   const key = "sk-ant-api03-" + "x".repeat(30);
   await advanceOnboarding({ sb, member, step: "apikey", locale: "ru", text: key });
-  assertEquals(tenant.anthropic_api_key, key);
+  // Stored encrypted, not in plaintext.
+  assertEquals(tenant.anthropic_api_key === key, false);
+  assertEquals(await decryptSecret(tenant.anthropic_api_key as string), key);
   assertEquals(tenant.onboarding_step, "groqkey");
 });
 
@@ -123,6 +130,7 @@ Deno.test("onboarding: groqkey accepts a key and finishes", async () => {
   const { sb, tenant } = makeSb({ name: "Serhii", onboarding_step: "groqkey" });
   const key = "gsk_" + "a".repeat(40);
   await advanceOnboarding({ sb, member, step: "groqkey", locale: "ru", text: key });
-  assertEquals(tenant.groq_api_key, key);
+  assertEquals(tenant.groq_api_key === key, false);
+  assertEquals(await decryptSecret(tenant.groq_api_key as string), key);
   assertEquals(tenant.onboarding_step, null);
 });

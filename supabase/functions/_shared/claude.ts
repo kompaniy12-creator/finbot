@@ -13,6 +13,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { log } from "./log.ts";
 import { enforceBudget, recordUsage } from "./budget.ts";
+import { decryptSecret } from "./crypto_box.ts";
 
 // Per SPEC §5 cost reference (as of Jan 2026). USD per million tokens.
 export interface ModelPricing {
@@ -90,7 +91,8 @@ async function resolveAnthropicClient(
 ): Promise<Anthropic> {
   if (tenantId && tenantId !== FAMILY_TENANT) {
     const r = await sb.from("tenants").select("anthropic_api_key").eq("id", tenantId).maybeSingle();
-    const key = (r.data as { anthropic_api_key: string | null } | null)?.anthropic_api_key;
+    const stored = (r.data as { anthropic_api_key: string | null } | null)?.anthropic_api_key;
+    const key = await decryptSecret(stored);
     if (key) return clientForKey(key);
     throw new Error(NO_API_KEY);
   }

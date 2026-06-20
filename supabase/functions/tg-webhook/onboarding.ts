@@ -7,6 +7,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { FamilyMember } from "../_shared/types.ts";
 import { tenantDb } from "../_shared/tenant_db.ts";
+import { encryptSecret } from "../_shared/crypto_box.ts";
 import { isLocale, type Locale, LOCALES, t } from "../_shared/i18n.ts";
 
 export interface OnbReply {
@@ -90,8 +91,10 @@ export async function advanceOnboarding(args: {
 
   if (step === "apikey") {
     if (!/^sk-ant-\S{20,}$/.test(text)) return { text: t(locale, "bad_apikey") };
-    await sb.from("tenants").update({ anthropic_api_key: text, onboarding_step: "groqkey" })
-      .eq("id", member.tenant_id);
+    await sb.from("tenants").update({
+      anthropic_api_key: await encryptSecret(text),
+      onboarding_step: "groqkey",
+    }).eq("id", member.tenant_id);
     return { text: t(locale, "ask_groqkey"), reply_markup: skipKeyboard(locale) };
   }
 
@@ -102,7 +105,8 @@ export async function advanceOnboarding(args: {
       return { text: t(locale, "done_nogroq", { name }) };
     }
     if (/^gsk_[A-Za-z0-9]{20,}$/.test(text)) {
-      await sb.from("tenants").update({ groq_api_key: text }).eq("id", member.tenant_id);
+      await sb.from("tenants").update({ groq_api_key: await encryptSecret(text) })
+        .eq("id", member.tenant_id);
       await finish(sb, member.tenant_id);
       return { text: t(locale, "done", { name }) };
     }

@@ -5,6 +5,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { log } from "./log.ts";
 import { FAMILY_TENANT, NO_API_KEY } from "./claude.ts";
+import { decryptSecret } from "./crypto_box.ts";
 
 // Resolve the Groq key for a tenant: the tenant's own key (SaaS) or undefined
 // for the family tenant (caller falls back to the env key). Throws NO_API_KEY
@@ -16,7 +17,8 @@ export async function resolveTenantGroqKey(
 ): Promise<string | undefined> {
   if (!tenantId || tenantId === FAMILY_TENANT) return undefined;
   const r = await sb.from("tenants").select("groq_api_key").eq("id", tenantId).maybeSingle();
-  const key = (r.data as { groq_api_key: string | null } | null)?.groq_api_key;
+  const stored = (r.data as { groq_api_key: string | null } | null)?.groq_api_key;
+  const key = await decryptSecret(stored);
   if (key) return key;
   throw new Error(NO_API_KEY);
 }

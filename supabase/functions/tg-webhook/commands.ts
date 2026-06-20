@@ -6,6 +6,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { FamilyMember } from "../_shared/types.ts";
 import { tenantDb } from "../_shared/tenant_db.ts";
+import { encryptSecret } from "../_shared/crypto_box.ts";
 import { recordAudit } from "../_shared/audit.ts";
 import { notifyUser } from "../_shared/notify.ts";
 import { buildAnalystSnapshot } from "../_shared/analyst_snapshot.ts";
@@ -635,7 +636,7 @@ export async function apiKeyCommand(
         "<code>/apikey sk-ant-...</code>",
     };
   }
-  const upd = await sb.from("tenants").update({ anthropic_api_key: key })
+  const upd = await sb.from("tenants").update({ anthropic_api_key: await encryptSecret(key) })
     .eq("id", actor.tenant_id);
   if (upd.error) return { text: `Не смог сохранить ключ: ${upd.error.message}` };
   return {
@@ -659,7 +660,7 @@ export async function groqKeyCommand(
         "<code>/groqkey gsk_...</code>",
     };
   }
-  const upd = await sb.from("tenants").update({ groq_api_key: key })
+  const upd = await sb.from("tenants").update({ groq_api_key: await encryptSecret(key) })
     .eq("id", actor.tenant_id);
   if (upd.error) return { text: `Не смог сохранить ключ: ${upd.error.message}` };
   return {
