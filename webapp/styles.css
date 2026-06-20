@@ -903,8 +903,16 @@ body.tab-ops.txkind-income .tab-only.show-on-ops-income,
 body.tab-settings .tab-only.show-on-settings,
 body.tab-planning .tab-only.show-on-planning,
 body.tab-debts .tab-only.show-on-debts,
-body.tab-credits .tab-only.show-on-credits {
+body.tab-credits .tab-only.show-on-credits,
+body.tab-investments .tab-only.show-on-investments {
   display: block;
+}
+.investments-stub {
+  padding: 16px;
+  background: var(--card, #1c1c1e);
+  border: 1px solid var(--border, #2c2c2e);
+  border-radius: 12px;
+  line-height: 1.5;
 }
 /* Grid/flex containers need their original display value, not block. */
 body.tab-dashboard .tab-only.show-on-dashboard.kpi,

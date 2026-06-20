@@ -157,6 +157,7 @@ const VALID_TABS = [
   "planning",
   "debts",
   "credits",
+  "investments",
   "settings",
 ];
 state.tab = "dashboard";
