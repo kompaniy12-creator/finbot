@@ -37,11 +37,11 @@ const ALLOWED_RAW = new Set<string>([
   "supabase/functions/_shared/webapp_auth.ts",
   "supabase/functions/api-web-exchange/index.ts",
   "supabase/functions/_shared/budget.ts",
-  "supabase/functions/cron-anomaly/index.ts",
+  // Cron driving list: loads active members across ALL tenants to fan out
+  // per-tenant notifications. Cross-tenant by nature.
+  "supabase/functions/_shared/cron_tenants.ts",
   "supabase/functions/cron-auto-confirm/index.ts",
-  "supabase/functions/cron-daily-summary/index.ts",
   "supabase/functions/cron-media-group-sweep/index.ts",
-  "supabase/functions/cron-month-summary/index.ts",
   "supabase/functions/cron-notifications/index.ts",
   "supabase/functions/cron-recurring/index.ts",
   "supabase/functions/cron-retention/index.ts",

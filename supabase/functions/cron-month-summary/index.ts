@@ -1,18 +1,24 @@
-// cron-month-summary: 1st of each month at 07:00 UTC (~09:00 Warsaw).
-// Sends each active family member a Claude-written 2-3 sentence recap of
-// the PREVIOUS month: total spend, vs prior month, top categories, biggest
-// surprise. Single Anthropic call per family (~$0.002 of Haiku), once a
-// month - negligible cost.
+// cron-month-summary: 1st of each month. Tenant-aware: for each tenant builds a
+// recap of the PREVIOUS month (total, vs prior month, top categories) plus a
+// short Claude-written note billed to THAT tenant's own API key, and sends it
+// via that tenant's bot. Tenants with no spend last month are skipped.
 
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { adminClient } from "../_shared/supabase.ts";
+import { tenantDb } from "../_shared/tenant_db.ts";
 import { log } from "../_shared/log.ts";
 import { checkCronAuth } from "../_shared/retry.ts";
-import { addDaysIso, todayWarsawIso } from "../_shared/dates.ts";
+import { todayWarsawIso } from "../_shared/dates.ts";
 import { loadEurRates, plnToEur } from "../_shared/eur_view.ts";
 import { callClaude } from "../_shared/claude.ts";
+import {
+  type CronMember,
+  loadActiveTenants,
+  loadBotTokens,
+  sendTg,
+} from "../_shared/cron_tenants.ts";
 
 function previousMonth(today: string): { start: string; end: string; ym: string } {
-  // today YYYY-MM-DD -> previous month bounds
   const [y, m] = today.slice(0, 7).split("-").map(Number);
   const py = m === 1 ? y! - 1 : y!;
   const pm = m === 1 ? 12 : m! - 1;
@@ -22,83 +28,48 @@ function previousMonth(today: string): { start: string; end: string; ym: string 
   return { start, end, ym: `${py}-${String(pm).padStart(2, "0")}` };
 }
 
-async function sendTg(chatId: number, text: string): Promise<void> {
-  const token = Deno.env.get("TELEGRAM_BOT_TOKEN");
-  if (!token) return;
-  try {
-    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        chat_id: chatId,
-        text,
-        disable_web_page_preview: true,
-      }),
-    });
-  } catch (err) {
-    log("warn", "month_summary_tg_failed", { chat_id: chatId, error: (err as Error).message });
-  }
-}
-
-Deno.serve(async (req: Request) => {
-  if (!checkCronAuth(req)) return new Response("forbidden", { status: 401 });
-  const sb = adminClient();
-
+async function buildMonthText(
+  sb: SupabaseClient,
+  tenantId: string,
+  members: CronMember[],
+): Promise<string | null> {
+  const db = tenantDb(sb, tenantId);
   const today = todayWarsawIso();
   const prev = previousMonth(today);
-  // Window for "prior" comparison (month BEFORE prev)
   const prior = previousMonth(prev.start);
 
-  // Pull rows for both windows in parallel. kind='expense' filter
-  // is critical - the monthly summary is a spending report, not a
-  // net-flow report; including income would dominate top categories
-  // and inflate totals.
-  const [prevRowsRes, priorRowsRes, famRes, catRes] = await Promise.all([
-    sb.from("expenses")
-      .select("amount, currency, amount_pln, category_id, expense_date")
+  const [prevRowsRes, priorRowsRes, catRes] = await Promise.all([
+    db.from("expenses").select("amount, currency, amount_pln, category_id, expense_date")
       .eq("archived", false).eq("kind", "expense")
       .gte("expense_date", prev.start).lte("expense_date", prev.end),
-    sb.from("expenses")
-      .select("amount_pln, expense_date")
+    db.from("expenses").select("amount_pln, expense_date")
       .eq("archived", false).eq("kind", "expense")
       .gte("expense_date", prior.start).lte("expense_date", prior.end),
-    sb.from("family_members").select("id, telegram_id, active").eq("active", true),
-    sb.from("categories").select("id, name"),
+    db.from("categories").select("id, name"),
   ]);
 
-  const prevRows = (prevRowsRes.data ?? []) as Array<{
-    amount: number;
-    currency: string;
-    amount_pln: number;
-    category_id: string;
-    expense_date: string;
-  }>;
-  const priorRows = (priorRowsRes.data ?? []) as Array<{
-    amount_pln: number;
-    expense_date: string;
-  }>;
-  const members = (famRes.data ?? []) as Array<{
-    id: string;
-    telegram_id: number;
-    active: boolean;
-  }>;
+  const prevRows = (prevRowsRes.data ?? []) as Array<
+    {
+      amount: number;
+      currency: string;
+      amount_pln: number;
+      category_id: string;
+      expense_date: string;
+    }
+  >;
+  if (prevRows.length === 0) return null;
+  const priorRows = (priorRowsRes.data ?? []) as Array<
+    { amount_pln: number; expense_date: string }
+  >;
   const catName = new Map(
     ((catRes.data ?? []) as Array<{ id: string; name: string }>).map((c) => [c.id, c.name]),
   );
 
-  if (prevRows.length === 0) {
-    log("info", "month_summary_no_data", { month: prev.ym });
-    return Response.json({ sent: 0, reason: "no data" });
-  }
-
-  const dates = [
-    ...prevRows.map((r) => r.expense_date),
-    ...priorRows.map((r) => r.expense_date),
-  ];
+  const dates = [...prevRows.map((r) => r.expense_date), ...priorRows.map((r) => r.expense_date)];
   const eurRates = await loadEurRates(sb, dates);
 
   let totalEur = 0;
-  const byCat = new Map<string, number>(); // EUR
+  const byCat = new Map<string, number>();
   for (const r of prevRows) {
     const eur = plnToEur(Number(r.amount_pln), r.expense_date, eurRates) ?? 0;
     totalEur += eur;
@@ -117,22 +88,22 @@ Deno.serve(async (req: Request) => {
     .sort((a, b) => b.eur - a.eur)
     .slice(0, 5);
 
-  // Ask Claude Haiku for a short Russian recap. Bill the Anthropic usage to
-  // the first admin so the budget ledger has a real owner; family-level call.
+  // Short Claude recap, billed to this tenant's own key. If the tenant has no
+  // key (NO_API_KEY) or the call fails, we just skip the recap.
   let recap = "";
-  const billingMember = members.find((m) => m.active)?.id;
+  const billingMember = members[0]?.id;
   if (billingMember) {
     try {
       const { response } = await callClaude({
         sb,
         familyMemberId: billingMember,
+        tenantId,
         model: Deno.env.get("CLAUDE_MODEL_FAST") ?? "claude-haiku-4-5-20251001",
         system: [{
           type: "text",
           text:
-            "Ты помощник по личным финансам семьи. Напиши 2-3 коротких предложения на русском о том как прошёл месяц по тратам. " +
-            "Сравни с предыдущим месяцем и выдели интересное (рост / падение в категориях). " +
-            "Тон: дружелюбный, конкретный, без воды. Не приветствуй, сразу к делу. Не повторяй цифры построчно - найди главное.",
+            "Ты помощник по личным финансам. Напиши 2-3 коротких предложения на русском о том как прошёл месяц по тратам. " +
+            "Сравни с предыдущим месяцем и выдели интересное. Тон дружелюбный, конкретный, без воды. Сразу к делу.",
         }],
         messages: [{
           role: "user",
@@ -167,23 +138,32 @@ Deno.serve(async (req: Request) => {
     ? `\n\nТоп-категории:\n` + top.map((t) => `- ${t.name}: ${t.eur} EUR`).join("\n")
     : "";
   const recapLine = recap ? `\n\n${recap}` : "";
+  return headline + deltaLine + topLine + recapLine;
+}
 
-  const text = headline + deltaLine + topLine + recapLine;
+Deno.serve(async (req: Request) => {
+  if (!checkCronAuth(req)) return new Response("forbidden", { status: 401 });
+  const sb = adminClient();
+  const botTokens = await loadBotTokens(sb);
+  const tenants = await loadActiveTenants(sb);
 
-  let sent = 0;
-  for (const m of members) {
-    await sendTg(m.telegram_id, text);
-    sent++;
+  let sent = 0, tenantsNotified = 0;
+  for (const t of tenants) {
+    let text: string | null = null;
+    try {
+      text = await buildMonthText(sb, t.tenantId, t.members);
+    } catch (err) {
+      log("warn", "month_summary_tenant_failed", {
+        tenant: t.tenantId,
+        error: (err as Error).message,
+      });
+    }
+    if (!text) continue;
+    tenantsNotified++;
+    for (const m of t.members) {
+      if (await sendTg(botTokens.get(m.bot_id ?? ""), m.telegram_id, text)) sent++;
+    }
   }
-  log("info", "month_summary_sent", {
-    sent,
-    month: prev.ym,
-    total_eur: totalEur,
-    prior_eur: priorEur,
-    had_recap: Boolean(recap),
-  });
-  return Response.json({ sent, total_eur: totalEur, month: prev.ym });
+  log("info", "month_summary_sent", { sent, tenants_notified: tenantsNotified });
+  return Response.json({ sent, tenants_notified: tenantsNotified });
 });
-
-// Silence unused-var lint when addDaysIso isn't strictly needed.
-void addDaysIso;
