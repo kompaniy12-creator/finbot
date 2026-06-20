@@ -6,6 +6,13 @@
       name="viewport"
       content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, viewport-fit=cover"
     />
+    <!-- Content Security Policy (P2.5). Allowlist matches exactly what the app
+         loads: Telegram + jsDelivr scripts, the project's Supabase host for API
+         + storage, inline styles (style="" attrs + Chart.js). No inline scripts. -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' https://telegram.org https://cdn.jsdelivr.net; connect-src 'self' https://bltbuptzsswaislqagwe.supabase.co; img-src 'self' data: https://bltbuptzsswaislqagwe.supabase.co; style-src 'self' 'unsafe-inline'; font-src 'self'; base-uri 'self'; form-action 'self'; object-src 'none'"
+    />
     <!-- Cache hints for Telegram WebView - the income+expense merged into one Операции tab with top toggle -->
     <meta http-equiv="cache-control" content="no-cache, no-store, must-revalidate" />
     <meta http-equiv="pragma" content="no-cache" />
@@ -13,7 +20,7 @@
     <title>FinBot Dashboard</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
-    <link rel="stylesheet" href="./styles.css?v=1.12.1" />
+    <link rel="stylesheet" href="./styles.css?v=1.13.0" />
   </head>
   <body>
     <div id="gate" class="gate">
@@ -276,7 +283,7 @@
             </li>
             <li>
               <strong>Версия</strong>
-              <p id="settings-version">FinBot v1.12.1</p>
+              <p id="settings-version">FinBot v1.13.0</p>
             </li>
           </ul>
         </div>
@@ -416,36 +423,36 @@
         </div>
       </section>
 
-      <footer><small id="version">FinBot v1.12.1</small></footer>
+      <footer><small id="version">FinBot v1.13.0</small></footer>
     </main>
 
     <nav id="bottom-nav" class="bottom-nav hidden">
       <button class="nav-btn active" data-tab="dashboard">
-        <span class="nav-icon"><img src="./icons/nav-dashboard.png?v=1.12.1" alt="" /></span>
+        <span class="nav-icon"><img src="./icons/nav-dashboard.png?v=1.13.0" alt="" /></span>
         <span class="nav-label">Дашборд</span>
       </button>
       <button class="nav-btn" data-tab="ops">
-        <span class="nav-icon"><img src="./icons/nav-ops.png?v=1.12.1" alt="" /></span>
+        <span class="nav-icon"><img src="./icons/nav-ops.png?v=1.13.0" alt="" /></span>
         <span class="nav-label">Операции</span>
       </button>
       <button class="nav-btn" data-tab="planning">
-        <span class="nav-icon"><img src="./icons/nav-planning.png?v=1.12.1" alt="" /></span>
+        <span class="nav-icon"><img src="./icons/nav-planning.png?v=1.13.0" alt="" /></span>
         <span class="nav-label">План</span>
       </button>
       <button class="nav-btn" data-tab="debts">
-        <span class="nav-icon"><img src="./icons/nav-debts.png?v=1.12.1" alt="" /></span>
+        <span class="nav-icon"><img src="./icons/nav-debts.png?v=1.13.0" alt="" /></span>
         <span class="nav-label">Долги</span>
       </button>
       <button class="nav-btn" data-tab="credits">
-        <span class="nav-icon"><img src="./icons/nav-credits.png?v=1.12.1" alt="" /></span>
+        <span class="nav-icon"><img src="./icons/nav-credits.png?v=1.13.0" alt="" /></span>
         <span class="nav-label">Кредит</span>
       </button>
       <button class="nav-btn" data-tab="investments">
-        <span class="nav-icon"><img src="./icons/nav-investments.png?v=1.12.1" alt="" /></span>
+        <span class="nav-icon"><img src="./icons/nav-investments.png?v=1.13.0" alt="" /></span>
         <span class="nav-label">Инвест.</span>
       </button>
       <button class="nav-btn" data-tab="settings">
-        <span class="nav-icon"><img src="./icons/nav-settings.png?v=1.12.1" alt="" /></span>
+        <span class="nav-icon"><img src="./icons/nav-settings.png?v=1.13.0" alt="" /></span>
         <span class="nav-label">Настр.</span>
       </button>
     </nav>
@@ -1032,7 +1039,7 @@
       </div>
     </div>
 
-    <script src="./tg-webapp.js?v=1.12.1"></script>
-    <script src="./app.js?v=1.12.1"></script>
+    <script src="./tg-webapp.js?v=1.13.0"></script>
+    <script src="./app.js?v=1.13.0"></script>
   </body>
 </html>
