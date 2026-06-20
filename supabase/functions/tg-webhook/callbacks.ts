@@ -27,6 +27,8 @@ import { retrainCategory } from "../_shared/retrain.ts";
 import { log } from "../_shared/log.ts";
 import { recordAudit } from "../_shared/audit.ts";
 import { recordSecurityEvent } from "../_shared/security_audit.ts";
+import { shredTenantKeys } from "../_shared/crypto_box.ts";
+import { FAMILY_TENANT } from "../_shared/claude.ts";
 import { notifyUser } from "../_shared/notify.ts";
 
 const UNDO_WINDOW_MIN = Number(Deno.env.get("UNDO_WINDOW_MINUTES") ?? "10");
@@ -177,6 +179,14 @@ export async function handleCallback(args: {
         args.member,
         args.chatId,
         "demote",
+        cb.parts[0]!,
+        args.messageId,
+      );
+    case "delacct":
+      return await doDeleteAccount(
+        args.sb,
+        args.member,
+        args.chatId,
         cb.parts[0]!,
         args.messageId,
       );
@@ -598,6 +608,45 @@ async function doInvites(
   }
   const panel = await renderInvitesPanel(sb);
   return { chatId, reply: panel, edit_message_id: editMessageId, answer_text: answer };
+}
+
+// /delete_account confirmation (GDPR erasure). "yes" wipes ALL tenant data via
+// the delete_tenant_data RPC and crypto-shreds the DEK. Refuses on family tenant.
+async function doDeleteAccount(
+  sb: SupabaseClient,
+  actor: FamilyMember,
+  chatId: number,
+  answer: string,
+  editMessageId?: number,
+): Promise<CallbackOutput> {
+  if (answer !== "yes") {
+    return {
+      chatId,
+      reply: { text: "Отменено. Аккаунт не тронут." },
+      edit_message_id: editMessageId,
+      answer_text: "Отменено",
+    };
+  }
+  if (actor.tenant_id === FAMILY_TENANT) {
+    return { chatId, reply: { text: "Эта команда только для внешних аккаунтов." } };
+  }
+  const rpc = await sb.rpc("delete_tenant_data", { p_tenant_id: actor.tenant_id });
+  if (rpc.error) return { chatId, reply: { text: `Ошибка удаления: ${rpc.error.message}` } };
+  await shredTenantKeys(sb, actor.tenant_id);
+  await recordSecurityEvent(sb, {
+    actorTelegramId: actor.telegram_id,
+    tenantId: actor.tenant_id,
+    action: "account_deleted",
+  });
+  return {
+    chatId,
+    reply: {
+      text: "🗑 Аккаунт и все данные удалены безвозвратно. Спасибо, что попробовал FinBot.\n" +
+        "Если захочешь вернуться - нужен новый код приглашения.",
+    },
+    edit_message_id: editMessageId,
+    answer_text: "Удалено",
+  };
 }
 
 async function doAccessDeny(

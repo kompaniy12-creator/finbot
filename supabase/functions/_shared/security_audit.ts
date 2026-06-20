@@ -14,7 +14,8 @@ export type SecurityAction =
   | "access_granted"
   | "access_revoked"
   | "export"
-  | "key_rotated";
+  | "key_rotated"
+  | "account_deleted";
 
 export interface SecurityEvent {
   actorTelegramId?: number | null;

@@ -12,7 +12,7 @@ import { recordAudit } from "../_shared/audit.ts";
 import { notifyUser } from "../_shared/notify.ts";
 import { buildAnalystSnapshot } from "../_shared/analyst_snapshot.ts";
 import { buildAskPrompt } from "../_shared/prompts/ask.ts";
-import { callClaude } from "../_shared/claude.ts";
+import { callClaude, FAMILY_TENANT } from "../_shared/claude.ts";
 import { type AskTurn, runAskAgent } from "../_shared/ask_agent.ts";
 
 const WEBAPP_URL_FALLBACK = "https://kompaniy12-creator.github.io/finbot/";
@@ -98,6 +98,7 @@ export function helpCommand(member: FamilyMember): CommandReply {
       "/undo - отменить последнюю",
       "/recurring - регулярные траты",
       "/delete_keys - удалить свои API-ключи (крипто-уничтожение)",
+      "/delete_account - удалить аккаунт и все данные (безвозвратно)",
     ].join("\n") + adminOnly,
   };
 }
@@ -714,6 +715,24 @@ export async function deleteKeysCommand(
   return {
     text: "🗑 Ключи удалены и крипто-уничтожены (восстановить нельзя).\n\n" +
       "Чтобы снова пользоваться ИИ, пришли новый ключ: <code>/apikey sk-ant-...</code>",
+  };
+}
+
+// /delete_account - step 1: warn + confirm button. The actual deletion happens
+// in the delacct:yes callback. Refuses on the family/owner tenant.
+export function deleteAccountCommand(actor: FamilyMember): CommandReply {
+  if (actor.tenant_id === FAMILY_TENANT) {
+    return { text: "Эта команда только для внешних аккаунтов." };
+  }
+  return {
+    text: "⚠️ Это <b>безвозвратно</b> удалит все твои данные (траты, чеки, бюджеты, " +
+      "долги, кредиты, категории) и ключи. Восстановить нельзя.\n\nУдалить аккаунт?",
+    reply_markup: {
+      inline_keyboard: [[
+        { text: "🗑 Да, удалить всё", callback_data: "delacct:yes" },
+        { text: "Отмена", callback_data: "delacct:no" },
+      ]],
+    } as CommandReply["reply_markup"],
   };
 }
 
