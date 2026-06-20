@@ -12,7 +12,14 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { log } from "./log.ts";
 import { todayWarsawIso } from "./dates.ts";
 
-export type RateLimitKind = "photo" | "text" | "voice" | "callback" | "webhook";
+export type RateLimitKind =
+  | "photo"
+  | "text"
+  | "voice"
+  | "callback"
+  | "webhook"
+  | "export"
+  | "key_op";
 
 export const RATE_LIMITS: Record<RateLimitKind, number> = {
   photo: 50,
@@ -20,6 +27,9 @@ export const RATE_LIMITS: Record<RateLimitKind, number> = {
   voice: 100,
   callback: 500,
   webhook: 1000,
+  // Stricter caps on data-exposing / sensitive operations (P1.3).
+  export: 20, // CSV exports per day
+  key_op: 15, // API-key set/delete per day
 };
 
 export interface RateLimitResult {

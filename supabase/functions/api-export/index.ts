@@ -4,6 +4,8 @@ import { tenantDb } from "../_shared/tenant_db.ts";
 import { authenticate } from "../_shared/webapp_auth.ts";
 import { handleOptions, text, unauthorized } from "../_shared/api_response.ts";
 import { todayWarsawIso } from "../_shared/dates.ts";
+import { checkAndBump } from "../_shared/rate_limit.ts";
+import { recordSecurityEvent } from "../_shared/security_audit.ts";
 
 function csvEscape(v: unknown): string {
   if (v === null || v === undefined) return "";
@@ -17,6 +19,19 @@ Deno.serve(async (req: Request) => {
   const sb = adminClient();
   const me = await authenticate(req, sb);
   if (!me) return unauthorized(req);
+
+  // P1.3: strict per-user rate limit on bulk export (data-exposing op).
+  const rl = await checkAndBump(sb, me.telegram_id, "export");
+  if (!rl.allowed) {
+    await recordSecurityEvent(sb, {
+      actorTelegramId: me.telegram_id,
+      tenantId: me.tenant_id,
+      action: "export",
+      result: "fail",
+      details: { reason: "rate_limited", count: rl.count, limit: rl.limit },
+    });
+    return text(req, "rate_limited\n", 429, "text/csv");
+  }
   const db = tenantDb(sb, me.tenant_id);
 
   const url = new URL(req.url);
@@ -52,5 +67,12 @@ Deno.serve(async (req: Request) => {
   ];
   const lines = [headers.join(",")];
   for (const r of rows) lines.push(headers.map((h) => csvEscape(r[h])).join(","));
+  // Audit the successful export (counts only, no financial values).
+  await recordSecurityEvent(sb, {
+    actorTelegramId: me.telegram_id,
+    tenantId: me.tenant_id,
+    action: "export",
+    details: { period, rows: rows.length },
+  });
   return text(req, lines.join("\n") + "\n", 200, "text/csv");
 });

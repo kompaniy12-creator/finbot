@@ -43,6 +43,7 @@ import { processVoiceMessage } from "./voice_pipeline.ts";
 import { type PhotoOutcome, processPhotoMessage } from "./photo_pipeline.ts";
 import { type BankPipelineOutcome, processBankStatement } from "./bank_pipeline.ts";
 import { startProgress } from "../_shared/progress.ts";
+import { checkAndBump } from "../_shared/rate_limit.ts";
 
 export interface RouteContext {
   sb: SupabaseClient;
@@ -87,6 +88,13 @@ export async function routeCommand(
 ): Promise<CommandReply> {
   if (ADMIN_COMMANDS.has(cmd) && ctx.member.role !== "admin") {
     return { text: "Эта команда доступна только админу." };
+  }
+  // P1.3: strict rate limit on sensitive key operations.
+  if (cmd === "apikey" || cmd === "groqkey" || cmd === "delete_keys") {
+    const rl = await checkAndBump(ctx.sb, ctx.member.telegram_id, "key_op");
+    if (!rl.allowed) {
+      return { text: "Слишком много операций с ключами за сегодня. Попробуй завтра." };
+    }
   }
   switch (cmd) {
     case "start":
