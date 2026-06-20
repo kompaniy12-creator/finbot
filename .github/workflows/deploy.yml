@@ -29,7 +29,10 @@ jobs:
       - name: Setup Supabase CLI
         uses: supabase/setup-cli@v1
         with:
-          version: latest
+          # Pinned (not "latest") so deploy doesn't depend on resolving the
+          # newest release at runtime, which intermittently times out / rate
+          # limits and fails the whole deploy.
+          version: 2.107.0
 
       # NOTE: shared-org mode does NOT reset DB password, so we skip
       # `supabase link --password` and route all SQL through the Management
