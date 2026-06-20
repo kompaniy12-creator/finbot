@@ -20,7 +20,7 @@
     <title>FinBot Dashboard</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.js"></script>
-    <link rel="stylesheet" href="./styles.css?v=1.18.0" />
+    <link rel="stylesheet" href="./styles.css?v=1.19.0" />
   </head>
   <body>
     <div id="gate" class="gate">
@@ -324,7 +324,7 @@
             </li>
             <li>
               <strong data-i18n="set_version">Версия</strong>
-              <p id="settings-version">FinBot v1.18.0</p>
+              <p id="settings-version">FinBot v1.19.0</p>
             </li>
           </ul>
         </div>
@@ -500,36 +500,36 @@
         </div>
       </section>
 
-      <footer><small id="version">FinBot v1.18.0</small></footer>
+      <footer><small id="version">FinBot v1.19.0</small></footer>
     </main>
 
     <nav id="bottom-nav" class="bottom-nav hidden">
       <button class="nav-btn active" data-tab="dashboard">
-        <span class="nav-icon"><img src="./icons/nav-dashboard.png?v=1.18.0" alt="" /></span>
+        <span class="nav-icon"><img src="./icons/nav-dashboard.png?v=1.19.0" alt="" /></span>
         <span class="nav-label" data-i18n="nav_dashboard">Дашборд</span>
       </button>
       <button class="nav-btn" data-tab="ops">
-        <span class="nav-icon"><img src="./icons/nav-ops.png?v=1.18.0" alt="" /></span>
+        <span class="nav-icon"><img src="./icons/nav-ops.png?v=1.19.0" alt="" /></span>
         <span class="nav-label" data-i18n="nav_ops">Операции</span>
       </button>
       <button class="nav-btn" data-tab="planning">
-        <span class="nav-icon"><img src="./icons/nav-planning.png?v=1.18.0" alt="" /></span>
+        <span class="nav-icon"><img src="./icons/nav-planning.png?v=1.19.0" alt="" /></span>
         <span class="nav-label" data-i18n="nav_planning">План</span>
       </button>
       <button class="nav-btn" data-tab="debts">
-        <span class="nav-icon"><img src="./icons/nav-debts.png?v=1.18.0" alt="" /></span>
+        <span class="nav-icon"><img src="./icons/nav-debts.png?v=1.19.0" alt="" /></span>
         <span class="nav-label" data-i18n="nav_debts">Долги</span>
       </button>
       <button class="nav-btn" data-tab="credits">
-        <span class="nav-icon"><img src="./icons/nav-credits.png?v=1.18.0" alt="" /></span>
+        <span class="nav-icon"><img src="./icons/nav-credits.png?v=1.19.0" alt="" /></span>
         <span class="nav-label" data-i18n="nav_credits">Кредит</span>
       </button>
       <button class="nav-btn" data-tab="investments">
-        <span class="nav-icon"><img src="./icons/nav-investments.png?v=1.18.0" alt="" /></span>
+        <span class="nav-icon"><img src="./icons/nav-investments.png?v=1.19.0" alt="" /></span>
         <span class="nav-label" data-i18n="nav_investments">Инвест.</span>
       </button>
       <button class="nav-btn" data-tab="settings">
-        <span class="nav-icon"><img src="./icons/nav-settings.png?v=1.18.0" alt="" /></span>
+        <span class="nav-icon"><img src="./icons/nav-settings.png?v=1.19.0" alt="" /></span>
         <span class="nav-label" data-i18n="nav_settings">Настр.</span>
       </button>
     </nav>
@@ -538,7 +538,7 @@
       <div class="modal-backdrop"></div>
       <div class="modal-card">
         <header class="modal-head">
-          <h3 id="cat-modal-title">Выбрать категорию</h3>
+          <h3 id="cat-modal-title" data-i18n="cat_pick_title">Выбрать категорию</h3>
           <button id="cat-modal-close" type="button" aria-label="Закрыть">×</button>
         </header>
         <ul id="cat-modal-list" class="modal-cat-list"></ul>
@@ -549,7 +549,7 @@
       <div class="modal-backdrop"></div>
       <div class="modal-card photo-modal-card">
         <header class="modal-head">
-          <h3 id="photo-modal-title">Фото чека</h3>
+          <h3 id="photo-modal-title" data-i18n="photo_title">Фото чека</h3>
           <button id="photo-modal-close" type="button" aria-label="Закрыть">×</button>
         </header>
         <div class="photo-modal-body">
@@ -562,15 +562,15 @@
       <div class="modal-backdrop"></div>
       <div class="modal-card">
         <header class="modal-head">
-          <h3 id="cat-form-title">Новая категория</h3>
+          <h3 id="cat-form-title" data-i18n="cat_form_new">Новая категория</h3>
           <button id="cat-form-close" type="button" aria-label="Закрыть">×</button>
         </header>
         <div class="cat-form">
           <input type="hidden" id="cat-form-id" />
-          <label>Название
+          <label><span data-i18n="l_name">Название</span>
             <input type="text" id="cat-form-name" maxlength="80" placeholder="Например: Подписки" />
           </label>
-          <label>Описание (по-английски, для авто-классификации)
+          <label><span data-i18n="l_desc_en">Описание (по-английски, для авто-классификации)</span>
             <textarea
               id="cat-form-desc"
               maxlength="500"
@@ -580,11 +580,13 @@
           </label>
           <label class="cat-form-checkbox">
             <input type="checkbox" id="cat-form-fallback" />
-            <span>Fallback-категория (попадают неясные траты)</span>
+            <span data-i18n="l_fallback">Fallback-категория (попадают неясные траты)</span>
           </label>
           <div class="cat-form-actions">
-            <button id="cat-form-cancel" type="button">Отмена</button>
-            <button id="cat-form-save" type="button" class="primary">Сохранить</button>
+            <button id="cat-form-cancel" type="button" data-i18n="f_cancel">Отмена</button>
+            <button id="cat-form-save" type="button" class="primary" data-i18n="f_save">
+              Сохранить
+            </button>
           </div>
         </div>
       </div>
@@ -594,7 +596,7 @@
       <div class="modal-backdrop"></div>
       <div class="modal-card">
         <header class="modal-head">
-          <h3 id="user-form-title">Новый пользователь</h3>
+          <h3 id="user-form-title" data-i18n="user_form_new">Новый пользователь</h3>
           <button id="user-form-close" type="button" aria-label="Закрыть">×</button>
         </header>
         <div class="cat-form">
@@ -607,7 +609,7 @@
               inputmode="numeric"
             />
           </label>
-          <label>Имя
+          <label><span data-i18n="l_name_person">Имя</span>
             <input
               type="text"
               id="user-form-name"
@@ -615,14 +617,14 @@
               placeholder="Например: Виктория"
             />
           </label>
-          <label>Роль
+          <label><span data-i18n="l_role">Роль</span>
             <select id="user-form-role">
-              <option value="member">Участник</option>
-              <option value="admin">Админ</option>
+              <option value="member" data-i18n="opt_member">Участник</option>
+              <option value="admin" data-i18n="opt_admin">Админ</option>
             </select>
           </label>
           <div class="cat-form-actions">
-            <button id="user-form-cancel" type="button">Отмена</button>
+            <button id="user-form-cancel" type="button" data-i18n="f_cancel">Отмена</button>
             <button id="user-form-save" type="button" class="primary">Сохранить</button>
           </div>
         </div>
@@ -633,15 +635,24 @@
       <div class="modal-backdrop"></div>
       <div class="modal-card plan-form-card">
         <header class="modal-head">
-          <h3 id="plan-form-title">Новый платёж</h3>
+          <h3 id="plan-form-title" data-i18n="plan_form_new">Новый платёж</h3>
           <button id="plan-form-close" type="button" aria-label="Закрыть">×</button>
         </header>
         <div class="cat-form plan-form">
           <input type="hidden" id="plan-form-id" />
 
           <div class="plan-kind-toggle">
-            <button type="button" class="plan-kind-btn active" data-kind="expense">Расход</button>
-            <button type="button" class="plan-kind-btn" data-kind="income">Доход</button>
+            <button
+              type="button"
+              class="plan-kind-btn active"
+              data-kind="expense"
+              data-i18n="kind_expense"
+            >
+              Расход
+            </button>
+            <button type="button" class="plan-kind-btn" data-kind="income" data-i18n="kind_income">
+              Доход
+            </button>
           </div>
 
           <div class="plan-amount-row">
@@ -661,8 +672,8 @@
             </select>
           </div>
 
-          <h4 class="plan-section-title">Общие</h4>
-          <label>Название платежа
+          <h4 class="plan-section-title" data-i18n="sec_general">Общие</h4>
+          <label><span data-i18n="l_pay_name">Название платежа</span>
             <input
               type="text"
               id="plan-form-name"
@@ -670,55 +681,57 @@
               placeholder="Например: Аренда квартиры"
             />
           </label>
-          <label>Категория
+          <label><span data-i18n="l_category">Категория</span>
             <select id="plan-form-category"></select>
           </label>
           <label class="plan-row-toggle">
-            <span>Подтверждение</span>
+            <span data-i18n="l_confirm">Подтверждение</span>
             <select id="plan-form-confirm">
-              <option value="manual">Вручную</option>
-              <option value="auto">Автоматически</option>
+              <option value="manual" data-i18n="opt_manual">Вручную</option>
+              <option value="auto" data-i18n="opt_auto">Автоматически</option>
             </select>
           </label>
 
-          <h4 class="plan-section-title">Дата и повтор</h4>
-          <label>Дата
+          <h4 class="plan-section-title" data-i18n="sec_date_repeat">Дата и повтор</h4>
+          <label><span data-i18n="l_date">Дата</span>
             <input type="date" id="plan-form-date" />
           </label>
-          <label>Повтор
+          <label><span data-i18n="l_repeat">Повтор</span>
             <select id="plan-form-frequency">
-              <option value="once">Без повтора</option>
-              <option value="weekly">Еженедельно</option>
-              <option value="monthly">Ежемесячно</option>
-              <option value="yearly">Ежегодно</option>
+              <option value="once" data-i18n="opt_once">Без повтора</option>
+              <option value="weekly" data-i18n="opt_weekly">Еженедельно</option>
+              <option value="monthly" data-i18n="opt_monthly">Ежемесячно</option>
+              <option value="yearly" data-i18n="opt_yearly">Ежегодно</option>
             </select>
           </label>
 
-          <h4 class="plan-section-title">Подробнее</h4>
-          <label>Тип платежа
+          <h4 class="plan-section-title" data-i18n="sec_more">Подробнее</h4>
+          <label><span data-i18n="l_pay_type">Тип платежа</span>
             <select id="plan-form-method">
-              <option value="cash">Наличные</option>
-              <option value="card">Карта</option>
-              <option value="transfer">Перевод</option>
+              <option value="cash" data-i18n="opt_cash">Наличные</option>
+              <option value="card" data-i18n="opt_card">Карта</option>
+              <option value="transfer" data-i18n="opt_transfer">Перевод</option>
             </select>
           </label>
-          <label>Заметка
+          <label><span data-i18n="l_note">Заметка</span>
             <textarea id="plan-form-note" maxlength="500" rows="2"></textarea>
           </label>
 
-          <h4 class="plan-section-title">Уведомления</h4>
+          <h4 class="plan-section-title" data-i18n="sec_notify">Уведомления</h4>
           <label class="plan-row-toggle">
-            <span>В день оплаты</span>
+            <span data-i18n="l_notify_day">В день оплаты</span>
             <input type="checkbox" id="plan-form-notify-on-day" checked />
           </label>
           <label class="plan-row-toggle">
-            <span>За 3 дня до даты оплаты</span>
+            <span data-i18n="l_notify_3d">За 3 дня до даты оплаты</span>
             <input type="checkbox" id="plan-form-notify-3d" checked />
           </label>
 
           <div class="cat-form-actions">
-            <button id="plan-form-delete" type="button" class="danger hidden">Удалить</button>
-            <button id="plan-form-cancel" type="button">Отмена</button>
+            <button id="plan-form-delete" type="button" class="danger hidden" data-i18n="f_delete">
+              Удалить
+            </button>
+            <button id="plan-form-cancel" type="button" data-i18n="f_cancel">Отмена</button>
             <button id="plan-form-save" type="button" class="primary">Сохранить</button>
           </div>
         </div>
@@ -729,7 +742,7 @@
       <div class="modal-backdrop"></div>
       <div class="modal-card plan-form-card">
         <header class="modal-head">
-          <h3 id="budget-form-title">Добавить бюджет</h3>
+          <h3 id="budget-form-title" data-i18n="budget_form_new">Добавить бюджет</h3>
           <button id="budget-form-close" type="button" aria-label="Закрыть">×</button>
         </header>
         <div class="cat-form plan-form">
@@ -753,7 +766,7 @@
           </div>
 
           <h4 class="plan-section-title">Общие</h4>
-          <label>Название бюджета
+          <label><span data-i18n="l_budget_name">Название бюджета</span>
             <input
               type="text"
               id="budget-form-name"
@@ -761,17 +774,17 @@
               placeholder="Например: Жильё и коммуналка"
             />
           </label>
-          <label>Период
+          <label><span data-i18n="l_period">Период</span>
             <select id="budget-form-period">
               <option value="weekly">Еженедельно</option>
-              <option value="monthly" selected>Ежемесячно</option>
+              <option value="monthly" selected data-i18n="opt_monthly">Ежемесячно</option>
               <option value="yearly">Ежегодно</option>
             </select>
           </label>
 
           <details id="budget-form-cat-details" class="budget-cat-details">
             <summary>
-              <span>Категории</span>
+              <span data-i18n="l_categories">Категории</span>
               <span class="budget-cat-count" id="budget-form-cat-count">0</span>
             </summary>
             <div id="budget-form-categories" class="budget-cat-picker"></div>
@@ -779,17 +792,17 @@
 
           <h4 class="plan-section-title">Уведомления</h4>
           <label class="plan-row-toggle">
-            <span>Превышение бюджета</span>
+            <span data-i18n="l_notify_exceed">Превышение бюджета</span>
             <input type="checkbox" id="budget-form-notify-exceed" checked />
           </label>
           <label class="plan-row-toggle">
-            <span>Превышено 75% бюджета</span>
+            <span data-i18n="l_notify_75">Превышено 75% бюджета</span>
             <input type="checkbox" id="budget-form-notify-75" checked />
           </label>
 
           <div class="cat-form-actions">
             <button id="budget-form-delete" type="button" class="danger hidden">Удалить</button>
-            <button id="budget-form-cancel" type="button">Отмена</button>
+            <button id="budget-form-cancel" type="button" data-i18n="f_cancel">Отмена</button>
             <button id="budget-form-save" type="button" class="primary">Сохранить</button>
           </div>
         </div>
@@ -800,23 +813,23 @@
       <div class="modal-backdrop"></div>
       <div class="modal-card plan-form-card">
         <header class="modal-head">
-          <h3 id="credit-form-title">Новый кредит</h3>
+          <h3 id="credit-form-title" data-i18n="credit_form_new">Новый кредит</h3>
           <button id="credit-form-close" type="button" aria-label="Закрыть">×</button>
         </header>
         <div class="cat-form plan-form">
           <input type="hidden" id="credit-form-id" />
 
-          <label>Тип
+          <label><span data-i18n="l_type">Тип</span>
             <select id="credit-form-type">
-              <option value="cash_loan">Денежный кредит</option>
-              <option value="installment">Рассрочка (0%)</option>
-              <option value="credit_card">Кредитная карта</option>
-              <option value="mortgage">Ипотека</option>
-              <option value="auto_loan">Автокредит</option>
-              <option value="pos_credit">POS-кредит</option>
-              <option value="microloan">Микрозайм</option>
-              <option value="overdraft">Овердрафт</option>
-              <option value="other">Прочее</option>
+              <option value="cash_loan" data-i18n="ct_cash_loan">Денежный кредит</option>
+              <option value="installment" data-i18n="ct_installment">Рассрочка (0%)</option>
+              <option value="credit_card" data-i18n="ct_credit_card">Кредитная карта</option>
+              <option value="mortgage" data-i18n="ct_mortgage">Ипотека</option>
+              <option value="auto_loan" data-i18n="ct_auto">Автокредит</option>
+              <option value="pos_credit" data-i18n="ct_pos">POS-кредит</option>
+              <option value="microloan" data-i18n="ct_micro">Микрозайм</option>
+              <option value="overdraft" data-i18n="ct_overdraft">Овердрафт</option>
+              <option value="other" data-i18n="ct_other">Прочее</option>
             </select>
           </label>
 
@@ -828,7 +841,7 @@
               placeholder="Например: iPhone 17 Pro у Apple"
             />
           </label>
-          <label>Кредитор / магазин
+          <label><span data-i18n="l_lender">Кредитор / магазин</span>
             <input
               type="text"
               id="credit-form-lender"
@@ -854,8 +867,8 @@
             </select>
           </div>
 
-          <h4 class="plan-section-title">Условия</h4>
-          <label class="credit-row-rate">Ставка, % годовых
+          <h4 class="plan-section-title" data-i18n="sec_terms">Условия</h4>
+          <label class="credit-row-rate"><span data-i18n="l_rate">Ставка, % годовых</span>
             <input
               type="number"
               id="credit-form-rate"
@@ -865,7 +878,7 @@
               inputmode="decimal"
             />
           </label>
-          <label class="credit-row-term">Срок (мес.)
+          <label class="credit-row-term"><span data-i18n="l_term">Срок (мес.)</span>
             <input
               type="number"
               id="credit-form-term"
@@ -874,7 +887,7 @@
               inputmode="numeric"
             />
           </label>
-          <label>Ежемесячный платёж
+          <label><span data-i18n="l_monthly">Ежемесячный платёж</span>
             <input
               type="number"
               id="credit-form-monthly"
@@ -884,10 +897,10 @@
               inputmode="decimal"
             />
           </label>
-          <label>Дата выдачи
+          <label><span data-i18n="l_start_date">Дата выдачи</span>
             <input type="date" id="credit-form-start" />
           </label>
-          <label class="credit-row-day">День платежа
+          <label class="credit-row-day"><span data-i18n="l_pay_day">День платежа</span>
             <input
               type="number"
               id="credit-form-day"
@@ -898,8 +911,8 @@
             />
           </label>
 
-          <h4 class="plan-section-title">Текущее состояние</h4>
-          <label>Остаток долга
+          <h4 class="plan-section-title" data-i18n="sec_current">Текущее состояние</h4>
+          <label><span data-i18n="l_remaining">Остаток долга</span>
             <input
               type="number"
               id="credit-form-remaining"
@@ -913,12 +926,12 @@
             <textarea id="credit-form-notes" maxlength="500" rows="2"></textarea>
           </label>
 
-          <h4 class="plan-section-title">Кредит взят для кого-то</h4>
+          <h4 class="plan-section-title" data-i18n="sec_credit_for">Кредит взят для кого-то</h4>
           <p class="settings-hint">
-            Если кредит на тебе, но фактически платит другой человек, укажи его. Каждый ежемесячный
-            платёж автоматически создаст долг "Он должен мне" на сумму платежа.
+            <span data-i18n="credit_for_hint"
+            >Если кредит на тебе, но фактически платит другой человек.</span>
           </p>
-          <label>Для кого взят
+          <label><span data-i18n="l_for_whom">Для кого взят</span>
             <input
               type="text"
               id="credit-form-for"
@@ -927,7 +940,7 @@
             />
           </label>
           <label class="plan-row-toggle">
-            <span>Автоматически создавать долг</span>
+            <span data-i18n="l_auto_debt">Автоматически создавать долг</span>
             <input type="checkbox" id="credit-form-autodebt" />
           </label>
           <button
@@ -935,13 +948,15 @@
             type="button"
             class="hidden credit-link-past-btn"
           >
-            Применить к прошлым платежам
+            <span data-i18n="credit_link_past">Применить к прошлым платежам</span>
           </button>
 
           <div class="cat-form-actions">
             <button id="credit-form-delete" type="button" class="danger hidden">Удалить</button>
-            <button id="credit-form-pay" type="button" class="hidden">Зафиксировать платёж</button>
-            <button id="credit-form-cancel" type="button">Отмена</button>
+            <button id="credit-form-pay" type="button" class="hidden" data-i18n="f_fix_payment">
+              Зафиксировать платёж
+            </button>
+            <button id="credit-form-cancel" type="button" data-i18n="f_cancel">Отмена</button>
             <button id="credit-form-save" type="button" class="primary">Сохранить</button>
           </div>
         </div>
@@ -952,11 +967,11 @@
       <div class="modal-backdrop"></div>
       <div class="modal-card">
         <header class="modal-head">
-          <h3>Зафиксировать платёж</h3>
+          <h3 data-i18n="pay_title">Зафиксировать платёж</h3>
           <button id="credit-pay-close" type="button" aria-label="Закрыть">×</button>
         </header>
         <div class="cat-form">
-          <label>Сумма
+          <label><span data-i18n="l_amount">Сумма</span>
             <input
               type="number"
               id="credit-pay-amount"
@@ -968,7 +983,7 @@
           <label>Дата
             <input type="date" id="credit-pay-date" />
           </label>
-          <label>Способ оплаты
+          <label><span data-i18n="l_method">Способ оплаты</span>
             <select id="credit-pay-method">
               <option value="transfer">Перевод</option>
               <option value="card">Карта</option>
@@ -976,12 +991,13 @@
             </select>
           </label>
           <p class="settings-hint">
-            Создастся запись расхода в категории "Выплаты по кредиту" и уменьшится остаток по этому
-            кредиту.
+            <span data-i18n="credit_pay_hint">Создастся запись расхода и уменьшится остаток.</span>
           </p>
           <div class="cat-form-actions">
-            <button id="credit-pay-cancel" type="button">Отмена</button>
-            <button id="credit-pay-save" type="button" class="primary">Зафиксировать</button>
+            <button id="credit-pay-cancel" type="button" data-i18n="f_cancel">Отмена</button>
+            <button id="credit-pay-save" type="button" class="primary" data-i18n="f_fix">
+              Зафиксировать
+            </button>
           </div>
         </div>
       </div>
@@ -991,15 +1007,24 @@
       <div class="modal-backdrop"></div>
       <div class="modal-card plan-form-card">
         <header class="modal-head">
-          <h3 id="debt-form-title">Новый долг</h3>
+          <h3 id="debt-form-title" data-i18n="debt_form_new">Новый долг</h3>
           <button id="debt-form-close" type="button" aria-label="Закрыть">×</button>
         </header>
         <div class="cat-form plan-form">
           <input type="hidden" id="debt-form-id" />
 
           <div class="plan-kind-toggle">
-            <button type="button" class="debt-dir-btn active" data-dir="i_owe">Должен я</button>
-            <button type="button" class="debt-dir-btn" data-dir="owed_to_me">Должны мне</button>
+            <button
+              type="button"
+              class="debt-dir-btn active"
+              data-dir="i_owe"
+              data-i18n="debts_i_owe"
+            >
+              Должен я
+            </button>
+            <button type="button" class="debt-dir-btn" data-dir="owed_to_me" data-i18n="debts_owed">
+              Должны мне
+            </button>
           </div>
 
           <div class="plan-amount-row">
@@ -1019,8 +1044,8 @@
             </select>
           </div>
 
-          <h4 class="plan-section-title">Контрагент</h4>
-          <label id="debt-form-cp-label">Кому должен
+          <h4 class="plan-section-title" data-i18n="sec_counterparty">Контрагент</h4>
+          <label id="debt-form-cp-label"><span data-i18n="l_cp_owe">Кому должен</span>
             <input
               type="text"
               id="debt-form-counterparty"
@@ -1029,16 +1054,16 @@
             />
           </label>
 
-          <h4 class="plan-section-title">Сроки</h4>
-          <label>Дата сделки
+          <h4 class="plan-section-title" data-i18n="sec_dates">Сроки</h4>
+          <label><span data-i18n="l_deal_date">Дата сделки</span>
             <input type="date" id="debt-form-borrowed" />
           </label>
-          <label>Срок возврата
+          <label><span data-i18n="l_due_date">Срок возврата</span>
             <input type="date" id="debt-form-due" />
           </label>
 
-          <h4 class="plan-section-title">Текущий остаток</h4>
-          <label>Остаток
+          <h4 class="plan-section-title" data-i18n="sec_balance">Текущий остаток</h4>
+          <label><span data-i18n="l_balance">Остаток</span>
             <input
               type="number"
               id="debt-form-remaining"
@@ -1052,26 +1077,26 @@
             <textarea id="debt-form-notes" maxlength="500" rows="2"></textarea>
           </label>
 
-          <h4 class="plan-section-title">Напоминания</h4>
+          <h4 class="plan-section-title" data-i18n="sec_reminders">Напоминания</h4>
           <label class="plan-row-toggle">
-            <span>За 3 дня до срока</span>
+            <span data-i18n="l_rem_3d">За 3 дня до срока</span>
             <input type="checkbox" id="debt-form-notify-3d" checked />
           </label>
           <label class="plan-row-toggle">
-            <span>В день срока</span>
+            <span data-i18n="l_rem_due">В день срока</span>
             <input type="checkbox" id="debt-form-notify-due" checked />
           </label>
           <label class="plan-row-toggle">
-            <span>После просрочки</span>
+            <span data-i18n="l_rem_overdue">После просрочки</span>
             <input type="checkbox" id="debt-form-notify-overdue" checked />
           </label>
 
           <div class="cat-form-actions">
             <button id="debt-form-delete" type="button" class="danger hidden">Удалить</button>
             <button id="debt-form-pay" type="button" class="hidden">
-              Зафиксировать платёж
+              <span data-i18n="f_fix_payment">Зафиксировать платёж</span>
             </button>
-            <button id="debt-form-cancel" type="button">Отмена</button>
+            <button id="debt-form-cancel" type="button" data-i18n="f_cancel">Отмена</button>
             <button id="debt-form-save" type="button" class="primary">Сохранить</button>
           </div>
         </div>
@@ -1082,7 +1107,7 @@
       <div class="modal-backdrop"></div>
       <div class="modal-card">
         <header class="modal-head">
-          <h3 id="debt-pay-title">Зафиксировать платёж</h3>
+          <h3 id="debt-pay-title" data-i18n="pay_title">Зафиксировать платёж</h3>
           <button id="debt-pay-close" type="button" aria-label="Закрыть">×</button>
         </header>
         <div class="cat-form">
@@ -1098,7 +1123,7 @@
           <label>Дата
             <input type="date" id="debt-pay-date" />
           </label>
-          <label>Способ
+          <label><span data-i18n="l_method">Способ</span>
             <select id="debt-pay-method">
               <option value="transfer">Перевод</option>
               <option value="cash">Наличные</option>
@@ -1106,18 +1131,19 @@
             </select>
           </label>
           <p class="settings-hint" id="debt-pay-hint">
-            Создастся запись расхода и уменьшится остаток по этому долгу.
+            <span data-i18n="debt_pay_hint"
+            >Создастся запись расхода и уменьшится остаток по этому долгу.</span>
           </p>
           <div class="cat-form-actions">
-            <button id="debt-pay-cancel" type="button">Отмена</button>
+            <button id="debt-pay-cancel" type="button" data-i18n="f_cancel">Отмена</button>
             <button id="debt-pay-save" type="button" class="primary">Зафиксировать</button>
           </div>
         </div>
       </div>
     </div>
 
-    <script src="./i18n.js?v=1.18.0"></script>
-    <script src="./tg-webapp.js?v=1.18.0"></script>
-    <script src="./app.js?v=1.18.0"></script>
+    <script src="./i18n.js?v=1.19.0"></script>
+    <script src="./tg-webapp.js?v=1.19.0"></script>
+    <script src="./app.js?v=1.19.0"></script>
   </body>
 </html>
