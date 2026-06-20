@@ -913,8 +913,8 @@ body.tab-investments .tab-only.show-on-investments {
 }
 .investments-stub {
   padding: 16px;
-  background: var(--card, #1c1c1e);
-  border: 1px solid var(--border, #2c2c2e);
+  background: var(--card-bg);
+  border: 1px solid var(--line);
   border-radius: 12px;
   line-height: 1.5;
 }
@@ -938,9 +938,9 @@ body.tab-ops .tab-only.show-on-ops.ops-toggle {
 .ops-kind-btn {
   flex: 1;
   padding: 9px 12px;
-  border: 1px solid var(--border, #2c2c2e);
+  border: 1px solid var(--line);
   border-radius: 10px;
-  background: var(--card, #1c1c1e);
+  background: var(--card-bg);
   color: var(--text, #fff);
   font-size: 15px;
   font-weight: 600;
@@ -948,8 +948,8 @@ body.tab-ops .tab-only.show-on-ops.ops-toggle {
   transition: background 0.15s, border-color 0.15s;
 }
 .ops-kind-btn.active {
-  background: var(--accent, #0a84ff);
-  border-color: var(--accent, #0a84ff);
+  background: var(--button);
+  border-color: var(--button);
   color: #fff;
 }
 
@@ -973,8 +973,8 @@ body.tab-ops .tab-only.show-on-ops.ops-toggle {
   }
 }
 .fh-card {
-  background: var(--card, #1c1c1e);
-  border: 1px solid var(--border, #2c2c2e);
+  background: var(--card-bg);
+  border: 1px solid var(--line);
   border-radius: 12px;
   padding: 12px;
   display: flex;
