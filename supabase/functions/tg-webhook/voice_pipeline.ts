@@ -31,6 +31,8 @@ export async function processVoiceMessage(args: {
   sb: SupabaseClient;
   member: FamilyMember;
   msg: TelegramMessage;
+  /** Token of the bot this message came from; needed to download its files. */
+  botToken?: string;
   progress?: ProgressEmitter;
 }): Promise<VoiceOutcome> {
   const voice = args.msg.voice;
@@ -47,7 +49,7 @@ export async function processVoiceMessage(args: {
   }
 
   if (p) await p.update("🎙 Скачиваю голосовое...");
-  const buf = await downloadTelegramFile(voice.file_id);
+  const buf = await downloadTelegramFile(voice.file_id, args.botToken);
   if (!buf) {
     return { kind: "download_failed", error: "getFile/fetch returned empty" };
   }
@@ -84,8 +86,11 @@ export async function processVoiceMessage(args: {
 /**
  * getFile -> fetch the actual file bytes. Returns null on any failure.
  */
-async function downloadTelegramFile(fileId: string): Promise<Uint8Array | null> {
-  const token = Deno.env.get("TELEGRAM_BOT_TOKEN");
+async function downloadTelegramFile(
+  fileId: string,
+  botToken?: string,
+): Promise<Uint8Array | null> {
+  const token = botToken ?? Deno.env.get("TELEGRAM_BOT_TOKEN");
   if (!token) return null;
 
   const getFileResp = await fetch(

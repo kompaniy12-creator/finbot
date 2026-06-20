@@ -53,8 +53,10 @@ export async function processBankStatement(args: {
    */
   mediaType?: "pdf" | "image";
   mimeType?: string; // for image: image/png, image/jpeg, etc.
+  /** Token of the bot this message came from; needed to download its files. */
+  botToken?: string;
 }): Promise<BankPipelineOutcome> {
-  const { sb, member, statementId, mediaType = "pdf", mimeType } = args;
+  const { sb, member, statementId, mediaType = "pdf", mimeType, botToken } = args;
   const db = tenantDb(sb, member.tenant_id);
 
   // 1. Load statement row + extract Telegram file_id stashed in raw_text.
@@ -73,7 +75,7 @@ export async function processBankStatement(args: {
   }
 
   // 2. Download file bytes.
-  const fileBytes = await downloadTelegramFile(fileId);
+  const fileBytes = await downloadTelegramFile(fileId, botToken);
   if (!fileBytes) {
     await db.from("bank_statements").update({
       status: "failed",
@@ -347,8 +349,11 @@ async function autoCreateUnmatched(
   return created;
 }
 
-async function downloadTelegramFile(fileId: string): Promise<Uint8Array | null> {
-  const token = Deno.env.get("TELEGRAM_BOT_TOKEN");
+async function downloadTelegramFile(
+  fileId: string,
+  botToken?: string,
+): Promise<Uint8Array | null> {
+  const token = botToken ?? Deno.env.get("TELEGRAM_BOT_TOKEN");
   if (!token) return null;
   const getFileResp = await fetch(
     `https://api.telegram.org/bot${token}/getFile?file_id=${fileId}`,

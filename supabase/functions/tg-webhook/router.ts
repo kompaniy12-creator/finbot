@@ -204,6 +204,21 @@ export async function dispatch(
     return { chatId: msg.chat.id, reply };
   }
 
+  // A pasted API key (without the command) - set it directly instead of letting
+  // the expense parser record it as a "0.01 PLN" transaction. Covers users who
+  // just paste the key after we ask for it.
+  if (msg.text) {
+    const t = msg.text.trim();
+    if (/^sk-ant-\S{20,}$/.test(t)) {
+      const reply = await apiKeyCommand(input.sb, t, input.member);
+      return { chatId: msg.chat.id, reply };
+    }
+    if (/^gsk_[A-Za-z0-9]{20,}$/.test(t)) {
+      const reply = await groqKeyCommand(input.sb, t, input.member);
+      return { chatId: msg.chat.id, reply };
+    }
+  }
+
   // Conversational /ask: if this is a Telegram reply to a bot message that
   // belongs to an ask_threads row, route to the agent with prior context
   // instead of the expense parser. Without this, the follow-up "Как считал?"
@@ -315,6 +330,7 @@ export async function dispatch(
       sb: input.sb,
       member: input.member,
       msg,
+      botToken: input.botToken,
       progress: prog ?? undefined,
     });
     const text = formatVoiceReply(outcome);
@@ -395,6 +411,7 @@ export async function dispatch(
           statementId: stmtId,
           mediaType: "image",
           mimeType: "image/jpeg",
+          botToken: input.botToken,
         });
         summaryText = formatBankReply(outcome, "скриншот выписки");
       } catch (err) {
@@ -416,6 +433,7 @@ export async function dispatch(
         fileId: largest.file_id,
         telegramMessageId: msg.message_id,
         caption: msg.caption,
+        botToken: input.botToken,
         progress: prog ?? undefined,
       });
       text = formatPhotoReply(outcome);
@@ -439,6 +457,7 @@ export async function dispatch(
       fileMime: msg.document.mime_type,
       telegramMessageId: msg.message_id,
       caption: msg.caption,
+      botToken: input.botToken,
     });
     return { chatId: msg.chat.id, reply: { text: formatPhotoReply(outcome) } };
   }
@@ -467,6 +486,7 @@ export async function dispatch(
         sb: input.sb,
         member: input.member,
         statementId: stmtId,
+        botToken: input.botToken,
       });
       summaryText = formatBankReply(outcome, filename);
     } catch (err) {

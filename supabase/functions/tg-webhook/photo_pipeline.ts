@@ -108,12 +108,14 @@ export async function processPhotoMessage(args: {
    *     for the line items (e.g. "уличные собаки" -> Уличные животные).
    */
   caption?: string;
+  /** Token of the bot this message came from; needed to download its files. */
+  botToken?: string;
   progress?: ProgressEmitter;
 }): Promise<PhotoOutcome> {
   const p = args.progress;
   const db = tenantDb(args.sb, args.member.tenant_id);
   if (p) await p.update("📥 Скачиваю фото...");
-  const buf = await downloadTelegramFile(args.fileId);
+  const buf = await downloadTelegramFile(args.fileId, args.botToken);
   if (!buf) return { kind: "download_failed" };
 
   const detected = detectImage(buf, args.fileMime);
@@ -609,8 +611,11 @@ export async function processPhotoMessage(args: {
   };
 }
 
-async function downloadTelegramFile(fileId: string): Promise<Uint8Array | null> {
-  const token = Deno.env.get("TELEGRAM_BOT_TOKEN");
+async function downloadTelegramFile(
+  fileId: string,
+  botToken?: string,
+): Promise<Uint8Array | null> {
+  const token = botToken ?? Deno.env.get("TELEGRAM_BOT_TOKEN");
   if (!token) return null;
   const getFileResp = await fetch(
     `https://api.telegram.org/bot${token}/getFile?file_id=${fileId}`,
