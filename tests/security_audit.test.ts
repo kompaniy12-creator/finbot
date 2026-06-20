@@ -43,7 +43,7 @@ Deno.test("recordSecurityEvent never throws on DB error", async () => {
 
 Deno.test("recentEventCount counts matching rows", async () => {
   // Mock returns a fixed count via head/count select.
-  let captured: { action?: string } = {};
+  const captured: { action?: string } = {};
   const sb = {
     from() {
       const b: Record<string, unknown> = {
