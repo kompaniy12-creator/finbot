@@ -18,6 +18,7 @@ const WEBAPP_URL_FALLBACK = "https://kompaniy12-creator.github.io/finbot/";
 export interface ReplyKeyboardButton {
   text: string;
   web_app?: { url: string };
+  callback_data?: string;
 }
 
 export interface CommandReply {

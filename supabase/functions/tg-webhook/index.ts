@@ -22,6 +22,8 @@ import { TelegramUpdateSchema } from "../_shared/types.ts";
 import { type CommandReply, type ReplyKeyboardButton } from "./commands.ts";
 import { dispatch, parseCommand, refuseUnauthorized } from "./router.ts";
 import { handleCallback } from "./callbacks.ts";
+import { advanceOnboarding, onboardingGreeting } from "./onboarding.ts";
+import { isLocale } from "../_shared/i18n.ts";
 
 const envSchema = z.object({
   TELEGRAM_BOT_TOKEN: z.string().min(40),
@@ -306,18 +308,9 @@ Deno.serve(async (req: Request) => {
         await seedCategoriesForTenant(sb, res.tenant_id);
         log("info", "saas_onboarded", { telegram_id: fromId, tenant_id: res.tenant_id });
       }
-      await sendReply(chatId, {
-        text: "✅ Готово, твой FinBot настроен!\n\n" +
-          "🔑 Последний шаг: подключи свой ключ Anthropic, чтобы я мог распознавать траты " +
-          "(каждый платит за свой расход на ИИ). Получи ключ на " +
-          "https://console.anthropic.com/settings/keys и пришли:\n" +
-          "<code>/apikey sk-ant-...</code>\n\n" +
-          "Для голосовых нужен бесплатный ключ Groq (https://console.groq.com/keys):\n" +
-          "<code>/groqkey gsk_...</code>\n\n" +
-          "После этого просто пиши траты текстом («кофе 12 zł»), шли фото чеков или голосовые - " +
-          "я всё запишу и разложу по категориям. Открой «FinApp» в меню бота, чтобы " +
-          "видеть статистику, доходы, долги и кредиты.",
-      }, botToken);
+      // Kick off the guided onboarding wizard (language -> name -> keys).
+      await sb.from("tenants").update({ onboarding_step: "lang" }).eq("id", res.tenant_id);
+      await sendReply(chatId, onboardingGreeting(), botToken);
       return new Response("ok", { status: 200 });
     }
 
@@ -355,6 +348,33 @@ Deno.serve(async (req: Request) => {
       ]], botToken);
     }
     return new Response("ok", { status: 200 });
+  }
+
+  // SaaS onboarding wizard: a member whose tenant still has onboarding_step set
+  // is mid-wizard - route every message/callback to it until done. Runs before
+  // dedupe/rate-limit/dispatch so wizard turns are never dropped.
+  if (bot.mode === "saas") {
+    const ob = await sb.from("tenants").select("onboarding_step, locale")
+      .eq("id", member.tenant_id).maybeSingle();
+    const obRow = ob.data as { onboarding_step: string | null; locale: string } | null;
+    if (obRow?.onboarding_step) {
+      const chatId = msg?.chat?.id ?? update.callback_query?.from.id ?? fromId;
+      const reply = await advanceOnboarding({
+        sb,
+        member,
+        step: obRow.onboarding_step,
+        locale: isLocale(obRow.locale) ? obRow.locale : "ru",
+        text: msg?.text,
+        callbackData: update.callback_query?.data,
+      });
+      if (update.callback_query) {
+        await tgRequest("answerCallbackQuery", {
+          callback_query_id: update.callback_query.id,
+        }, botToken);
+      }
+      await sendReply(chatId, reply, botToken);
+      return new Response("ok", { status: 200 });
+    }
   }
 
   // Idempotent skip for non-command messages (commands are idempotent by design).
