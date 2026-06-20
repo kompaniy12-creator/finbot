@@ -1,5 +1,8 @@
 import { assertEquals, assertStringIncludes } from "@std/assert";
-import { advanceOnboarding, onboardingGreeting } from "../supabase/functions/tg-webhook/onboarding.ts";
+import {
+  advanceOnboarding,
+  onboardingGreeting,
+} from "../supabase/functions/tg-webhook/onboarding.ts";
 import type { FamilyMember } from "../supabase/functions/_shared/types.ts";
 
 const TENANT = "00000000-0000-0000-0000-0000000000aa";
@@ -84,7 +87,13 @@ Deno.test("onboarding: name step stores name and asks for the key", async () => 
 
 Deno.test("onboarding: apikey step rejects a non-key without advancing", async () => {
   const { sb, tenant } = makeSb({ name: "Serhii", onboarding_step: "apikey" });
-  const reply = await advanceOnboarding({ sb, member, step: "apikey", locale: "en", text: "hello" });
+  const reply = await advanceOnboarding({
+    sb,
+    member,
+    step: "apikey",
+    locale: "en",
+    text: "hello",
+  });
   assertEquals(tenant.onboarding_step, "apikey");
   assertStringIncludes(reply.text, "sk-ant-");
 });

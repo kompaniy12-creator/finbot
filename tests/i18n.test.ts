@@ -1,5 +1,11 @@
 import { assertEquals, assertStringIncludes } from "@std/assert";
-import { isLocale, LOCALE_ENGLISH_NAME, LOCALES, type Locale, t } from "../supabase/functions/_shared/i18n.ts";
+import {
+  isLocale,
+  type Locale,
+  LOCALE_ENGLISH_NAME,
+  LOCALES,
+  t,
+} from "../supabase/functions/_shared/i18n.ts";
 
 const KEYS = [
   "choose_lang",
