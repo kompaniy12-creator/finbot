@@ -8,6 +8,7 @@ import type { FamilyMember } from "../_shared/types.ts";
 import { tenantDb } from "../_shared/tenant_db.ts";
 import { encryptSecret, shredTenantKeys } from "../_shared/crypto_box.ts";
 import { recordSecurityEvent } from "../_shared/security_audit.ts";
+import { t } from "../_shared/i18n.ts";
 import { recordAudit } from "../_shared/audit.ts";
 import { notifyUser } from "../_shared/notify.ts";
 import { buildAnalystSnapshot } from "../_shared/analyst_snapshot.ts";
@@ -33,74 +34,13 @@ export interface CommandReply {
 }
 
 export function startCommand(member: FamilyMember): CommandReply {
-  return {
-    text: [
-      `Привет, ${member.name}. Это FinBot, твой личный финансовый помощник.`,
-      "",
-      "Можно делать две вещи:",
-      "• записывать траты - текстом, голосом или фото чека (например: «кофе 12 zł»)",
-      "• разговаривать со мной как с финансовым консультантом - спрашивай, советуйся, проси посчитать или поправить (например: «на что я больше всего трачу?», «сколько ушло на еду в мае?»)",
-      "",
-      "Чтобы продолжить беседу - ответь (reply) на моё сообщение.",
-      "",
-      "Команды:",
-      "/help - справка",
-      "/dashboard - открыть дашборд",
-      "/history - последние траты",
-      "/stats - сводка за месяц",
-    ].join("\n"),
-  };
+  return { text: t(member.locale, "start_text", { name: member.name }) };
 }
 
 export function helpCommand(member: FamilyMember): CommandReply {
-  // Avoid '<' and '>' in this text - sendMessage uses parse_mode=HTML and any
-  // unknown tag like <tid> causes Telegram to reject the entire message.
-  const adminOnly = member.role === "admin"
-    ? [
-      "",
-      "",
-      "Для админа:",
-      "/health - статус системы",
-      "/audit ID - история изменений траты",
-      "/budget - бюджет Anthropic",
-      "/members - кто имеет доступ",
-      "/grant TID [имя] - дать доступ",
-      "/revoke TID - отозвать доступ",
-      "/promote TID - сделать админом",
-      "/demote TID - снять админа",
-      "/subscriptions - найти подписки и добавить в регулярные",
-      "/invites - доступы и коды публичного бота",
-      "/mint_invite [N] - создать N кодов приглашения",
-    ].join("\n")
-    : "";
-  return {
-    text: [
-      "Что я умею:",
-      "",
-      "• Записывать траты - пиши текстом, голосом или присылай фото чека.",
-      "  Пример: «кофе 12 zł и бензин 150 zł».",
-      "",
-      "• Общаться как личный финансист - просто задай вопрос или попроси что-то.",
-      "  Пример: «сколько потратил на еду в мае?», «удали последнюю запись», «покажи топ категорий».",
-      "  Чтобы продолжить беседу - ответь (reply) на моё сообщение.",
-      "",
-      "Команды:",
-      "/start - приветствие",
-      "/help - эта справка",
-      "/categories - список категорий",
-      "/dashboard - открыть дашборд",
-      "/web - получить ссылку на дашборд для браузера на компе",
-      "/web_logout - отозвать все браузерные сессии",
-      "/history - последние траты",
-      "/stats - сводка за месяц (вся семья)",
-      "/me - моя статистика за месяц",
-      "/ask ВОПРОС - то же, что просто написать вопрос",
-      "/undo - отменить последнюю",
-      "/recurring - регулярные траты",
-      "/delete_keys - удалить свои API-ключи (крипто-уничтожение)",
-      "/delete_account - удалить аккаунт и все данные (безвозвратно)",
-    ].join("\n") + adminOnly,
-  };
+  // Avoid '<' and '>' - sendMessage uses parse_mode=HTML.
+  const admin = member.role === "admin" ? t(member.locale, "help_admin") : "";
+  return { text: t(member.locale, "help_text") + admin };
 }
 
 export async function categoriesCommand(

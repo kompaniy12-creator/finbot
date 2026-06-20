@@ -458,7 +458,7 @@ export async function dispatch(
         botToken: input.botToken,
         progress: prog ?? undefined,
       });
-      text = formatPhotoReply(outcome);
+      text = formatPhotoReply(outcome, input.member.locale);
     } catch (err) {
       text = "❌ Не смог обработать чек: " + ((err as Error).message ?? "internal_error") +
         "\nПопробуй прислать фото ещё раз.";
@@ -481,7 +481,7 @@ export async function dispatch(
       caption: msg.caption,
       botToken: input.botToken,
     });
-    return { chatId: msg.chat.id, reply: { text: formatPhotoReply(outcome) } };
+    return { chatId: msg.chat.id, reply: { text: formatPhotoReply(outcome, input.member.locale) } };
   }
 
   // PDF document → bank statement pipeline (parse + auto-reconcile).
@@ -585,60 +585,65 @@ function formatBankReply(outcome: BankPipelineOutcome, filename: string): string
   }
 }
 
-function formatPhotoReply(outcome: PhotoOutcome): string {
+function formatPhotoReply(outcome: PhotoOutcome, locale = "ru"): string {
   switch (outcome.kind) {
     case "heic_unsupported":
-      return "HEIC пока не поддерживаю (M9 v1: только JPEG/PNG). Открой фото на iPhone, нажми «Поделиться -> Сохранить в Файлы» и пришли как файл с расширением .jpg, либо настрой iOS «Камера → Форматы → Совместимый».";
+      return t(locale, "photo_heic");
     case "unsupported_mime":
-      return `Не поддерживаемый формат: ${outcome.mime}. Пришли JPEG или PNG.`;
+      return t(locale, "photo_unsupported", { mime: outcome.mime });
     case "download_failed":
-      return "Не смог скачать фото из Telegram.";
+      return t(locale, "photo_download_failed");
     case "vision_failed":
-      return `Vision не сработал: ${outcome.error}`;
+      return t(locale, "photo_vision_failed", { err: outcome.error });
     case "parse_failed":
-      return "Не смог распознать чек. Сфотографируй ровнее и при хорошем свете.";
+      return t(locale, "photo_parse_failed");
     case "duplicate": {
-      const who = outcome.existing_merchant ?? "без названия";
+      const who = outcome.existing_merchant ?? t(locale, "photo_unnamed");
       const reason = outcome.reason === "image_hash"
-        ? "Это то же фото, что я уже обрабатывал."
-        : "Уже есть чек с такими же магазином, датой и суммой.";
-      return `⚠ Похоже на дубликат. ${reason}\n\nСуществующий чек: ${who}, ${
-        outcome.existing_total.toFixed(2)
-      } ${outcome.existing_currency}, ${outcome.existing_date}.\n\nЕсли это другая покупка, удали старый чек в Mini App и пришли фото заново.`;
+        ? t(locale, "photo_dup_hash")
+        : t(locale, "photo_dup_content");
+      return t(locale, "photo_dup", {
+        reason,
+        who,
+        total: outcome.existing_total.toFixed(2),
+        ccy: outcome.existing_currency,
+        date: outcome.existing_date,
+      });
     }
     case "ok": {
       const isIncome = outcome.tx_kind === "income";
       const emoji = isIncome ? "💰" : "✅";
       const sign = isIncome ? "+" : "";
       const merchantStr = outcome.merchant ? `${outcome.merchant} ` : "";
+      const checked = t(locale, "photo_checked", {
+        got: String(outcome.expense_count),
+        exp: String(outcome.expected_count),
+      });
       const header = `${emoji} ${merchantStr}(${sign}${
         outcome.total.toFixed(2)
-      } ${outcome.currency}, проверено ${outcome.expense_count}/${outcome.expected_count} поз.)`;
+      } ${outcome.currency}, ${checked})`;
       const bullet = isIncome ? "➕" : "-";
       const lines = outcome.items.map((it) =>
         `${bullet} ${it.name} → ${it.category_name}: ${sign}${it.amount.toFixed(2)} ${it.currency}`
       );
-      const warn = outcome.reconciled
-        ? ""
-        : "\n\n⚠ Сумма позиций не совпала с итогом (±5%), пометил для ревью.";
-      const trunc = outcome.truncated
-        ? "\n\n⚠ Чек длинный, прочитал не все позиции (обрезка). Пришли фото покрупнее или двумя частями, чтобы захватить остальное."
-        : "";
-      const hint = "\n\n_Категорию можно поправить в Mini App, если что-то ушло не туда._";
+      const warn = outcome.reconciled ? "" : t(locale, "photo_warn_reconcile");
+      const trunc = outcome.truncated ? t(locale, "photo_trunc") : "";
+      const hint = t(locale, "photo_hint");
       return `${header}\n\n${lines.join("\n")}${warn}${trunc}${hint}`;
     }
     case "partial": {
       const isIncome = outcome.tx_kind === "income";
       const sign = isIncome ? "+" : "";
       const merchantStr = outcome.merchant ? `${outcome.merchant} ` : "";
-      const header =
-        `⚠ ${merchantStr}сохранил ${outcome.expense_count} из ${outcome.expected_count} поз. (итог ${sign}${
-          outcome.total.toFixed(2)
-        } ${outcome.currency})`;
-      const trunc = outcome.truncated
-        ? "\n\n⚠ Чек длинный, Vision прочитал не все позиции (обрезка). Пришли фото покрупнее или двумя частями."
-        : "";
-      return `${header}\n\nЧасть позиций не сохранилась. Удали чек в Mini App и пришли фото заново, либо проверь руками что записалось.${trunc}`;
+      const saved = t(locale, "photo_partial_saved", {
+        got: String(outcome.expense_count),
+        exp: String(outcome.expected_count),
+      });
+      const header = `⚠ ${merchantStr}${saved} (${t(locale, "photo_total_lbl")} ${sign}${
+        outcome.total.toFixed(2)
+      } ${outcome.currency})`;
+      const trunc = outcome.truncated ? t(locale, "photo_trunc") : "";
+      return `${header}${t(locale, "photo_partial_tail")}${trunc}`;
     }
   }
 }

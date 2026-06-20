@@ -29,6 +29,32 @@ type Dict = Record<string, string>;
 // {name} style placeholders are substituted from params.
 const STRINGS: Record<Locale, Dict> = {
   uk: {
+    photo_heic:
+      "HEIC поки не підтримую (тільки JPEG/PNG). Надішли як файл .jpg або увімкни iOS «Камера → Формати → Сумісний».",
+    photo_unsupported: "Непідтримуваний формат: {mime}. Надішли JPEG або PNG.",
+    photo_download_failed: "Не зміг завантажити фото з Telegram.",
+    photo_vision_failed: "Vision не спрацював: {err}",
+    photo_parse_failed: "Не зміг розпізнати чек. Сфотографуй рівніше і при хорошому світлі.",
+    photo_dup_hash: "Це те саме фото, що я вже обробляв.",
+    photo_dup_content: "Вже є чек з такими ж магазином, датою і сумою.",
+    photo_dup:
+      "⚠ Схоже на дублікат. {reason}\n\nІснуючий чек: {who}, {total} {ccy}, {date}.\n\nЯкщо це інша покупка, видали старий чек у Mini App і надішли фото знову.",
+    photo_checked: "перевірено {got}/{exp} поз.",
+    photo_total_lbl: "підсумок",
+    photo_warn_reconcile: "\n\n⚠ Сума позицій не збіглася з підсумком (±5%), позначив для ревʼю.",
+    photo_trunc:
+      "\n\n⚠ Чек довгий, прочитав не всі позиції. Надішли фото більше або двома частинами.",
+    photo_hint: "\n\n_Категорію можна поправити в Mini App._",
+    photo_partial_saved: "зберіг {got} з {exp} поз.",
+    photo_partial_tail:
+      "\n\nЧастина позицій не збереглася. Видали чек у Mini App і надішли фото знову.",
+    photo_unnamed: "без назви",
+    start_text:
+      "Привіт, {name}. Це FinBot, твій особистий фінансовий помічник.\n\nМожна робити дві речі:\n• записувати витрати - текстом, голосом або фото чека (напр.: «кава 12 zł»)\n• спілкуватися зі мною як з фінансовим консультантом (напр.: «на що я найбільше витрачаю?»)\n\nЩоб продовжити бесіду - відповідай (reply) на моє повідомлення.\n\nКоманди:\n/help - довідка\n/dashboard - відкрити дашборд\n/history - останні витрати\n/stats - підсумок за місяць",
+    help_text:
+      "Що я вмію:\n\n• Записувати витрати - текстом, голосом або фото чека.\n  Приклад: «кава 12 zł і бензин 150 zł».\n\n• Спілкуватися як особистий фінансист - просто запитай.\n  Приклад: «скільки витратив на їжу в травні?».\n  Щоб продовжити - відповідай (reply) на моє повідомлення.\n\nКоманди:\n/start - привітання\n/help - ця довідка\n/categories - категорії\n/dashboard - відкрити дашборд\n/web - посилання для браузера\n/history - останні витрати\n/stats - підсумок за місяць\n/me - моя статистика\n/ask ПИТАННЯ - запитати\n/undo - скасувати останню\n/delete_keys - видалити API-ключі\n/delete_account - видалити акаунт",
+    help_admin:
+      "\n\nДля адміна:\n/health - статус\n/audit ID - історія запису\n/members - доступи\n/grant TID [ім'я] - дати доступ\n/revoke TID - відібрати доступ\n/promote TID - зробити адміном\n/demote TID - зняти адміна\n/invites - доступи та коди\n/mint_invite [N] - створити коди\n/subscriptions - знайти підписки",
     debt_parse_failed:
       "Не зрозумів борг ({reason}). Спробуй чіткіше: «дав у борг Паші 1000 PLN до 15 липня».",
     debt_owed_to_me: "Винен мені",
@@ -95,6 +121,32 @@ const STRINGS: Record<Locale, Dict> = {
       "А поки пиши витрати текстом або надсилай фото чеків. Відкрий «FinApp» у меню бота.",
   },
   ru: {
+    photo_heic:
+      "HEIC пока не поддерживаю (только JPEG/PNG). Пришли как файл .jpg или включи iOS «Камера → Форматы → Совместимый».",
+    photo_unsupported: "Неподдерживаемый формат: {mime}. Пришли JPEG или PNG.",
+    photo_download_failed: "Не смог скачать фото из Telegram.",
+    photo_vision_failed: "Vision не сработал: {err}",
+    photo_parse_failed: "Не смог распознать чек. Сфотографируй ровнее и при хорошем свете.",
+    photo_dup_hash: "Это то же фото, что я уже обрабатывал.",
+    photo_dup_content: "Уже есть чек с такими же магазином, датой и суммой.",
+    photo_dup:
+      "⚠ Похоже на дубликат. {reason}\n\nСуществующий чек: {who}, {total} {ccy}, {date}.\n\nЕсли это другая покупка, удали старый чек в Mini App и пришли фото заново.",
+    photo_checked: "проверено {got}/{exp} поз.",
+    photo_total_lbl: "итог",
+    photo_warn_reconcile: "\n\n⚠ Сумма позиций не совпала с итогом (±5%), пометил для ревью.",
+    photo_trunc:
+      "\n\n⚠ Чек длинный, прочитал не все позиции. Пришли фото покрупнее или двумя частями.",
+    photo_hint: "\n\n_Категорию можно поправить в Mini App._",
+    photo_partial_saved: "сохранил {got} из {exp} поз.",
+    photo_partial_tail:
+      "\n\nЧасть позиций не сохранилась. Удали чек в Mini App и пришли фото заново.",
+    photo_unnamed: "без названия",
+    start_text:
+      "Привет, {name}. Это FinBot, твой личный финансовый помощник.\n\nМожно делать две вещи:\n• записывать траты - текстом, голосом или фото чека (например: «кофе 12 zł»)\n• разговаривать со мной как с финансовым консультантом (например: «на что я больше всего трачу?»)\n\nЧтобы продолжить беседу - ответь (reply) на моё сообщение.\n\nКоманды:\n/help - справка\n/dashboard - открыть дашборд\n/history - последние траты\n/stats - сводка за месяц",
+    help_text:
+      "Что я умею:\n\n• Записывать траты - текстом, голосом или фото чека.\n  Пример: «кофе 12 zł и бензин 150 zł».\n\n• Общаться как личный финансист - просто задай вопрос.\n  Пример: «сколько потратил на еду в мае?».\n  Чтобы продолжить - ответь (reply) на моё сообщение.\n\nКоманды:\n/start - приветствие\n/help - эта справка\n/categories - категории\n/dashboard - открыть дашборд\n/web - ссылка для браузера\n/history - последние траты\n/stats - сводка за месяц\n/me - моя статистика\n/ask ВОПРОС - спросить\n/undo - отменить последнюю\n/delete_keys - удалить API-ключи\n/delete_account - удалить аккаунт",
+    help_admin:
+      "\n\nДля админа:\n/health - статус\n/audit ID - история записи\n/members - доступы\n/grant TID [имя] - дать доступ\n/revoke TID - отозвать доступ\n/promote TID - сделать админом\n/demote TID - снять админа\n/invites - доступы и коды\n/mint_invite [N] - создать коды\n/subscriptions - найти подписки",
     debt_parse_failed:
       "Не смог распознать долг ({reason}). Попробуй явнее: «дал в долг Паше 1000 PLN до 15 июля».",
     debt_owed_to_me: "Должен мне",
@@ -161,6 +213,34 @@ const STRINGS: Record<Locale, Dict> = {
       "А пока пиши траты текстом или шли фото чеков. Открой «FinApp» в меню бота.",
   },
   pl: {
+    photo_heic:
+      "HEIC nieobsługiwany (tylko JPEG/PNG). Wyślij jako plik .jpg lub włącz iOS «Aparat → Formaty → Zgodny».",
+    photo_unsupported: "Nieobsługiwany format: {mime}. Wyślij JPEG lub PNG.",
+    photo_download_failed: "Nie udało się pobrać zdjęcia z Telegrama.",
+    photo_vision_failed: "Vision nie zadziałał: {err}",
+    photo_parse_failed:
+      "Nie udało się odczytać paragonu. Zrób zdjęcie prościej i przy dobrym świetle.",
+    photo_dup_hash: "To samo zdjęcie, które już przetwarzałem.",
+    photo_dup_content: "Jest już paragon z tym samym sklepem, datą i kwotą.",
+    photo_dup:
+      "⚠ Wygląda na duplikat. {reason}\n\nIstniejący paragon: {who}, {total} {ccy}, {date}.\n\nJeśli to inny zakup, usuń stary paragon w Mini App i wyślij zdjęcie ponownie.",
+    photo_checked: "sprawdzono {got}/{exp} poz.",
+    photo_total_lbl: "suma",
+    photo_warn_reconcile:
+      "\n\n⚠ Suma pozycji nie zgadza się z całością (±5%), oznaczyłem do przeglądu.",
+    photo_trunc:
+      "\n\n⚠ Paragon długi, nie odczytałem wszystkich pozycji. Wyślij większe zdjęcie lub w dwóch częściach.",
+    photo_hint: "\n\n_Kategorię można poprawić w Mini App._",
+    photo_partial_saved: "zapisałem {got} z {exp} poz.",
+    photo_partial_tail:
+      "\n\nCzęść pozycji nie zapisała się. Usuń paragon w Mini App i wyślij zdjęcie ponownie.",
+    photo_unnamed: "bez nazwy",
+    start_text:
+      "Cześć, {name}. To FinBot, twój osobisty asystent finansów.\n\nMożesz robić dwie rzeczy:\n• zapisywać wydatki - tekstem, głosem lub zdjęciem paragonu (np.: «kawa 12 zł»)\n• rozmawiać ze mną jak z doradcą finansowym (np.: «na co wydaję najwięcej?»)\n\nAby kontynuować rozmowę - odpowiedz (reply) na moją wiadomość.\n\nKomendy:\n/help - pomoc\n/dashboard - otwórz panel\n/history - ostatnie wydatki\n/stats - podsumowanie miesiąca",
+    help_text:
+      "Co potrafię:\n\n• Zapisywać wydatki - tekstem, głosem lub zdjęciem paragonu.\n  Przykład: «kawa 12 zł i benzyna 150 zł».\n\n• Rozmawiać jak osobisty finansista - po prostu zapytaj.\n  Przykład: «ile wydałem na jedzenie w maju?».\n  Aby kontynuować - odpowiedz (reply) na moją wiadomość.\n\nKomendy:\n/start - powitanie\n/help - ta pomoc\n/categories - kategorie\n/dashboard - otwórz panel\n/web - link do przeglądarki\n/history - ostatnie wydatki\n/stats - podsumowanie miesiąca\n/me - moje statystyki\n/ask PYTANIE - zapytaj\n/undo - cofnij ostatnią\n/delete_keys - usuń klucze API\n/delete_account - usuń konto",
+    help_admin:
+      "\n\nDla admina:\n/health - status\n/audit ID - historia wpisu\n/members - dostępy\n/grant TID [imię] - nadaj dostęp\n/revoke TID - odbierz dostęp\n/promote TID - mianuj adminem\n/demote TID - odbierz admina\n/invites - dostępy i kody\n/mint_invite [N] - utwórz kody\n/subscriptions - znajdź subskrypcje",
     debt_parse_failed:
       "Nie zrozumiałem długu ({reason}). Spróbuj wyraźniej: «pożyczyłem Pawłowi 1000 PLN do 15 lipca».",
     debt_owed_to_me: "Winni mi",
@@ -227,6 +307,31 @@ const STRINGS: Record<Locale, Dict> = {
       "Na razie pisz wydatki tekstem lub wysyłaj zdjęcia paragonów. Otwórz «FinApp» w menu bota.",
   },
   en: {
+    photo_heic:
+      "HEIC not supported yet (JPEG/PNG only). Send as a .jpg file or set iOS «Camera → Formats → Most Compatible».",
+    photo_unsupported: "Unsupported format: {mime}. Send JPEG or PNG.",
+    photo_download_failed: "Couldn't download the photo from Telegram.",
+    photo_vision_failed: "Vision failed: {err}",
+    photo_parse_failed: "Couldn't read the receipt. Take a straighter photo in good light.",
+    photo_dup_hash: "This is the same photo I already processed.",
+    photo_dup_content: "There's already a receipt with the same merchant, date and total.",
+    photo_dup:
+      "⚠ Looks like a duplicate. {reason}\n\nExisting receipt: {who}, {total} {ccy}, {date}.\n\nIf it's a different purchase, delete the old receipt in the Mini App and resend.",
+    photo_checked: "checked {got}/{exp} items",
+    photo_total_lbl: "total",
+    photo_warn_reconcile: "\n\n⚠ Item sum didn't match the total (±5%), flagged for review.",
+    photo_trunc: "\n\n⚠ Long receipt, didn't read all items. Send a bigger photo or in two parts.",
+    photo_hint: "\n\n_You can fix the category in the Mini App._",
+    photo_partial_saved: "saved {got} of {exp} items",
+    photo_partial_tail:
+      "\n\nSome items weren't saved. Delete the receipt in the Mini App and resend.",
+    photo_unnamed: "unnamed",
+    start_text:
+      'Hi, {name}. This is FinBot, your personal finance assistant.\n\nYou can do two things:\n• record expenses - by text, voice or a receipt photo (e.g.: "coffee 12 zł")\n• chat with me like a financial advisor (e.g.: "what do I spend most on?")\n\nTo continue a conversation - reply to my message.\n\nCommands:\n/help - help\n/dashboard - open dashboard\n/history - recent expenses\n/stats - month summary',
+    help_text:
+      'What I can do:\n\n• Record expenses - by text, voice or a receipt photo.\n  Example: "coffee 12 zł and fuel 150 zł".\n\n• Chat like a personal financier - just ask.\n  Example: "how much did I spend on food in May?".\n  To continue - reply to my message.\n\nCommands:\n/start - greeting\n/help - this help\n/categories - categories\n/dashboard - open dashboard\n/web - browser link\n/history - recent expenses\n/stats - month summary\n/me - my stats\n/ask QUESTION - ask\n/undo - undo last\n/delete_keys - delete API keys\n/delete_account - delete account',
+    help_admin:
+      "\n\nAdmin:\n/health - status\n/audit ID - entry history\n/members - access\n/grant TID [name] - grant access\n/revoke TID - revoke access\n/promote TID - make admin\n/demote TID - remove admin\n/invites - access & codes\n/mint_invite [N] - create codes\n/subscriptions - find subscriptions",
     debt_parse_failed:
       'Couldn\'t parse the debt ({reason}). Try clearer: "lent Pasha 1000 PLN until July 15".',
     debt_owed_to_me: "Owes me",
