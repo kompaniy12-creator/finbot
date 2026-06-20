@@ -24,7 +24,7 @@ jobs:
       SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Supabase CLI
         uses: supabase/setup-cli@v1
@@ -69,7 +69,7 @@ jobs:
     if: failure() && !contains(github.event.head_commit.message, '[no-auto-revert]')
     steps:
       - name: Checkout with history
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
         with:
           fetch-depth: 2
 
@@ -90,7 +90,7 @@ jobs:
     needs: deploy-functions
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Deploy Mini App to GitHub Pages
         uses: peaceiris/actions-gh-pages@v4
