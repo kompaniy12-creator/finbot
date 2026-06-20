@@ -8,6 +8,12 @@
 Приложение само сверяется с `version.json` и подтягивает обновление у всех пользователей
 автоматически.
 
+## v1.10.1 - 2026-06-20
+
+- Безопасность P1.1: инструмент ротации ключей scripts/rotate_keys.ts (idempotent, resumable,
+  --dry-run, --tenant, --batch-size); миграция существующих ключей v1->v2 выполнена. Устаревший
+  encrypt_existing_keys.ts удалён.
+
 ## v1.10.0 - 2026-06-20
 
 - Безопасность P0.2: envelope-шифрование (KEK в Supabase Vault + per-tenant DEK, формат v2,
