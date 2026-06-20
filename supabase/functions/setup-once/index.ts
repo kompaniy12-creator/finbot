@@ -9,8 +9,6 @@
 
 import { z } from "zod";
 import { adminClient } from "../_shared/supabase.ts";
-import { tenantDb } from "../_shared/tenant_db.ts";
-import { FAMILY_TENANT } from "../_shared/claude.ts";
 import { log } from "../_shared/log.ts";
 
 const envSchema = z.object({
@@ -188,10 +186,8 @@ Deno.serve(async (req: Request) => {
   }
 
   const sb = adminClient();
-  // setup-once only seeds the family tenant; scope all writes/reads to it.
-  const db = tenantDb(sb, FAMILY_TENANT);
 
-  const { count: existingCount, error: countErr } = await db
+  const { count: existingCount, error: countErr } = await sb
     .from("categories")
     .select("*", { count: "exact", head: true });
   if (countErr) {
@@ -220,7 +216,7 @@ Deno.serve(async (req: Request) => {
     // Resume-friendly: if a row exists, only refresh the embedding when it
     // looks like a zero-vector placeholder (set by migration 0018, where we
     // couldn't run gte-small inline) - otherwise leave it alone.
-    const { data: existing } = await db
+    const { data: existing } = await sb
       .from("categories")
       .select("id, embedding, kind")
       .eq("name", cat.name)
@@ -238,7 +234,7 @@ Deno.serve(async (req: Request) => {
           mean_pool: true,
           normalize: true,
         });
-        const upd = await db.from("categories").update({
+        const upd = await sb.from("categories").update({
           embedding,
           description: cat.description,
           kind,
@@ -261,7 +257,7 @@ Deno.serve(async (req: Request) => {
       normalize: true,
     });
 
-    const { error: insertErr } = await db.from("categories").insert({
+    const { error: insertErr } = await sb.from("categories").insert({
       name: cat.name,
       description: cat.description,
       embedding,
@@ -300,14 +296,14 @@ Deno.serve(async (req: Request) => {
 
     for (const m of members) {
       // Idempotent: skip if telegram_id already exists
-      const { data: existing } = await db
+      const { data: existing } = await sb
         .from("family_members")
         .select("id")
         .eq("telegram_id", m.telegram_id)
         .maybeSingle();
       if (existing) continue;
 
-      const { error: insertErr } = await db.from("family_members").insert({
+      const { error: insertErr } = await sb.from("family_members").insert({
         name: m.name,
         telegram_id: m.telegram_id,
         username: m.username ?? null,
