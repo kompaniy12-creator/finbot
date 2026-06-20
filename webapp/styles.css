@@ -890,15 +890,15 @@ footer {
 }
 .bottom-nav .nav-btn.active .nav-icon img {
   opacity: 1;
-  transform: scale(1.12);
-  filter: drop-shadow(0 0 7px rgba(47, 224, 74, 0.75)) brightness(1.12);
+  transform: scale(1.07);
+  filter: drop-shadow(0 0 4px rgba(47, 224, 74, 0.45));
 }
 .bottom-nav .nav-btn .nav-label {
   transition: text-shadow 0.18s ease, color 0.18s ease;
 }
 .bottom-nav .nav-btn.active .nav-label {
   color: var(--neon-green);
-  text-shadow: 0 0 9px rgba(47, 224, 74, 0.7);
+  text-shadow: 0 0 6px rgba(47, 224, 74, 0.45);
 }
 .bottom-nav .nav-btn .nav-label {
   font-weight: 500;
