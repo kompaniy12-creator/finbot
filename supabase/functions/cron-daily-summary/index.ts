@@ -1,19 +1,17 @@
 // cron-daily-summary: every evening at 22:00 Europe/Warsaw.
-// Sends each active family member a Telegram message with:
-//   - today's total in source-currency breakdown + EUR grand
-//   - count of records
-//   - top category today
-//   - month-to-date total + records
-//   - vs yesterday delta (percent in EUR)
-//
-// Family-wide visibility: every member sees the FAMILY total, not just
-// their own (matches the Mini App behaviour).
+// Tenant-aware: for EACH tenant, builds that tenant's daily picture (today's
+// spend, top category, month-to-date, vs yesterday) from tenant-scoped data and
+// sends it to every active member via THAT tenant's bot (family vs SaaS). A
+// tenant with no activity this month is skipped (no spam for fresh accounts).
 
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { adminClient } from "../_shared/supabase.ts";
+import { tenantDb } from "../_shared/tenant_db.ts";
 import { log } from "../_shared/log.ts";
 import { checkCronAuth } from "../_shared/retry.ts";
 import { addDaysIso, todayWarsawIso } from "../_shared/dates.ts";
 import { loadEurRates, plnToEur } from "../_shared/eur_view.ts";
+import { loadActiveTenants, loadBotTokens, sendTg } from "../_shared/cron_tenants.ts";
 
 interface ExpRow {
   amount: number;
@@ -23,27 +21,7 @@ interface ExpRow {
   expense_date: string;
 }
 
-async function sendTg(chatId: number, text: string): Promise<void> {
-  const token = Deno.env.get("TELEGRAM_BOT_TOKEN");
-  if (!token) return;
-  try {
-    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        chat_id: chatId,
-        text,
-        parse_mode: "HTML",
-        disable_web_page_preview: true,
-      }),
-    });
-  } catch (err) {
-    log("warn", "daily_summary_tg_failed", { chat_id: chatId, error: (err as Error).message });
-  }
-}
-
 function fmtCcy(byCcy: Map<string, number>): string {
-  // Same stable order as the dashboard: PLN, EUR, USD, ALL, then others A-Z.
   const order = ["PLN", "EUR", "USD", "ALL"];
   const entries = [...byCcy.entries()].sort((a, b) => {
     const ia = order.indexOf(a[0]);
@@ -59,39 +37,33 @@ function fmtCcy(byCcy: Map<string, number>): string {
     .join(", ");
 }
 
-Deno.serve(async (req: Request) => {
-  if (!checkCronAuth(req)) return new Response("forbidden", { status: 401 });
-  const sb = adminClient();
+async function buildSummary(
+  db: ReturnType<typeof tenantDb>,
+  sb: SupabaseClient,
+): Promise<{ text: string; hasData: boolean } | null> {
   const today = todayWarsawIso();
   const yesterday = addDaysIso(today, -1);
   const monthStart = today.slice(0, 7) + "-01";
 
-  // Pull everything we need in one round of queries.
-  // CRITICAL: filter kind='expense' on every expense aggregate - otherwise
-  // income rows (Зарплата, дивиденды, возврат долгов) inflate totals and
-  // dominate the "top category" line, making the summary nonsense.
-  const [todayRes, yestRes, monthRes, todayIncRes, monthIncRes, famRes, catRes] = await Promise
-    .all([
-      sb.from("expenses")
-        .select("amount, currency, amount_pln, category_id, expense_date")
-        .eq("archived", false).eq("kind", "expense").eq("expense_date", today),
-      sb.from("expenses")
-        .select("amount_pln, expense_date")
-        .eq("archived", false).eq("kind", "expense").eq("expense_date", yesterday),
-      sb.from("expenses")
-        .select("amount_pln, expense_date")
-        .eq("archived", false).eq("kind", "expense")
-        .gte("expense_date", monthStart).lte("expense_date", today),
-      sb.from("expenses")
-        .select("amount_pln, expense_date")
-        .eq("archived", false).eq("kind", "income").eq("expense_date", today),
-      sb.from("expenses")
-        .select("amount_pln, expense_date")
-        .eq("archived", false).eq("kind", "income")
-        .gte("expense_date", monthStart).lte("expense_date", today),
-      sb.from("family_members").select("telegram_id, name, active").eq("active", true),
-      sb.from("categories").select("id, name"),
-    ]);
+  const [todayRes, yestRes, monthRes, todayIncRes, monthIncRes, catRes] = await Promise.all([
+    db.from("expenses").select("amount, currency, amount_pln, category_id, expense_date")
+      .eq("archived", false).eq("kind", "expense").eq("expense_date", today),
+    db.from("expenses").select("amount_pln, expense_date")
+      .eq("archived", false).eq("kind", "expense").eq("expense_date", yesterday),
+    db.from("expenses").select("amount_pln, expense_date")
+      .eq("archived", false).eq("kind", "expense").gte("expense_date", monthStart).lte(
+        "expense_date",
+        today,
+      ),
+    db.from("expenses").select("amount_pln, expense_date")
+      .eq("archived", false).eq("kind", "income").eq("expense_date", today),
+    db.from("expenses").select("amount_pln, expense_date")
+      .eq("archived", false).eq("kind", "income").gte("expense_date", monthStart).lte(
+        "expense_date",
+        today,
+      ),
+    db.from("categories").select("id, name"),
+  ]);
 
   const todayRows = (todayRes.data ?? []) as ExpRow[];
   const yestRows = (yestRes.data ?? []) as Array<{ amount_pln: number; expense_date: string }>;
@@ -102,9 +74,9 @@ Deno.serve(async (req: Request) => {
   const monthIncRows = (monthIncRes.data ?? []) as Array<
     { amount_pln: number; expense_date: string }
   >;
-  const members = (famRes.data ?? []) as Array<
-    { telegram_id: number; name: string; active: boolean }
-  >;
+  // Skip fresh/inactive tenants entirely (nothing this month).
+  if (monthRows.length === 0 && monthIncRows.length === 0) return null;
+
   const catName = new Map(
     ((catRes.data ?? []) as Array<{ id: string; name: string }>).map((c) => [c.id, c.name]),
   );
@@ -155,8 +127,6 @@ Deno.serve(async (req: Request) => {
     ? (yestEur === 0 && todayEur > 0 ? " (вчера 0)" : "")
     : ` (${deltaPct > 0 ? "+" : ""}${deltaPct.toFixed(1)}% vs вчера)`;
 
-  // Build the message once; same family-wide totals get sent to every active
-  // member. Each member sees the same picture as the dashboard.
   const headline = todayRows.length === 0
     ? "📊 Сегодня без трат. Молодцы!"
     : `📊 Сегодня расход: ${todayEur.toFixed(2)} EUR за ${todayRows.length} ${
@@ -173,19 +143,27 @@ Deno.serve(async (req: Request) => {
   const monthNetLine = monthIncEur > 0
     ? `\nНетто за месяц: ${monthNet >= 0 ? "+" : ""}${monthNet.toFixed(2)} EUR`
     : "";
-  const text = headline + incomeLine + ccyLine + topLine + monthExpLine + monthIncLine +
-    monthNetLine;
+  return {
+    text: headline + incomeLine + ccyLine + topLine + monthExpLine + monthIncLine + monthNetLine,
+    hasData: true,
+  };
+}
 
-  let sent = 0;
-  for (const m of members) {
-    await sendTg(m.telegram_id, text);
-    sent++;
+Deno.serve(async (req: Request) => {
+  if (!checkCronAuth(req)) return new Response("forbidden", { status: 401 });
+  const sb = adminClient();
+  const botTokens = await loadBotTokens(sb);
+  const tenants = await loadActiveTenants(sb);
+
+  let sent = 0, tenantsNotified = 0;
+  for (const t of tenants) {
+    const summary = await buildSummary(tenantDb(sb, t.tenantId), sb);
+    if (!summary) continue;
+    tenantsNotified++;
+    for (const m of t.members) {
+      if (await sendTg(botTokens.get(m.bot_id ?? ""), m.telegram_id, summary.text)) sent++;
+    }
   }
-  log("info", "daily_summary_sent", {
-    sent,
-    today_total_eur: todayEur,
-    today_count: todayRows.length,
-    month_total_eur: monthEur,
-  });
-  return Response.json({ sent, today_total_eur: todayEur, today_count: todayRows.length });
+  log("info", "daily_summary_sent", { sent, tenants_notified: tenantsNotified });
+  return Response.json({ sent, tenants_notified: tenantsNotified });
 });
