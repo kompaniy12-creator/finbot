@@ -111,3 +111,43 @@ Deno.test("classifyIntent: plain expense is not mistaken for budget", () => {
   assertEquals(classifyIntent("кофе 12 zł"), "expense");
   assertEquals(classifyIntent("добавь кофе 12"), "expense"); // verb but no budget noun
 });
+
+Deno.test("classifyIntent: pasted bulk list -> expense (the IMG_9481 case)", () => {
+  // A real batch dump: date headers + items + a total line, and prose that
+  // contains the question word "что-то". Must reach the parser, not the analyst.
+  const bulk =
+    `Смотри я тебе скину свои траты за июнь, а ты впиши и если что-то уже было в этот день то не пиши, вот:
+Финансы: 01.06.2026
+Maxi - 1620 lek
+Spar - 2950 lek
+💰 Чек: 4570 lek
+Финансы: 05.06.2026
+Spar - 3905 lek
+Sushi - 3300 lek`;
+  assertEquals(classifyIntent(bulk), "expense");
+});
+
+Deno.test("classifyIntent: short two-line list -> expense", () => {
+  assertEquals(classifyIntent("Maxi - 1620 lek\nSpar - 2950 lek"), "expense");
+  assertEquals(classifyIntent("кофе 12 zł\nобед 40 zł"), "expense");
+});
+
+Deno.test("classifyIntent: single item stays expense, not bulk", () => {
+  assertEquals(classifyIntent("Maxi - 1620 lek"), "expense");
+});
+
+Deno.test("classifyIntent: multi-line analyst question is not a bulk list", () => {
+  // Prose questions across lines, no item/amount pattern -> still analyst.
+  assertEquals(
+    classifyIntent("слушай, а что там по тратам\nза июнь вышло много?"),
+    "question",
+  );
+});
+
+Deno.test("classifyIntent: bulk list does not override explicit delete request", () => {
+  // ANALYST_OVERRIDES (удали) is checked before the bulk detector.
+  assertEquals(
+    classifyIntent("удали эти траты:\nMaxi - 1620 lek\nSpar - 2950 lek"),
+    "question",
+  );
+});

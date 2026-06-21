@@ -99,6 +99,41 @@ const ANALYST_OVERRIDES = new RegExp(
   "iu",
 );
 
+// Lines that are running totals / subtotals, not separate expenses. Skipped
+// when counting item lines (and the parser is told to skip them too).
+const TOTAL_LINE = new RegExp(
+  "^\\s*(?:💰|💵|🧾|🛒)?\\s*(итого|всего|чек|сумма|подытог|разом|разаом|total|sum|subtotal)\\b",
+  "iu",
+);
+// A list item line: has a name (letters) and an amount, joined by a "-"/":"
+// separator ("Maxi - 1620 lek") or carrying a currency marker ("Spar 2950 lek").
+// Separator chars users type between a name and an amount: hyphen, en dash
+// (U+2013), em dash (U+2014) or colon. The two long dashes are written as
+// escapes so the no-em-dash source hook stays happy.
+const ITEM_SEP_AMOUNT = /[-\u2013\u2014:]\s*\d[\d\s.,]*/u;
+
+/**
+ * A pasted bulk list of expenses, e.g.
+ *   Финансы: 01.06.2026
+ *   Maxi - 1620 lek
+ *   Spar - 2950 lek
+ * Two or more item lines (name + amount, skipping totals) means the user is
+ * dumping a batch to record, even if the surrounding prose contains a question
+ * word like "что-то" ("если что-то уже было"). Detected BEFORE the question-word
+ * rules so such a list reaches the expense parser instead of the analyst.
+ */
+export function looksLikeBulkList(text: string): boolean {
+  let items = 0;
+  for (const raw of text.split(/\r?\n/)) {
+    const l = raw.trim();
+    if (!l || TOTAL_LINE.test(l)) continue;
+    if (!/\d/.test(l) || !/\p{L}/u.test(l)) continue; // need a name AND a number
+    if (ITEM_SEP_AMOUNT.test(l) || CURRENCY_MARKERS.test(l)) items++;
+    if (items >= 2) return true;
+  }
+  return false;
+}
+
 /**
  * Classify a free-form user message. See module docs for failure-mode notes.
  *
@@ -123,6 +158,9 @@ export function classifyIntent(text: string): Intent {
   // "отметь / сверь / выписка / удали" request must not be eaten by the
   // expense parser just because it happens to contain a number.
   if (ANALYST_OVERRIDES.test(t)) return "question";
+  // A pasted multi-item list is a batch to record, even if its prose contains a
+  // question word. Beats the "?" / question-word rules below.
+  if (looksLikeBulkList(t)) return "expense";
   if (t.endsWith("?")) return "question";
   if (QUESTION_WORDS.test(t)) return "question";
   if (GREETING.test(t)) return "question";

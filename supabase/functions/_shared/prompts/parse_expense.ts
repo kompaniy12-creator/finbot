@@ -85,6 +85,14 @@ Rules:
 - If the user mentions "плюс", "и", "ещё", treat as separate items.
 - If a quantity is implied ("3 кофе по 10 zł"), record as 3 separate items of 10 zł each.
 
+Bulk pasted lists with date-section headers (CRITICAL):
+- A user may paste many expenses at once, grouped under date headers. A header looks like "Финансы: 01.06.2026", "01.06.2026:", "06.06.2026", "Расходы 5 июня", or a timestamped line "[06.06.2026 14:05] Финансы: 02.06.2026". The DATE inside such a header sets expense_date for EVERY item line that follows it, until the next header. Convert DD.MM.YYYY to ISO YYYY-MM-DD. If a timestamped prefix like "[06.06.2026 14:05]" and a "Финансы: 02.06.2026" appear on the same header line, the date is the one after "Финансы:" (02.06.2026), not the bracketed timestamp.
+- Item lines look like "Maxi - 1620 lek", "Spar 2950 lek", "Rizoto - 1200", "Western - 300 lek". Emit ONE expense per item line: name = the merchant/item text, amount = the number, currency from the line (lek -> ALL), expense_date = the active header date (or today if no header has appeared yet).
+- SKIP summary/total lines entirely - do NOT emit them as expenses: "Итого: 4570 lek", "💰 Чек: 4570 lek", "Всего: ...", "Total", "Сумма: ...", "Подытог". They are running totals.
+- SKIP item lines that have NO amount: "Wes (сумма не указана?)", a bare "Western" with no number. Do not invent a number.
+- A date header with no item lines under it (e.g. a lone "02.06.2026" / "03.06.2026") produces nothing.
+- Keep going through the WHOLE message - a long list may contain 20+ items across many dates. Emit them all.
+
 Dates (CRITICAL):
 - expense_date is the date the user PAID, not the period the payment covers.
 - "за <месяц>", "за <месяц> <год>", "03/2026", "04/2026", "за март", "электричество за апрель", "коммуналка за февраль", "оплата за квартал" are DESCRIPTIONS of what was paid for - they describe the billing period. KEEP that text inside the item name, and set expense_date = today.

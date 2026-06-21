@@ -2,8 +2,8 @@
 // Verifies the inline-keyboard generator for high-amount confirmation
 // (SPEC §6.6) and the threshold logic.
 
-import { assertEquals } from "@std/assert";
-import { highAmountKeyboard } from "../supabase/functions/tg-webhook/text_pipeline.ts";
+import { assertEquals, assertStringIncludes } from "@std/assert";
+import { formatReply, highAmountKeyboard } from "../supabase/functions/tg-webhook/text_pipeline.ts";
 
 const baseExpense = {
   name: "x",
@@ -22,6 +22,7 @@ Deno.test("highAmountKeyboard: returns null when nothing needs confirmation", ()
       { ...baseExpense, id: "e2", amount_pln: 100, needs_confirmation: false },
     ],
     warnings: [],
+    skipped: 0,
   });
   assertEquals(out, null);
 });
@@ -33,6 +34,7 @@ Deno.test("highAmountKeyboard: builds Да/Изменить/Отмена for the
       { ...baseExpense, id: "e2", amount_pln: 250, needs_confirmation: true },
     ],
     warnings: [],
+    skipped: 0,
   });
   if (!out) throw new Error("expected keyboard");
   assertEquals(out.inline_keyboard.length, 1);
@@ -53,8 +55,25 @@ Deno.test("highAmountKeyboard: uses the FIRST flagged expense even if many", () 
       { ...baseExpense, id: "second", amount_pln: 500, needs_confirmation: true },
     ],
     warnings: [],
+    skipped: 0,
   });
   if (!out) throw new Error("expected keyboard");
   const row = out.inline_keyboard[0]!;
   assertEquals(row[0]!.callback_data.endsWith(":first"), true);
+});
+
+Deno.test("formatReply: notes skipped duplicates from a re-pasted list", () => {
+  const text = formatReply({
+    expenses: [{ ...baseExpense, id: "e1", amount_pln: 50, needs_confirmation: false }],
+    warnings: [],
+    skipped: 3,
+  });
+  assertStringIncludes(text, "3"); // "Пропущено дублей ...: 3"
+});
+
+Deno.test("formatReply: all-duplicate list says nothing was added", () => {
+  const text = formatReply({ expenses: [], warnings: [], skipped: 5 });
+  assertStringIncludes(text, "5");
+  // Must NOT fall back to the generic "not understood" line.
+  assertEquals(text.includes("Не понял"), false);
 });

@@ -42,6 +42,10 @@ export interface ProcessedExpense {
 export interface PipelineResult {
   expenses: ProcessedExpense[];
   warnings: string[];
+  // How many parsed items were skipped as duplicates of an existing same-day
+  // entry (same date + name + amount). Surfaced in the reply so the user can
+  // see nothing was silently dropped when re-importing a list.
+  skipped: number;
 }
 
 export async function processTextMessage(args: {
@@ -54,6 +58,11 @@ export async function processTextMessage(args: {
   const todayIso = todayWarsawIso();
   const { system, tools } = buildParseExpensePrompt({ todayWarsaw: todayIso });
 
+  // A bulk pasted list can hold 20+ items; each JSON row is ~60-90 output
+  // tokens, so the 1024 cap would truncate the tool call mid-array. Scale up
+  // for long messages while keeping single entries cheap.
+  const maxTokens = args.text.length > 350 ? 4096 : 1024;
+
   let resp;
   try {
     resp = await callClaude({
@@ -63,7 +72,7 @@ export async function processTextMessage(args: {
       model,
       system,
       tools,
-      maxTokens: 1024,
+      maxTokens,
       toolChoice: { type: "tool", name: "record_expenses" },
       messages: [{ role: "user", content: args.text }],
     });
@@ -86,6 +95,7 @@ export async function processTextMessage(args: {
   if (resp.warning) warnings.push(resp.warning);
 
   const out: ProcessedExpense[] = [];
+  let skipped = 0;
   const embedFn = defaultEmbedFn();
   const fallback = buildClaudeFallback(args.sb, args.member.id, args.member.tenant_id);
 
@@ -100,10 +110,31 @@ export async function processTextMessage(args: {
       embedFn,
       fallback,
     );
-    if (inserted) out.push(inserted);
+    if (inserted === "duplicate") skipped++;
+    else if (inserted) out.push(inserted);
   }
 
-  return { expenses: out, warnings };
+  return { expenses: out, warnings, skipped };
+}
+
+// True when an identical entry (same member, date, name, amount) already exists,
+// so re-pasting a list doesn't double-record. Names are compared
+// case-insensitively. Deliberately conservative: only an exact amount + date +
+// name match counts as a duplicate.
+async function isDuplicate(
+  db: ReturnType<typeof tenantDb>,
+  member: FamilyMember,
+  item: ParsedExpenseRow,
+): Promise<boolean> {
+  const dup = await db.from("expenses")
+    .select("id")
+    .eq("family_member_id", member.id)
+    .eq("expense_date", item.expense_date)
+    .eq("amount", item.amount)
+    .ilike("name", item.name)
+    .limit(1)
+    .maybeSingle();
+  return !!dup.data;
 }
 
 async function processSingleItem(
@@ -116,9 +147,13 @@ async function processSingleItem(
   embedFn: any,
   // deno-lint-ignore no-explicit-any
   fallback: any,
-): Promise<ProcessedExpense | null> {
+): Promise<ProcessedExpense | "duplicate" | null> {
   const kind = item.kind ?? "expense";
   const db = tenantDb(sb, member.tenant_id);
+
+  // Skip an item that already exists for this day (same name + amount). Lets a
+  // user safely re-paste a partly-recorded list without creating doubles.
+  if (await isDuplicate(db, member, item)) return "duplicate";
 
   const cat = await categorize(
     { sb, embedFn, fallback },
@@ -188,6 +223,8 @@ async function processSingleItem(
 
 export function formatReply(result: PipelineResult, locale = "ru"): string {
   if (result.expenses.length === 0) {
+    // Everything in the list was already recorded for those days.
+    if (result.skipped > 0) return t(locale, "dup_all", { n: String(result.skipped) });
     return t(locale, "not_understood");
   }
   const lines = result.expenses.map((e) => {
@@ -264,8 +301,13 @@ export function formatReply(result: PipelineResult, locale = "ru"): string {
     ? t(locale, "date_hint", { months: outOfMonth.join(", ") })
     : "";
 
+  // Note how many list items were skipped as already-recorded duplicates.
+  const dupNote = result.skipped > 0
+    ? "\n" + t(locale, "dup_some", { n: String(result.skipped) })
+    : "";
+
   const warns = result.warnings.length ? "\n\nWarn: " + result.warnings.join("; ") : "";
-  return [head, ...lines, totalLine].join("\n") + dateHint + warns;
+  return [head, ...lines, totalLine].join("\n") + dateHint + dupNote + warns;
 }
 
 /**
