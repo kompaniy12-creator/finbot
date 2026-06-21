@@ -193,10 +193,20 @@ Deno.test("auditCommand: lists 5 latest audit rows", async () => {
   assertStringIncludes(r.text, "archive");
 });
 
-Deno.test("routeCommand: admin command blocks non-admin", async () => {
+Deno.test("routeCommand: owner command hidden from non-owner (no admin hint)", async () => {
   const sb = mockSb({});
+  // MEMBER is a non-admin on the family tenant -> owner command is hidden,
+  // responded to as if it doesn't exist (no "admin only" hint).
   const r = await routeCommand({ sb, member: MEMBER }, "health", "");
-  assertStringIncludes(r.text, "только админу");
+  assertStringIncludes(r.text, "Не знаю команду");
+});
+
+Deno.test("routeCommand: owner command hidden from SaaS-tenant admin", async () => {
+  const sb = mockSb({});
+  // A SaaS tenant's admin must NOT reach owner commands like /invites.
+  const saasAdmin = { ...ADMIN, tenant_id: "11111111-1111-1111-1111-111111111111" };
+  const r = await routeCommand({ sb, member: saasAdmin }, "invites", "");
+  assertStringIncludes(r.text, "Не знаю команду");
 });
 
 Deno.test("routeCommand: unknown command suggests /help", async () => {

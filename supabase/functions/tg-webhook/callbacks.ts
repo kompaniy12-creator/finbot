@@ -496,7 +496,7 @@ async function doAccessGrant(
   editMessageId?: number,
 ): Promise<CallbackOutput> {
   const db = tenantDb(sb, actor.tenant_id);
-  if (actor.role !== "admin") {
+  if (!(actor.tenant_id === FAMILY_TENANT && actor.role === "admin")) {
     return { chatId, reply: { text: "Только админ может выдавать доступ." } };
   }
   if (!Number.isFinite(targetTid) || targetTid <= 0) {
@@ -583,7 +583,7 @@ async function doInvites(
   tenantId: string | undefined,
   editMessageId?: number,
 ): Promise<CallbackOutput> {
-  if (actor.role !== "admin") {
+  if (!(actor.tenant_id === FAMILY_TENANT && actor.role === "admin")) {
     return { chatId, reply: { text: "Только админ может управлять доступами." } };
   }
   let answer = "Готово";
@@ -656,7 +656,7 @@ async function doAccessDeny(
   targetTid: number,
   editMessageId?: number,
 ): Promise<CallbackOutput> {
-  if (actor.role !== "admin") {
+  if (!(actor.tenant_id === FAMILY_TENANT && actor.role === "admin")) {
     return { chatId, reply: { text: "Только админ может отклонять запросы." } };
   }
   const pendingRes = await sb.from("pending_access")
@@ -698,7 +698,7 @@ async function doMemberAction(
   editMessageId?: number,
 ): Promise<CallbackOutput> {
   const db = tenantDb(sb, actor.tenant_id);
-  if (actor.role !== "admin") {
+  if (!(actor.tenant_id === FAMILY_TENANT && actor.role === "admin")) {
     return { chatId, reply: { text: "Только админ может менять состав." } };
   }
   if (!/^[0-9a-f-]{36}$/i.test(memberId)) {
@@ -842,7 +842,7 @@ async function doSubAdd(
   editMessageId?: number,
 ): Promise<CallbackOutput> {
   const db = tenantDb(sb, actor.tenant_id);
-  if (actor.role !== "admin") {
+  if (!(actor.tenant_id === FAMILY_TENANT && actor.role === "admin")) {
     return { chatId, reply: { text: "Только админ." } };
   }
   if (!/^[0-9a-f-]{36}$/i.test(expenseId)) {

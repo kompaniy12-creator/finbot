@@ -39,7 +39,10 @@ export function startCommand(member: FamilyMember): CommandReply {
 
 export function helpCommand(member: FamilyMember): CommandReply {
   // Avoid '<' and '>' - sendMessage uses parse_mode=HTML.
-  const admin = member.role === "admin" ? t(member.locale, "help_admin") : "";
+  // Admin section is OWNER-only (family tenant): SaaS testers are admins of their
+  // own tenant but must not see owner commands.
+  const isOwner = member.tenant_id === FAMILY_TENANT && member.role === "admin";
+  const admin = isOwner ? t(member.locale, "help_admin") : "";
   return { text: t(member.locale, "help_text") + admin };
 }
 

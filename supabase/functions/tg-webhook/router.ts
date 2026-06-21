@@ -46,6 +46,7 @@ import { type BankPipelineOutcome, processBankStatement } from "./bank_pipeline.
 import { startProgress } from "../_shared/progress.ts";
 import { checkAndBump } from "../_shared/rate_limit.ts";
 import { t } from "../_shared/i18n.ts";
+import { FAMILY_TENANT } from "../_shared/claude.ts";
 
 export interface RouteContext {
   sb: SupabaseClient;
@@ -88,8 +89,14 @@ export async function routeCommand(
   cmd: string,
   args: string,
 ): Promise<CommandReply> {
-  if (ADMIN_COMMANDS.has(cmd) && ctx.member.role !== "admin") {
-    return { text: "Эта команда доступна только админу." };
+  // Owner-only commands (invites, member management, audit, etc.) exist ONLY on
+  // the owner's family tenant. A SaaS tenant's "admin" must NEVER reach them -
+  // /invites alone would leak every tester's code + telegram_id. For non-owners
+  // these commands are hidden: we respond as if the command doesn't exist (no
+  // hint that admin features exist).
+  const isOwner = ctx.member.tenant_id === FAMILY_TENANT && ctx.member.role === "admin";
+  if (ADMIN_COMMANDS.has(cmd) && !isOwner) {
+    return { text: `Не знаю команду /${cmd}.` };
   }
   // P1.3: strict rate limit on sensitive key operations.
   if (cmd === "apikey" || cmd === "groqkey" || cmd === "delete_keys") {
