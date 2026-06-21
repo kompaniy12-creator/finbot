@@ -68,4 +68,10 @@ open(p, "w", encoding="utf-8").write(s)
 print(f"[bump] changelog entry for v{new} added")
 PY
 
+# Normalize the freshly inserted entry so CI's `deno fmt --check` stays green
+# (long summary lines get wrapped by deno's markdown formatter otherwise).
+if command -v deno >/dev/null 2>&1; then
+  deno fmt CHANGELOG.md >/dev/null 2>&1 && echo "[bump] CHANGELOG.md formatted"
+fi
+
 echo "[bump] done. Review the diff, then commit + push."
