@@ -10,7 +10,7 @@ const TX_PAGE = 50;
 // version.json on the server carries the latest published version; when it is
 // newer than what this loaded build reports, we hard-reload so every user picks
 // up changes automatically without reinstalling anything.
-const APP_VERSION = "1.22.0";
+const APP_VERSION = "1.23.1";
 
 // Poll the published version and reload once if the server moved ahead. Telegram
 // keeps the webview alive in the background and may serve a cached index.html, so
@@ -785,33 +785,69 @@ async function submitUserForm() {
 const SESSION_EXPIRED = Symbol("session_expired");
 let sessionAlertShown = false;
 
+const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
+
 async function api(path, opts = {}) {
   const url = API_BASE + path;
-  const ws = getWebSession();
-  const headers = Object.assign({}, opts.headers);
-  if (ws) {
-    headers["Authorization"] = "Bearer " + ws.token;
-  } else if (window.TG && TG.isReady) {
-    headers["Authorization"] = "tma " + TG.initData;
-    headers["X-Telegram-Init-Data"] = TG.initData;
-  }
-  const resp = await fetch(url, Object.assign({}, opts, { headers }));
-  if (resp.status === 401) {
-    if (!sessionAlertShown) {
-      sessionAlertShown = true;
-      const msg = ws
-        ? "Сессия в браузере истекла. Попроси у бота новую ссылку командой /web."
-        : "Срок сессии истёк. Закрой Mini App и открой заново через бота.";
-      if (window.TG && TG.showAlert && TG.isReady) {
-        TG.showAlert(msg);
-      } else {
-        alert(msg);
-      }
+  // Retry only idempotent reads. Supabase Edge Functions cold-start on the
+  // first hit after idle, so the opening burst of GETs can transiently fail
+  // with a network error ("Load failed") or a 502/503/504 gateway code. A
+  // couple of quick retries make the app open cleanly instead of flashing an
+  // error. Mutations (POST/PATCH/DELETE) are never retried to avoid doubles.
+  const method = (opts.method || "GET").toUpperCase();
+  const maxAttempts = method === "GET" || method === "HEAD" ? 3 : 1;
+
+  let lastErr;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const ws = getWebSession();
+    const headers = Object.assign({}, opts.headers);
+    if (ws) {
+      headers["Authorization"] = "Bearer " + ws.token;
+    } else if (window.TG && TG.isReady) {
+      headers["Authorization"] = "tma " + TG.initData;
+      headers["X-Telegram-Init-Data"] = TG.initData;
     }
-    if (ws) clearWebSession();
-    throw SESSION_EXPIRED;
+
+    let resp;
+    try {
+      resp = await fetch(url, Object.assign({}, opts, { headers }));
+    } catch (e) {
+      // Network-level failure (no response). Retry transient ones.
+      lastErr = e;
+      if (attempt < maxAttempts) {
+        await sleep(250 * attempt);
+        continue;
+      }
+      throw e;
+    }
+
+    if (resp.status === 401) {
+      if (!sessionAlertShown) {
+        sessionAlertShown = true;
+        const msg = ws
+          ? "Сессия в браузере истекла. Попроси у бота новую ссылку командой /web."
+          : "Срок сессии истёк. Закрой Mini App и открой заново через бота.";
+        if (window.TG && TG.showAlert && TG.isReady) {
+          TG.showAlert(msg);
+        } else {
+          alert(msg);
+        }
+      }
+      if (ws) clearWebSession();
+      throw SESSION_EXPIRED;
+    }
+
+    // Transient gateway / cold-start codes: retry idempotent reads.
+    if (
+      (resp.status === 502 || resp.status === 503 || resp.status === 504) && attempt < maxAttempts
+    ) {
+      await sleep(250 * attempt);
+      continue;
+    }
+    return resp;
   }
-  return resp;
+  // Exhausted retries on network errors.
+  throw lastErr;
 }
 
 function isSessionExpired(e) {
@@ -3723,7 +3759,27 @@ async function main() {
   });
 }
 
+// Show a quiet, non-blocking retry bar instead of a scary modal when boot hits
+// a transient error the api() retries couldn't ride out. The app often has
+// already rendered usable data behind it.
+function showBootError() {
+  if (document.getElementById("boot-error")) return;
+  const bar = document.createElement("div");
+  bar.id = "boot-error";
+  bar.className = "boot-error";
+  const span = document.createElement("span");
+  span.textContent = typeof tr === "function" ? tr("boot_err") : "Не удалось загрузить данные.";
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.textContent = typeof tr === "function" ? tr("boot_retry") : "Повторить";
+  btn.addEventListener("click", () => location.reload());
+  bar.appendChild(span);
+  bar.appendChild(btn);
+  document.body.appendChild(bar);
+}
+
 main().catch((e) => {
   console.error(e);
-  if (window.TG && TG.showAlert) TG.showAlert(tr("err_prefix", { msg: e.message }));
+  if (isSessionExpired(e)) return; // session modal already shown by api()
+  showBootError();
 });

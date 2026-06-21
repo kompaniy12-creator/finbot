@@ -2524,3 +2524,32 @@ body.tab-debts .plan-fab {
 .cs-next strong {
   color: var(--text);
 }
+
+/* Non-blocking boot-error bar (transient cold-start / network hiccup). */
+.boot-error {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: color-mix(in srgb, #ff5a5a 22%, var(--secondary-bg));
+  color: var(--text);
+  font-size: 13px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+.boot-error button {
+  flex-shrink: 0;
+  padding: 6px 14px;
+  border: none;
+  border-radius: 8px;
+  background: var(--button);
+  color: var(--button-text);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
