@@ -10,7 +10,7 @@ const TX_PAGE = 50;
 // version.json on the server carries the latest published version; when it is
 // newer than what this loaded build reports, we hard-reload so every user picks
 // up changes automatically without reinstalling anything.
-const APP_VERSION = "1.21.0";
+const APP_VERSION = "1.21.1";
 
 // Poll the published version and reload once if the server moved ahead. Telegram
 // keeps the webview alive in the background and may serve a cached index.html, so
@@ -396,9 +396,16 @@ function bindLanguageSwitcher() {
   if (!wrap) return;
   const current = () => (state.me && state.me.locale) || "ru";
   const mark = () => {
+    let activeLabel = "";
     for (const b of wrap.querySelectorAll(".lang-opt")) {
-      b.classList.toggle("active", b.dataset.locale === current());
+      const on = b.dataset.locale === current();
+      b.classList.toggle("active", on);
+      if (on) activeLabel = b.textContent.trim();
     }
+    // Mirror the active language into the collapsed dropdown summary so the
+    // current choice is visible without expanding the list.
+    const cur = $("#lang-current");
+    if (cur) cur.textContent = activeLabel;
   };
   mark();
   for (const b of wrap.querySelectorAll(".lang-opt")) {

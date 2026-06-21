@@ -806,6 +806,22 @@ canvas {
   color: var(--button-text);
   border-color: var(--button);
 }
+/* Collapsed-state current language shown in the dropdown summary, right-aligned
+   just before the chevron. */
+.lang-current {
+  margin-left: auto;
+  margin-right: 6px;
+  color: var(--hint);
+  font-size: 14px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.lang-dropdown > summary {
+  padding-right: 44px;
+}
+.lang-dropdown[open] {
+  padding-bottom: 6px;
+}
 
 .tx-pagination {
   text-align: center;
@@ -1212,12 +1228,16 @@ details.settings-section > summary h4 {
 details.settings-section > p.settings-hint,
 details.settings-section > .profile-row,
 details.settings-section > .theme-options,
+details.settings-section > .lang-options,
+details.settings-section > .settings-status,
 details.settings-section > ul,
 details.settings-section > button {
   margin-left: 14px;
   margin-right: 14px;
 }
 details.settings-section > ul:last-child,
+details.settings-section > .lang-options:last-child,
+details.settings-section > .settings-status:last-child,
 details.settings-section > button:last-child {
   margin-bottom: 14px;
 }
