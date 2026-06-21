@@ -10,7 +10,7 @@ const TX_PAGE = 50;
 // version.json on the server carries the latest published version; when it is
 // newer than what this loaded build reports, we hard-reload so every user picks
 // up changes automatically without reinstalling anything.
-const APP_VERSION = "1.23.1";
+const APP_VERSION = "1.23.2";
 
 // Poll the published version and reload once if the server moved ahead. Telegram
 // keeps the webview alive in the background and may serve a cached index.html, so
@@ -3539,13 +3539,19 @@ async function main() {
   if (TG.user && TG.user.first_name) $("#hello").textContent = "FinBot, " + TG.user.first_name;
 
   bindNav();
-  bindSettings();
+  // Apply the stored theme immediately (localStorage, independent of the
+  // member) so there's no flash before settings binds.
+  loadTheme();
   bindPlanning();
   bindPaymentCalendar();
   bindCredits();
   bindDebts();
 
   await loadCategoriesAndFamily();
+  // bindSettings AFTER the member is loaded: the profile name, language marker,
+  // and users/admin panels all read state.me, so binding earlier renders them
+  // with an empty member (blank name -> input shown, language stuck on "ru").
+  bindSettings();
   await refresh();
 
   // Category-picker modal close handlers
