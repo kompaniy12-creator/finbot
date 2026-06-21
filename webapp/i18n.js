@@ -8,6 +8,12 @@
 
 const UI_I18N = {
   ru: {
+    f_edit: "Изменить",
+    set_lang: "🌐 Язык",
+    set_lang_hint: "Язык бота и приложения.",
+    saved_ok: "Сохранено ✓",
+    lang_saved: "Язык изменён ✓",
+    net_err: "Ошибка сети",
     f_save: "Сохранить",
     f_cancel: "Отмена",
     f_delete: "Удалить",
@@ -206,6 +212,12 @@ const UI_I18N = {
     tx_more: "Ещё...",
   },
   uk: {
+    f_edit: "Змінити",
+    set_lang: "🌐 Мова",
+    set_lang_hint: "Мова бота й застосунку.",
+    saved_ok: "Збережено ✓",
+    lang_saved: "Мову змінено ✓",
+    net_err: "Помилка мережі",
     f_save: "Зберегти",
     f_cancel: "Скасувати",
     f_delete: "Видалити",
@@ -403,6 +415,12 @@ const UI_I18N = {
     tx_more: "Ще...",
   },
   pl: {
+    f_edit: "Zmień",
+    set_lang: "🌐 Język",
+    set_lang_hint: "Język bota i aplikacji.",
+    saved_ok: "Zapisano ✓",
+    lang_saved: "Język zmieniony ✓",
+    net_err: "Błąd sieci",
     f_save: "Zapisz",
     f_cancel: "Anuluj",
     f_delete: "Usuń",
@@ -600,6 +618,12 @@ const UI_I18N = {
     tx_more: "Więcej...",
   },
   en: {
+    f_edit: "Edit",
+    set_lang: "🌐 Language",
+    set_lang_hint: "Bot and app language.",
+    saved_ok: "Saved ✓",
+    lang_saved: "Language updated ✓",
+    net_err: "Network error",
     f_save: "Save",
     f_cancel: "Cancel",
     f_delete: "Delete",

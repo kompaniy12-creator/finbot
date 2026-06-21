@@ -10,7 +10,7 @@ const TX_PAGE = 50;
 // version.json on the server carries the latest published version; when it is
 // newer than what this loaded build reports, we hard-reload so every user picks
 // up changes automatically without reinstalling anything.
-const APP_VERSION = "1.19.1";
+const APP_VERSION = "1.20.0";
 
 // Poll the published version and reload once if the server moved ahead. Telegram
 // keeps the webview alive in the background and may serve a cached index.html, so
@@ -266,6 +266,7 @@ function bindNav() {
 async function bindSettings() {
   bindThemePicker();
   bindProfileEditor();
+  bindLanguageSwitcher();
   bindUsersPanel();
   bindUserFormModal();
 
@@ -310,11 +311,35 @@ function bindThemePicker() {
 }
 
 // --- Profile (own display name) -----------------------------------------
+// Show the saved name + "Изменить"; only reveal the input when editing.
+function renderProfile() {
+  const name = (state.me && state.me.name) || "";
+  const nameEl = $("#profile-name");
+  if (nameEl) nameEl.textContent = name || "-";
+  const input = $("#settings-name-input");
+  if (input) input.value = name;
+  const display = $("#profile-display");
+  const edit = $("#profile-edit");
+  const hasName = !!name;
+  if (display) display.hidden = !hasName;
+  if (edit) edit.hidden = hasName;
+}
+
 function bindProfileEditor() {
   const input = $("#settings-name-input");
   const btn = $("#settings-name-save");
+  const editBtn = $("#settings-name-edit");
   if (!input || !btn) return;
-  input.value = (state.me && state.me.name) || "";
+  renderProfile();
+  if (editBtn) {
+    editBtn.addEventListener("click", () => {
+      const display = $("#profile-display");
+      const edit = $("#profile-edit");
+      if (display) display.hidden = true;
+      if (edit) edit.hidden = false;
+      input.focus();
+    });
+  }
   btn.addEventListener("click", async () => {
     const newName = (input.value || "").trim();
     const status = $("#settings-name-status");
@@ -351,17 +376,67 @@ function bindProfileEditor() {
           $("#hello").textContent = "FinBot, " + j.member.name;
         }
       }
-      status.textContent = "Сохранено ✓";
+      status.textContent = tr("saved_ok");
       status.className = "settings-status tone-good";
+      renderProfile(); // back to display mode showing the new name
     } catch (e) {
       if (!isSessionExpired(e)) {
-        status.textContent = "Ошибка сети";
+        status.textContent = tr("net_err");
         status.className = "settings-status tone-bad";
       }
     } finally {
       btn.disabled = false;
     }
   });
+}
+
+// --- Language switcher ---------------------------------------------------
+function bindLanguageSwitcher() {
+  const wrap = $("#lang-options");
+  if (!wrap) return;
+  const current = () => (state.me && state.me.locale) || "ru";
+  const mark = () => {
+    for (const b of wrap.querySelectorAll(".lang-opt")) {
+      b.classList.toggle("active", b.dataset.locale === current());
+    }
+  };
+  mark();
+  for (const b of wrap.querySelectorAll(".lang-opt")) {
+    b.addEventListener("click", async () => {
+      const loc = b.dataset.locale;
+      if (loc === current()) return;
+      const status = $("#settings-lang-status");
+      try {
+        const r = await api("/api-me-mutate", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ locale: loc }),
+        });
+        if (!r.ok) {
+          if (status) {
+            status.textContent = tr("net_err");
+            status.className = "settings-status tone-bad";
+          }
+          return;
+        }
+        state.me = { ...(state.me || {}), locale: loc };
+        if (globalThis.setLocale) {
+          globalThis.setLocale(loc);
+          globalThis.applyI18n();
+        }
+        mark();
+        if (status) {
+          status.textContent = tr("lang_saved");
+          status.className = "settings-status tone-good";
+        }
+      } catch (e) {
+        if (!isSessionExpired(e) && status) {
+          status.textContent = tr("net_err");
+          status.className = "settings-status tone-bad";
+        }
+      }
+    });
+  }
 }
 
 // --- Users panel (admin only) -------------------------------------------

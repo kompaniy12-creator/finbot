@@ -748,6 +748,65 @@ canvas {
   opacity: 0.5;
 }
 
+/* Roomier category rows in Settings: full width, comfortable height, the row
+   reads as a tappable item with a clear edit affordance. */
+.settings-section .cat-list li {
+  padding: 12px 6px;
+  gap: 10px;
+  border-radius: 8px;
+}
+.settings-section .cat-list li:active {
+  background: var(--secondary-bg);
+}
+.settings-section .cat-list .name {
+  font-size: 15px;
+}
+
+/* Profile: show the saved name + Edit; input only when editing. */
+/* The [hidden] attribute must win over flex/grid display rules below. */
+[hidden] {
+  display: none !important;
+}
+.profile-display {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 8px;
+}
+.profile-name {
+  font-weight: 600;
+  font-size: 16px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Language picker: 2-column grid of tappable options, active one in brand green. */
+.lang-options {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 8px;
+}
+.lang-opt {
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--card-bg);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: center;
+  transition: background 0.15s, border-color 0.15s;
+}
+.lang-opt.active {
+  background: var(--button);
+  color: var(--button-text);
+  border-color: var(--button);
+}
+
 .tx-pagination {
   text-align: center;
   margin-top: 12px;
@@ -1114,16 +1173,27 @@ details.settings-section > summary::-webkit-details-marker {
   display: none;
 }
 details.settings-section > summary::after {
-  content: "▸";
+  content: "▾";
   position: absolute;
-  right: 14px;
+  right: 12px;
   top: 50%;
-  transform: translateY(-50%);
-  transition: transform 0.15s ease;
-  color: var(--hint);
+  width: 26px;
+  height: 26px;
+  margin-top: -13px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--neon-green) 16%, transparent);
+  color: var(--neon-green);
+  font-size: 15px;
+  transition: transform 0.18s ease;
 }
 details.settings-section[open] > summary::after {
-  transform: translateY(-50%) rotate(90deg);
+  transform: rotate(180deg);
+}
+details.settings-section > summary:active {
+  background: color-mix(in srgb, var(--neon-green) 8%, transparent);
 }
 details.settings-section > summary > .settings-section-head,
 details.settings-section > summary.settings-section-head {
