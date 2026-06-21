@@ -10,7 +10,7 @@ const TX_PAGE = 50;
 // version.json on the server carries the latest published version; when it is
 // newer than what this loaded build reports, we hard-reload so every user picks
 // up changes automatically without reinstalling anything.
-const APP_VERSION = "1.21.1";
+const APP_VERSION = "1.22.0";
 
 // Poll the published version and reload once if the server moved ahead. Telegram
 // keeps the webview alive in the background and may serve a cached index.html, so
@@ -66,6 +66,13 @@ const state = {
 
 function isAdmin() {
   return state.me && state.me.role === "admin";
+}
+
+// The bot owner = admin of the family sentinel tenant. Mirrors the bot-side
+// gate (FAMILY_TENANT) and unlocks the cross-tenant admin dashboard.
+const OWNER_TENANT = "00000000-0000-0000-0000-000000000001";
+function isOwner() {
+  return !!(state.me && state.me.tenant_id === OWNER_TENANT && state.me.role === "admin");
 }
 
 function renderDelta(el, { pct, abs, unit, higherIsWorse }) {
@@ -269,6 +276,7 @@ async function bindSettings() {
   bindLanguageSwitcher();
   bindUsersPanel();
   bindUserFormModal();
+  bindAdminPanel();
 
   const btn = $("#settings-web-logout");
   if (btn) {
@@ -470,6 +478,136 @@ async function bindUsersPanel() {
   await refreshUsersList();
   const addBtn = $("#settings-user-add");
   if (addBtn) addBtn.addEventListener("click", openUserForm);
+}
+
+// --- Admin dashboard (owner only) ---------------------------------------
+// Cross-tenant overview: every tenant's activity + AI spend, with a
+// suspend/activate toggle for SaaS tenants. Hidden for everyone but the owner.
+async function bindAdminPanel() {
+  const wrapper = $("#settings-admin-wrapper");
+  if (!wrapper) return;
+  if (!isOwner()) {
+    wrapper.style.display = "none";
+    return;
+  }
+  wrapper.style.display = "";
+  await refreshAdminOverview();
+}
+
+function fmtUsd(n) {
+  const v = Number(n || 0);
+  return "$" + (v < 1 ? v.toFixed(4) : v.toFixed(2));
+}
+
+function fmtDateShort(iso) {
+  if (!iso) return tr("adm_never");
+  try {
+    return new Date(iso).toISOString().slice(0, 10);
+  } catch (_) {
+    return String(iso).slice(0, 10);
+  }
+}
+
+async function refreshAdminOverview() {
+  const list = $("#admin-tenants");
+  const summary = $("#admin-summary");
+  if (!list) return;
+  list.innerHTML = "<li class='cat-empty'>" + tr("u_loading") + "</li>";
+  if (summary) summary.innerHTML = "";
+  try {
+    const r = await api("/api-admin-overview", { method: "GET" });
+    if (!r.ok) {
+      list.innerHTML = "<li class='cat-empty'>" + tr("adm_load_err") + "</li>";
+      return;
+    }
+    const data = await r.json();
+    const tenants = (data && data.tenants) || [];
+    renderAdminSummary(summary, tenants);
+    renderAdminTenants(list, tenants);
+  } catch (e) {
+    if (!isSessionExpired(e)) {
+      list.innerHTML = "<li class='cat-empty'>" + tr("net_err") + "</li>";
+    }
+  }
+}
+
+function renderAdminSummary(summary, tenants) {
+  if (!summary) return;
+  const today = tenants.reduce((a, t) => a + Number(t.ai_cost_today || 0), 0);
+  const total = tenants.reduce((a, t) => a + Number(t.ai_cost_total || 0), 0);
+  const chip = (label, value) =>
+    `<div class="admin-chip"><label>${label}</label><strong>${value}</strong></div>`;
+  summary.innerHTML = chip(tr("adm_tenants"), String(tenants.length)) +
+    chip(tr("adm_ai_today"), fmtUsd(today)) +
+    chip(tr("adm_ai_total"), fmtUsd(total));
+}
+
+function renderAdminTenants(list, tenants) {
+  list.innerHTML = "";
+  if (!tenants.length) {
+    list.innerHTML = "<li class='cat-empty'>" + tr("adm_none") + "</li>";
+    return;
+  }
+  for (const t of tenants) {
+    list.appendChild(renderTenantRow(t));
+  }
+}
+
+function renderTenantRow(t) {
+  const li = document.createElement("li");
+  li.className = "admin-tenant";
+  const isFamily = t.mode === "family";
+  const suspended = t.status === "suspended";
+  const modeBadge = isFamily
+    ? `<span class="adm-badge adm-family">${tr("adm_family")}</span>`
+    : `<span class="adm-badge adm-saas">${tr("adm_saas")}</span>`;
+  const statusBadge = suspended
+    ? `<span class="adm-badge adm-suspended">${tr("adm_suspended")}</span>`
+    : `<span class="adm-badge adm-ok">${tr("adm_active")}</span>`;
+  const budget = t.budget_usd ? " / " + fmtUsd(t.budget_usd) : "";
+  li.innerHTML = `<div class="adm-head">
+      <span class="adm-name">${escapeHtml(t.name || "-")}</span>
+      <span class="adm-badges">${modeBadge}${statusBadge}</span>
+    </div>
+    <div class="adm-stats">
+      <span>${tr("adm_members")}: <b>${t.active_members}/${t.members}</b></span>
+      <span>${tr("adm_expenses")}: <b>${t.expenses}</b></span>
+      <span>${tr("adm_last_active")}: <b>${fmtDateShort(t.last_activity)}</b></span>
+      <span>${tr("adm_ai_today")}: <b>${fmtUsd(t.ai_cost_today)}${budget}</b></span>
+      <span>${tr("adm_ai_total")}: <b>${fmtUsd(t.ai_cost_total)}</b></span>
+    </div>`;
+  // SaaS tenants get a suspend/activate control; the family tenant can't be
+  // toggled (the backend RPC only acts on mode='saas').
+  if (!isFamily) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "adm-action" + (suspended ? "" : " danger");
+    btn.textContent = suspended ? tr("adm_activate") : tr("adm_suspend");
+    btn.addEventListener("click", () => toggleTenant(t.id, suspended ? "activate" : "suspend"));
+    li.appendChild(btn);
+  }
+  return li;
+}
+
+async function toggleTenant(tenantId, action) {
+  const verb = action === "suspend" ? tr("adm_suspend") : tr("adm_activate");
+  const ok = await TG.showConfirm(`${verb}?`);
+  if (!ok) return;
+  try {
+    const r = await api("/api-admin-overview", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tenant_id: tenantId, action }),
+    });
+    if (!r.ok) {
+      const err = await r.json().catch(() => ({}));
+      TG.showAlert(tr("err_prefix") + (err.error || r.status));
+      return;
+    }
+    await refreshAdminOverview();
+  } catch (e) {
+    if (!isSessionExpired(e)) TG.showAlert(tr("net_err"));
+  }
 }
 
 async function refreshUsersList() {

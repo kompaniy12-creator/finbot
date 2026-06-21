@@ -823,6 +823,114 @@ canvas {
   padding-bottom: 6px;
 }
 
+/* === Owner admin dashboard (Settings, owner only) ==================== */
+.admin-summary {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px;
+  margin: 8px 14px 4px;
+}
+.admin-chip {
+  background: var(--card-bg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 8px 10px;
+  text-align: center;
+}
+.admin-chip label {
+  display: block;
+  font-size: 11px;
+  color: var(--hint);
+  margin-bottom: 2px;
+}
+.admin-chip strong {
+  font-size: 15px;
+  font-weight: 700;
+}
+.admin-tenants {
+  list-style: none;
+  padding: 0;
+  margin: 8px 14px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.admin-tenant {
+  background: var(--card-bg);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+.adm-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.adm-name {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.adm-badges {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.adm-badge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 999px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+.adm-family {
+  background: color-mix(in srgb, var(--neon-cyan) 18%, transparent);
+  color: var(--neon-cyan);
+}
+.adm-saas {
+  background: color-mix(in srgb, var(--neon-green) 16%, transparent);
+  color: var(--neon-green);
+}
+.adm-ok {
+  background: color-mix(in srgb, var(--neon-green) 16%, transparent);
+  color: var(--neon-green);
+}
+.adm-suspended {
+  background: color-mix(in srgb, #ff5a5a 18%, transparent);
+  color: #ff6b6b;
+}
+.adm-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--hint);
+}
+.adm-stats b {
+  color: var(--text);
+  font-weight: 600;
+}
+.adm-action {
+  margin-top: 8px;
+  width: 100%;
+  padding: 7px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--secondary-bg);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.adm-action.danger {
+  color: #ff6b6b;
+  border-color: color-mix(in srgb, #ff5a5a 40%, var(--line));
+}
+
 .tx-pagination {
   text-align: center;
   margin-top: 12px;
