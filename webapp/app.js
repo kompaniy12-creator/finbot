@@ -10,7 +10,7 @@ const TX_PAGE = 50;
 // version.json on the server carries the latest published version; when it is
 // newer than what this loaded build reports, we hard-reload so every user picks
 // up changes automatically without reinstalling anything.
-const APP_VERSION = "1.20.0";
+const APP_VERSION = "1.21.0";
 
 // Poll the published version and reload once if the server moved ahead. Telegram
 // keeps the webview alive in the background and may serve a cached index.html, so
@@ -81,7 +81,7 @@ function renderDelta(el, { pct, abs, unit, higherIsWorse }) {
   const tone = rounded === 0
     ? "neutral"
     : (rounded > 0 ? (higherIsWorse ? "bad" : "good") : (higherIsWorse ? "good" : "bad"));
-  el.textContent = `${sign}${rounded.toFixed(1)}% vs прошлый период`;
+  el.textContent = tr("kpi_vs_prev", { val: `${sign}${rounded.toFixed(1)}` });
   el.className = `kpi-delta tone-${tone}`;
 }
 
@@ -274,7 +274,7 @@ async function bindSettings() {
   if (btn) {
     btn.addEventListener("click", () => {
       const status = $("#settings-web-logout-status");
-      status.textContent = "В Telegram: /web_logout";
+      status.textContent = tr("web_logout_hint");
       status.className = "settings-status tone-good";
     });
   }
@@ -344,12 +344,12 @@ function bindProfileEditor() {
     const newName = (input.value || "").trim();
     const status = $("#settings-name-status");
     if (!newName) {
-      status.textContent = "Имя не может быть пустым.";
+      status.textContent = tr("name_empty");
       status.className = "settings-status tone-bad";
       return;
     }
     if (newName === state.me?.name) {
-      status.textContent = "Без изменений.";
+      status.textContent = tr("no_changes");
       status.className = "settings-status";
       return;
     }
@@ -364,7 +364,7 @@ function bindProfileEditor() {
       });
       if (!r.ok) {
         const err = await r.json().catch(() => ({}));
-        status.textContent = "Ошибка: " + (err.error || r.status);
+        status.textContent = tr("err_prefix", { msg: err.error || r.status });
         status.className = "settings-status tone-bad";
         return;
       }
@@ -429,6 +429,16 @@ function bindLanguageSwitcher() {
           status.textContent = tr("lang_saved");
           status.className = "settings-status tone-good";
         }
+        // applyI18n re-localizes static labels instantly, but already-rendered
+        // dynamic lists/charts (debts, dashboard, etc.) hold strings baked at
+        // render time. The locale is now persisted server-side, so a soft reload
+        // brings every view up in the new language cleanly (same trick the
+        // version-updater uses). Brief delay lets the "✓" register first.
+        setTimeout(() => {
+          try {
+            location.reload();
+          } catch (_) { /* ignore */ }
+        }, 500);
       } catch (e) {
         if (!isSessionExpired(e) && status) {
           status.textContent = tr("net_err");
@@ -458,7 +468,7 @@ async function bindUsersPanel() {
 async function refreshUsersList() {
   const ul = $("#settings-users-list");
   if (!ul) return;
-  ul.innerHTML = "<li class='cat-empty'>загрузка...</li>";
+  ul.innerHTML = "<li class='cat-empty'>" + tr("u_loading") + "</li>";
   try {
     // api-family-mutate doesn't have a list endpoint; api-family does, and
     // it returns active members. We need inactive too for the admin UI,
@@ -468,7 +478,7 @@ async function refreshUsersList() {
     const r = await api("/api-family?all=1").then((r) => r.json());
     const items = Array.isArray(r.items) ? r.items : [];
     if (items.length === 0) {
-      ul.innerHTML = "<li class='cat-empty'>Никого нет.</li>";
+      ul.innerHTML = "<li class='cat-empty'>" + tr("u_none") + "</li>";
       return;
     }
     ul.innerHTML = "";
@@ -477,7 +487,7 @@ async function refreshUsersList() {
     }
   } catch (e) {
     if (!isSessionExpired(e)) {
-      ul.innerHTML = "<li class='cat-empty'>Ошибка загрузки.</li>";
+      ul.innerHTML = "<li class='cat-empty'>" + tr("u_load_err") + "</li>";
     }
   }
 }
@@ -487,11 +497,11 @@ function renderUserRow(u) {
   li.className = "user-row";
   const isSelf = state.me && u.id === state.me.id;
   const badge = !u.active
-    ? '<span class="role-badge role-inactive">отозван</span>'
+    ? '<span class="role-badge role-inactive">' + tr("u_role_revoked") + "</span>"
     : u.role === "admin"
-    ? '<span class="role-badge role-admin">админ</span>'
-    : '<span class="role-badge role-member">участник</span>';
-  const selfTag = isSelf ? ' <small style="color: var(--hint);">(ты)</small>' : "";
+    ? '<span class="role-badge role-admin">' + tr("u_role_admin") + "</span>"
+    : '<span class="role-badge role-member">' + tr("u_role_member") + "</span>";
+  const selfTag = isSelf ? ' <small style="color: var(--hint);">' + tr("u_self") + "</small>" : "";
   li.innerHTML = `<div class="user-head">
        <span class="user-name">${escapeHtml(u.name)} ${badge}${selfTag}</span>
        <span class="user-meta">tid: ${u.telegram_id}</span>
@@ -511,18 +521,18 @@ function renderUserRow(u) {
   if (u.active) {
     if (u.role === "member") {
       actions.appendChild(
-        mkBtn("Сделать админом", { disabled: isSelf }, () => patchUser(u.id, { role: "admin" })),
+        mkBtn(tr("u_make_admin"), { disabled: isSelf }, () => patchUser(u.id, { role: "admin" })),
       );
     } else {
       actions.appendChild(
-        mkBtn("Снять админа", { disabled: isSelf }, () => patchUser(u.id, { role: "member" })),
+        mkBtn(tr("u_demote"), { disabled: isSelf }, () => patchUser(u.id, { role: "member" })),
       );
     }
     actions.appendChild(
-      mkBtn("Отозвать", { danger: true, disabled: isSelf }, () => revokeUser(u.id, u.name)),
+      mkBtn(tr("u_revoke"), { danger: true, disabled: isSelf }, () => revokeUser(u.id, u.name)),
     );
   } else {
-    actions.appendChild(mkBtn("Восстановить", {}, () => patchUser(u.id, { active: true })));
+    actions.appendChild(mkBtn(tr("u_restore"), {}, () => patchUser(u.id, { active: true })));
   }
   return li;
 }
@@ -537,33 +547,33 @@ async function patchUser(id, patch) {
     if (!r.ok) {
       const err = await r.json().catch(() => ({}));
       const msgs = {
-        cannot_demote_self: "Нельзя снять с себя роль админа.",
-        cannot_revoke_self: "Нельзя отозвать доступ у самого себя.",
+        cannot_demote_self: tr("u_cannot_demote_self"),
+        cannot_revoke_self: tr("u_cannot_revoke_self"),
       };
-      TG.showAlert(msgs[err.error] || ("Ошибка: " + (err.error || r.status)));
+      TG.showAlert(msgs[err.error] || tr("err_prefix", { msg: err.error || r.status }));
       return;
     }
     await refreshUsersList();
     await loadCategoriesAndFamily();
   } catch (e) {
-    if (!isSessionExpired(e)) TG.showAlert("Ошибка сети");
+    if (!isSessionExpired(e)) TG.showAlert(tr("err_net"));
   }
 }
 
 async function revokeUser(id, name) {
-  const ok = await TG.showConfirm(`Отозвать доступ у "${name}"?`);
+  const ok = await TG.showConfirm(tr("u_revoke_confirm", { name }));
   if (!ok) return;
   try {
     const r = await api("/api-family-mutate?id=" + encodeURIComponent(id), { method: "DELETE" });
     if (!r.ok) {
       const err = await r.json().catch(() => ({}));
-      TG.showAlert("Ошибка: " + (err.error || r.status));
+      TG.showAlert(tr("err_prefix", { msg: err.error || r.status }));
       return;
     }
     await refreshUsersList();
     await loadCategoriesAndFamily();
   } catch (e) {
-    if (!isSessionExpired(e)) TG.showAlert("Ошибка сети");
+    if (!isSessionExpired(e)) TG.showAlert(tr("err_net"));
   }
 }
 
@@ -594,11 +604,11 @@ async function submitUserForm() {
   const name = ($("#user-form-name").value || "").trim();
   const role = $("#user-form-role").value;
   if (!tid || tid < 1000) {
-    TG.showAlert("Введи валидный Telegram ID (число от 1000).");
+    TG.showAlert(tr("u_bad_tid"));
     return;
   }
   if (!name) {
-    TG.showAlert("Имя обязательно.");
+    TG.showAlert(tr("u_name_required"));
     return;
   }
   const save = $("#user-form-save");
@@ -611,15 +621,15 @@ async function submitUserForm() {
     });
     if (!r.ok) {
       const err = await r.json().catch(() => ({}));
-      const msgs = { already_active: "Этот пользователь уже активен." };
-      TG.showAlert(msgs[err.error] || ("Ошибка: " + (err.error || r.status)));
+      const msgs = { already_active: tr("u_already_active") };
+      TG.showAlert(msgs[err.error] || tr("err_prefix", { msg: err.error || r.status }));
       return;
     }
     closeUserForm();
     await refreshUsersList();
     await loadCategoriesAndFamily();
   } catch (e) {
-    if (!isSessionExpired(e)) TG.showAlert("Ошибка сети");
+    if (!isSessionExpired(e)) TG.showAlert(tr("err_net"));
   } finally {
     save.disabled = false;
   }
@@ -697,21 +707,21 @@ function renderFinanceHealth({ income, prevIncome, net, prevNet, r }) {
   if (rate == null) {
     rateEl.textContent = "-";
     fhSetTone(rateEl, null);
-    hintEl.textContent = "нет дохода за период";
+    hintEl.textContent = tr("fh_no_income");
     deltaEl.textContent = "";
   } else {
     rateEl.textContent = Math.round(rate) + "%";
     fhSetTone(rateEl, rate >= 20 ? "good" : rate >= 5 ? "warn" : "bad");
     hintEl.textContent = rate >= 20
-      ? "отлично - ты приумножаешь"
+      ? tr("fh_rate_great")
       : rate >= 5
-      ? "неплохо, можно больше"
+      ? tr("fh_rate_ok")
       : rate >= 0
-      ? "на грани - почти всё уходит"
-      : "тратишь больше, чем зарабатываешь";
+      ? tr("fh_rate_edge")
+      : tr("fh_rate_bad");
     if (prevRate != null) {
       const dpp = Math.round(rate - prevRate);
-      deltaEl.textContent = (dpp >= 0 ? "▲ +" : "▼ ") + dpp + " пп к прошлому";
+      deltaEl.textContent = tr("fh_delta_prev", { dir: dpp >= 0 ? "▲ +" : "▼ ", val: dpp });
       fhSetTone(deltaEl, dpp >= 0 ? "good" : "bad");
     } else {
       deltaEl.textContent = "";
@@ -729,15 +739,15 @@ function renderFinanceHealth({ income, prevIncome, net, prevNet, r }) {
   if (debtMonthly <= 0) {
     debtEl.textContent = "0%";
     fhSetTone(debtEl, "good");
-    debtHint.textContent = "нет активных кредитов";
+    debtHint.textContent = tr("fh_no_credits");
   } else if (load == null) {
     debtEl.textContent = "-";
     fhSetTone(debtEl, null);
-    debtHint.textContent = debtMonthly.toFixed(0) + " EUR/мес - нет дохода для оценки";
+    debtHint.textContent = tr("fh_debt_no_income", { amount: debtMonthly.toFixed(0) });
   } else {
     debtEl.textContent = Math.round(load) + "%";
     fhSetTone(debtEl, load < 15 ? "good" : load <= 35 ? "warn" : "bad");
-    debtHint.textContent = debtMonthly.toFixed(0) + " EUR/мес по кредитам";
+    debtHint.textContent = tr("fh_debt_monthly", { amount: debtMonthly.toFixed(0) });
   }
 }
 
@@ -787,9 +797,10 @@ async function loadKpis() {
   const fcEl = $("#kpi-forecast");
   if (fcEl) {
     if (r.forecast_total_eur != null && r.forecast_days_remaining > 0) {
-      fcEl.textContent = `Прогноз на конец месяца: ~${
-        Number(r.forecast_total_eur).toFixed(0)
-      } EUR (осталось ${r.forecast_days_remaining} д.)`;
+      fcEl.textContent = tr("kpi_forecast", {
+        amount: Number(r.forecast_total_eur).toFixed(0),
+        days: r.forecast_days_remaining,
+      });
     } else {
       fcEl.textContent = "";
     }
@@ -832,13 +843,13 @@ function renderCategories() {
   ul.innerHTML = "";
   const rows = state.byCategory.filter((c) => Number(c.total_eur) > 0);
   if (rows.length === 0) {
-    ul.innerHTML = `<li class="cat-empty">За этот период расходов ещё не было.</li>`;
+    ul.innerHTML = `<li class="cat-empty">${tr("cat_empty_period")}</li>`;
     return;
   }
   for (const c of rows) {
     const li = document.createElement("li");
     li.className = "cat-row";
-    const meta = c.count > 0 ? `${c.count} ${c.count === 1 ? "запись" : "записей"}` : "пусто";
+    const meta = c.count > 0 ? `${c.count} ${trPlural("cat_records", c.count)}` : tr("cat_empty");
     li.innerHTML = `<div class="name">${escapeHtml(c.name)}<div class="meta">${meta}</div></div>` +
       `<div class="amt">${Number(c.total_eur).toFixed(2)} EUR</div>`;
     ul.appendChild(li);
@@ -863,7 +874,7 @@ function renderSettingsCategoryList(kind, ulSelector) {
       return (a.name || "").localeCompare(b.name || "", "ru");
     });
   if (all.length === 0) {
-    ul.innerHTML = `<li class="cat-empty">Категорий нет. Нажми «+ Категория».</li>`;
+    ul.innerHTML = `<li class="cat-empty">${tr("cat_none_hint")}</li>`;
     return;
   }
   for (const c of all) {
@@ -872,14 +883,18 @@ function renderSettingsCategoryList(kind, ulSelector) {
     const fallbackTag = c.is_fallback
       ? `<small style="color: var(--hint);"> (fallback)</small>`
       : "";
-    const meta = c.usage_count ? `использована ${c.usage_count} раз` : "ещё не использована";
+    const meta = c.usage_count ? tr("cat_used_times", { n: c.usage_count }) : tr("cat_not_used");
     const adminBtns = admin
-      ? `<button class="cat-edit" type="button" data-id="${c.id}" title="Изменить">✏️</button>` +
+      ? `<button class="cat-edit" type="button" data-id="${c.id}" title="${
+        tr("f_edit")
+      }">✏️</button>` +
         (c.is_fallback
-          ? `<button class="cat-del" type="button" disabled title="Fallback нельзя удалить">×</button>`
+          ? `<button class="cat-del" type="button" disabled title="${
+            tr("cat_fallback_no_del")
+          }">×</button>`
           : `<button class="cat-del" type="button" data-id="${c.id}" data-name="${
             escapeHtml(c.name)
-          }" data-count="${c.usage_count || 0}" title="Удалить">×</button>`)
+          }" data-count="${c.usage_count || 0}" title="${tr("cat_del_title")}">×</button>`)
       : "";
     li.innerHTML =
       `<div class="name">${escapeHtml(c.name)}${fallbackTag}<div class="meta">${meta}</div></div>` +
@@ -914,7 +929,7 @@ function renderHeatmap() {
   const endMs = new Date(end + "T00:00:00Z").getTime();
   const days = Math.round((endMs - startMs) / 86_400_000) + 1;
   if (days <= 0 || days > 366) {
-    el.innerHTML = `<div class="heatmap-empty">период не выбран</div>`;
+    el.innerHTML = `<div class="heatmap-empty">${tr("hm_no_period")}</div>`;
     return;
   }
   const max = Math.max(0, ...byDay.values());
@@ -939,7 +954,7 @@ function renderHeatmap() {
     const dayNum = Number(iso.slice(8, 10));
     cell.innerHTML = `<span class="hm-day">${dayNum}</span>` +
       (v > 0 ? `<span class="hm-amt">${Math.round(v)}€</span>` : "");
-    cell.title = v > 0 ? `${iso}: ${v.toFixed(2)} EUR` : `${iso}: без трат`;
+    cell.title = v > 0 ? `${iso}: ${v.toFixed(2)} EUR` : `${iso}: ${tr("hm_no_spend")}`;
     cell.dataset.date = iso;
     cell.addEventListener("click", () => {
       // Tap a day: jump period to that single day.
@@ -958,7 +973,7 @@ function renderHeatmap() {
 async function openReceiptPhoto(receiptId, title) {
   const m = $("#photo-modal");
   const img = $("#photo-modal-img");
-  $("#photo-modal-title").textContent = title || "Фото чека";
+  $("#photo-modal-title").textContent = title || tr("photo_title");
   img.removeAttribute("src");
   m.classList.remove("hidden");
   try {
@@ -966,22 +981,22 @@ async function openReceiptPhoto(receiptId, title) {
     if (!r.ok) {
       const err = await r.json().catch(() => ({}));
       const msg = {
-        no_photo: "У этого чека нет сохранённого фото.",
-        photo_purged: "Фото удалено (срок хранения истёк).",
-      }[err.error] || ("Не удалось загрузить фото: " + (err.error || r.status));
+        no_photo: tr("photo_no_photo"),
+        photo_purged: tr("photo_purged"),
+      }[err.error] || tr("photo_load_err", { msg: err.error || r.status });
       TG.showAlert(msg);
       m.classList.add("hidden");
       return;
     }
     const j = await r.json();
     if (!j.url) {
-      TG.showAlert("Пустой URL фото.");
+      TG.showAlert(tr("photo_empty_url"));
       m.classList.add("hidden");
       return;
     }
     img.src = j.url;
   } catch (e) {
-    if (!isSessionExpired(e)) TG.showAlert("Ошибка сети при загрузке фото.");
+    if (!isSessionExpired(e)) TG.showAlert(tr("photo_net_err"));
     m.classList.add("hidden");
   }
 }
@@ -1000,10 +1015,10 @@ function openCategoryForm(catId, kind) {
   const raw = catId ? state.categories.get(catId) : null;
   const resolvedKind = (raw && raw.kind) || kind || "expense";
   state.catFormKind = resolvedKind;
-  const kindLabel = resolvedKind === "income" ? "дохода" : "расхода";
+  const kindLabel = resolvedKind === "income" ? tr("cat_kind_income") : tr("cat_kind_expense");
   $("#cat-form-title").textContent = catId
-    ? `Изменить категорию ${kindLabel}`
-    : `Новая категория ${kindLabel}`;
+    ? tr("cat_form_edit_title", { kind: kindLabel })
+    : tr("cat_form_new_title", { kind: kindLabel });
   $("#cat-form-id").value = catId || "";
   $("#cat-form-name").value = (raw && raw.name) || (cat && cat.name) || "";
   $("#cat-form-desc").value = (raw && raw.description) || "";
@@ -1023,11 +1038,11 @@ async function submitCategoryForm() {
   const description = $("#cat-form-desc").value.trim();
   const isFallback = $("#cat-form-fallback").checked;
   if (!name) {
-    TG.showAlert("Имя категории обязательно.");
+    TG.showAlert(tr("cat_name_required"));
     return;
   }
   if (!description) {
-    TG.showAlert("Описание категории обязательно (используется для авто-классификации).");
+    TG.showAlert(tr("cat_desc_required"));
     return;
   }
   $("#cat-form-save").disabled = true;
@@ -1046,10 +1061,10 @@ async function submitCategoryForm() {
     if (!r.ok) {
       const err = await r.json().catch(() => ({}));
       const msg = {
-        name_taken: "Категория с таким именем уже есть.",
-        need_a_fallback: "Должна остаться хотя бы одна fallback-категория.",
-        forbidden: "Только админ может менять категории.",
-      }[err.error] || ("Ошибка: " + (err.error || r.status));
+        name_taken: tr("cat_name_taken"),
+        need_a_fallback: tr("cat_need_fallback"),
+        forbidden: tr("cat_forbidden_edit"),
+      }[err.error] || tr("err_prefix", { msg: err.error || r.status });
       TG.showAlert(msg);
       return;
     }
@@ -1057,7 +1072,7 @@ async function submitCategoryForm() {
     await loadCategoriesAndFamily();
     await refresh();
   } catch (e) {
-    if (!isSessionExpired(e)) TG.showAlert("Ошибка сети.");
+    if (!isSessionExpired(e)) TG.showAlert(tr("err_net") + ".");
   } finally {
     $("#cat-form-save").disabled = false;
   }
@@ -1065,10 +1080,8 @@ async function submitCategoryForm() {
 
 async function deleteCategory(id, name, count) {
   const note = count > 0
-    ? `В категории "${name}" уже ${count} ${
-      count === 1 ? "запись" : "записей"
-    }. Они будут перенесены в «Дополнительные расходы». Удалить?`
-    : `Удалить категорию "${name}"?`;
+    ? tr("cat_del_with_records", { name, count, word: trPlural("cat_records", count) })
+    : tr("cat_del_confirm", { name });
   const ok = await TG.showConfirm(note);
   if (!ok) return;
   try {
@@ -1078,16 +1091,16 @@ async function deleteCategory(id, name, count) {
     if (!r.ok) {
       const err = await r.json().catch(() => ({}));
       const msg = {
-        cannot_delete_fallback: "Fallback-категорию нельзя удалить.",
-        forbidden: "Только админ может удалять категории.",
-      }[err.error] || ("Ошибка: " + (err.error || r.status));
+        cannot_delete_fallback: tr("cat_cannot_del_fallback"),
+        forbidden: tr("cat_forbidden_del"),
+      }[err.error] || tr("err_prefix", { msg: err.error || r.status });
       TG.showAlert(msg);
       return;
     }
     await loadCategoriesAndFamily();
     await refresh();
   } catch (e) {
-    if (!isSessionExpired(e)) TG.showAlert("Ошибка сети.");
+    if (!isSessionExpired(e)) TG.showAlert(tr("err_net") + ".");
   }
 }
 
@@ -1139,12 +1152,14 @@ function renderTransactions() {
     // the row has been reconciled against a PDF bank statement.
     const pm = t.payment_method || "unknown";
     const pmIcon = pm === "card" ? "💳" : pm === "cash" ? "💵" : pm === "transfer" ? "🏦" : "";
-    const recIcon = t.reconciled ? " <span class='tx-rec' title='Сверено с банком'>✓</span>" : "";
+    const recIcon = t.reconciled
+      ? ` <span class='tx-rec' title='${tr("tx_reconciled_title")}'>✓</span>`
+      : "";
     // Human-readable reconciliation date for the meta line.
     const recDate = t.reconciled && t.reconciled_at
-      ? ` · сверено ${formatRecDate(t.reconciled_at)}`
+      ? ` · ${tr("tx_reconciled_at", { date: formatRecDate(t.reconciled_at) })}`
       : t.reconciled
-      ? " · сверено"
+      ? ` · ${tr("tx_reconciled_short")}`
       : "";
     li.className = "tx-row " + (t.kind === "receipt" ? "tx-receipt" : "tx-expense") +
       (isIncome ? " tx-income" : "") +
@@ -1153,7 +1168,7 @@ function renderTransactions() {
     if (t.kind === "receipt") {
       const expanded = state.expandedReceipts.has(t.id);
       const caret = expanded ? "▾" : "▸";
-      const meta = `${t.expense_date} | чек, ${t.item_count} поз.` +
+      const meta = `${t.expense_date} | ${tr("tx_receipt_meta", { n: t.item_count })}` +
         (fm ? ` | ${escapeHtml(fm.name)}` : "") + recDate;
       const sign = isIncome ? "+" : "";
       li.innerHTML =
@@ -1161,11 +1176,13 @@ function renderTransactions() {
           escapeHtml(t.title)
         } <button class="tx-photo" type="button" data-id="${t.id}" data-title="${
           escapeHtml(t.title)
-        }" title="Открыть фото чека">🖼</button><div class="meta">${meta}</div></div>` +
+        }" title="${tr("tx_open_photo")}">🖼</button><div class="meta">${meta}</div></div>` +
         `<div class="amt">${pmIcon ? pmIcon + " " : ""}${sign}${
           Number(t.amount).toFixed(2)
         } ${t.currency}${recIcon}</div>` +
-        `<button class="tx-del" type="button" title="Удалить" aria-label="Удалить">×</button>`;
+        `<button class="tx-del" type="button" title="${tr("tx_del_title")}" aria-label="${
+          tr("tx_del_title")
+        }">×</button>`;
       li.style.cursor = "pointer";
       li.addEventListener("click", (ev) => {
         const cl = ev.target && ev.target.classList;
@@ -1183,7 +1200,7 @@ function renderTransactions() {
       const delBtn = li.querySelector(".tx-del");
       delBtn.addEventListener("click", (ev) => {
         ev.stopPropagation();
-        deleteItem("receipt", t.id, `чек "${t.title}"`);
+        deleteItem("receipt", t.id, tr("tx_del_receipt", { title: t.title }));
       });
       ul.appendChild(li);
       if (expanded) {
@@ -1192,9 +1209,9 @@ function renderTransactions() {
         if (warn) {
           const wli = document.createElement("li");
           wli.className = "tx-sub tx-warn";
-          wli.innerHTML =
-            `<div class="name">⚠ Сохранено ${warn.saved} из ${warn.ocr} распознанных позиций. ` +
-            `Удали чек и пришли фото заново, либо проверь руками.</div>`;
+          wli.innerHTML = `<div class="name">⚠ ${
+            tr("tx_receipt_warn", { saved: warn.saved, ocr: warn.ocr })
+          }</div>`;
           ul.appendChild(wli);
         }
         for (const ln of items) {
@@ -1203,12 +1220,14 @@ function renderTransactions() {
           sub.innerHTML =
             `<div class="name">${escapeHtml(ln.name)}<div class="meta">${
               categoryMetaHtml(ln.category_id)
-            }${ln.needs_review ? " · нужна проверка" : ""}</div></div>` +
+            }${ln.needs_review ? ` · ${tr("tx_needs_review")}` : ""}</div></div>` +
             `<div class="amt">${Number(ln.amount).toFixed(2)} ${ln.currency}</div>` +
-            `<button class="tx-del" type="button" title="Удалить" aria-label="Удалить">×</button>`;
+            `<button class="tx-del" type="button" title="${tr("tx_del_title")}" aria-label="${
+              tr("tx_del_title")
+            }">×</button>`;
           sub.querySelector(".tx-del").addEventListener("click", (ev) => {
             ev.stopPropagation();
-            deleteItem("expense", ln.id, `позицию "${ln.name}"`, t.id);
+            deleteItem("expense", ln.id, tr("tx_del_line", { name: ln.name }), t.id);
           });
           const link = sub.querySelector(".cat-link");
           if (link) {
@@ -1232,10 +1251,12 @@ function renderTransactions() {
         `<div class="amt">${pmIcon ? pmIcon + " " : ""}${sign}${
           Number(t.amount).toFixed(2)
         } ${t.currency}${recIcon}</div>` +
-        `<button class="tx-del" type="button" title="Удалить" aria-label="Удалить">×</button>`;
+        `<button class="tx-del" type="button" title="${tr("tx_del_title")}" aria-label="${
+          tr("tx_del_title")
+        }">×</button>`;
       li.querySelector(".tx-del").addEventListener("click", (ev) => {
         ev.stopPropagation();
-        deleteItem("expense", t.id, `запись "${t.title}"`);
+        deleteItem("expense", t.id, tr("tx_del_record", { title: t.title }));
       });
       const link = li.querySelector(".cat-link");
       if (link) {
@@ -1264,10 +1285,11 @@ function openCategoryPicker(expense, receiptId) {
     rowKind = (cur && cur.kind) || "expense";
   }
   if (!rowKind) rowKind = "expense";
-  const kindLabel = rowKind === "income" ? "дохода" : "расхода";
-  $("#cat-modal-title").textContent = `Категория ${kindLabel} для: ${
-    expense.name || expense.title || "запись"
-  }`;
+  const kindLabel = rowKind === "income" ? tr("cat_kind_income") : tr("cat_kind_expense");
+  $("#cat-modal-title").textContent = tr("tx_cat_for", {
+    kind: kindLabel,
+    name: expense.name || expense.title || tr("tx_del_fallback"),
+  });
   list.innerHTML = "";
   const sorted = [...state.categories.values()]
     .filter((c) => (c.kind || "expense") === rowKind)
@@ -1302,7 +1324,7 @@ async function recategorize(expense, category, receiptId) {
     });
     if (!r.ok) {
       const err = await r.json().catch(() => ({}));
-      TG.showAlert("Не удалось изменить категорию: " + (err.error || r.status));
+      TG.showAlert(tr("tx_recat_err", { msg: err.error || r.status }));
       return;
     }
     expense.category_id = category.id;
@@ -1322,12 +1344,12 @@ async function recategorize(expense, category, receiptId) {
     loadKpis().catch(() => {});
     loadCharts();
   } catch (e) {
-    if (!isSessionExpired(e)) TG.showAlert("Ошибка сети при смене категории.");
+    if (!isSessionExpired(e)) TG.showAlert(tr("tx_recat_net_err"));
   }
 }
 
 async function deleteItem(kind, id, label, receiptId) {
-  const ok = await TG.showConfirm(`Удалить ${label}?`);
+  const ok = await TG.showConfirm(tr("tx_del_confirm", { label }));
   if (!ok) return;
   try {
     const r = await api("/api-delete-item", {
@@ -1337,7 +1359,7 @@ async function deleteItem(kind, id, label, receiptId) {
     });
     if (!r.ok) {
       const err = await r.json().catch(() => ({}));
-      TG.showAlert("Не удалось удалить: " + (err.error || r.status));
+      TG.showAlert(tr("tx_del_err", { msg: err.error || r.status }));
       return;
     }
     if (kind === "receipt") {
@@ -1356,7 +1378,7 @@ async function deleteItem(kind, id, label, receiptId) {
     loadCharts();
   } catch (e) {
     if (isSessionExpired(e)) return; // alert already shown by api()
-    TG.showAlert("Ошибка сети при удалении.");
+    TG.showAlert(tr("tx_del_net_err"));
   }
 }
 
@@ -1378,7 +1400,7 @@ async function toggleReceipt(id) {
     }
     renderTransactions();
   } catch (e) {
-    if (!isSessionExpired(e)) TG.showAlert("Не удалось загрузить позиции чека.");
+    if (!isSessionExpired(e)) TG.showAlert(tr("tx_receipt_lines_err"));
   }
 }
 
@@ -1424,7 +1446,7 @@ const emptyChartPlugin = {
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     ctx.fillText(
-      "Пока нет данных",
+      tr("chart_no_data"),
       (chartArea.left + chartArea.right) / 2,
       (chartArea.top + chartArea.bottom) / 2,
     );
@@ -1441,7 +1463,7 @@ const doughnutCenterPlugin = {
     if (!arc) return;
     const { ctx } = chart;
     const total = options.total || 0;
-    const label = options.label || "всего";
+    const label = options.label || tr("chart_total");
     ctx.save();
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
@@ -1553,7 +1575,7 @@ function drawDonut(entries) {
   state.charts.donut = new Chart(document.getElementById("donut"), {
     type: "doughnut",
     data: {
-      labels: empty ? ["Нет данных"] : data.map((e) => e[0]),
+      labels: empty ? [tr("chart_no_data_short")] : data.map((e) => e[0]),
       datasets: [{
         data: empty ? [1] : data.map((e) => Number(e[1].toFixed(2))),
         backgroundColor: empty
@@ -1571,7 +1593,7 @@ function drawDonut(entries) {
       cutout: "68%",
       plugins: {
         ...commonChartOptions(empty).plugins,
-        doughnutCenter: { enabled: !empty, total, label: "по всем категориям" },
+        doughnutCenter: { enabled: !empty, total, label: tr("chart_all_cats") },
         legend: {
           position: "bottom",
           labels: {
@@ -1587,7 +1609,7 @@ function drawDonut(entries) {
           ...commonChartOptions(empty).plugins.tooltip,
           callbacks: {
             label(ctx) {
-              if (empty) return "Нет расходов";
+              if (empty) return tr("chart_no_expenses");
               const value = Number(ctx.parsed || 0);
               const pct = total > 0 ? Math.round((value / total) * 100) : 0;
               return `${ctx.label}: ${money(value)} (${pct}%)`;
@@ -1606,9 +1628,9 @@ function drawBarTop5(entries) {
   state.charts.bar = new Chart(document.getElementById("bar"), {
     type: "bar",
     data: {
-      labels: empty ? ["Нет данных"] : top5.map((e) => e[0]),
+      labels: empty ? [tr("chart_no_data_short")] : top5.map((e) => e[0]),
       datasets: [{
-        label: "Расходы",
+        label: tr("chart_expenses"),
         data: empty ? [0] : top5.map((e) => Number(e[1].toFixed(2))),
         backgroundColor(ctx) {
           return CHART_PALETTE[ctx.dataIndex % CHART_PALETTE.length];
@@ -1642,7 +1664,7 @@ function drawBarTop5(entries) {
           // edge cases in Chart.js.
           callbacks: {
             label(ctx) {
-              if (empty) return "Нет расходов";
+              if (empty) return tr("chart_no_expenses");
               const value = Number(ctx.parsed?.x ?? 0);
               return `${ctx.dataset.label}: ${money(value)}`;
             },
@@ -1663,7 +1685,7 @@ function drawLineByDay() {
     data: {
       labels: empty ? [""] : days.map((d) => d.slice(5)),
       datasets: [{
-        label: "Расходы",
+        label: tr("chart_expenses"),
         data: empty ? [0] : values,
         fill: true,
         backgroundColor: lineGradient,
@@ -1760,33 +1782,34 @@ function formatPlanDate(d) {
   if (!d) return "";
   const [y, m, day] = d.split("-").map(Number);
   const months = [
-    "янв",
-    "фев",
-    "мар",
-    "апр",
-    "май",
-    "июн",
-    "июл",
-    "авг",
-    "сен",
-    "окт",
-    "ноя",
-    "дек",
+    tr("month_jan_s"),
+    tr("month_feb_s"),
+    tr("month_mar_s"),
+    tr("month_apr_s"),
+    tr("month_may_s"),
+    tr("month_jun_s"),
+    tr("month_jul_s"),
+    tr("month_aug_s"),
+    tr("month_sep_s"),
+    tr("month_oct_s"),
+    tr("month_nov_s"),
+    tr("month_dec_s"),
   ];
   return `${day} ${months[m - 1]} ${y}`;
 }
 
 function frequencyLabel(f) {
   return {
-    once: "Единовременный",
-    weekly: "Еженедельно",
-    monthly: "Ежемесячно",
-    yearly: "Ежегодно",
+    once: tr("freq_once"),
+    weekly: tr("freq_weekly"),
+    monthly: tr("freq_monthly"),
+    yearly: tr("freq_yearly"),
   }[f] || f;
 }
 
 function methodLabel(m) {
-  return { cash: "Наличные", card: "Карта", transfer: "Перевод" }[m] || m;
+  return { cash: tr("method_cash"), card: tr("method_card"), transfer: tr("method_transfer") }[m] ||
+    m;
 }
 
 async function loadPlannedPayments() {
@@ -1813,7 +1836,7 @@ function renderPlannedPayments() {
   if (filtered.length === 0) {
     const li = document.createElement("li");
     li.className = "plan-empty";
-    li.textContent = "Запланированных платежей пока нет.";
+    li.textContent = tr("plan_empty");
     list.appendChild(li);
     return;
   }
@@ -1824,7 +1847,9 @@ function renderPlannedPayments() {
     li.dataset.id = it.id;
 
     const cat = state.categories.get(it.category_id);
-    const catName = cat ? cat.name : (it.kind === "income" ? "Доход" : "Расход");
+    const catName = cat
+      ? cat.name
+      : (it.kind === "income" ? tr("plan_kind_income") : tr("plan_kind_expense"));
 
     const left = document.createElement("div");
     left.className = "plan-row-left";
@@ -1852,7 +1877,7 @@ function renderPlannedPayments() {
     if (it.auto_confirm) {
       const badge = document.createElement("div");
       badge.className = "plan-row-badge";
-      badge.textContent = "авто";
+      badge.textContent = tr("plan_auto");
       right.appendChild(badge);
     }
 
@@ -1897,7 +1922,7 @@ function openPlanForm(item) {
   const modal = $("#plan-form-modal");
   if (!modal) return;
   planning.editingId = item ? item.id : null;
-  $("#plan-form-title").textContent = item ? "Редактировать платёж" : "Новый платёж";
+  $("#plan-form-title").textContent = item ? tr("plan_form_edit") : tr("plan_form_new");
 
   setPlanFormKind(item ? item.kind : "expense");
 
@@ -1928,7 +1953,7 @@ async function savePlanForm() {
   const amount = parseFloat($("#plan-form-amount").value);
   const name = $("#plan-form-name").value.trim();
   if (!name || !(amount > 0)) {
-    alert("Укажи название и сумму > 0.");
+    alert(tr("plan_validation"));
     return;
   }
   const payload = {
@@ -1962,32 +1987,32 @@ async function savePlanForm() {
     }
     const data = await resp.json();
     if (!resp.ok || data.error) {
-      alert("Ошибка: " + (data.error || resp.status));
+      alert(tr("err_prefix", { msg: data.error || resp.status }));
       return;
     }
     closePlanForm();
     await loadPlannedPayments();
   } catch (e) {
-    if (!isSessionExpired(e)) alert("Сеть недоступна.");
+    if (!isSessionExpired(e)) alert(tr("net_unavailable"));
   }
 }
 
 async function deletePlanForm() {
   if (!planning.editingId) return;
-  if (!confirm("Удалить этот платёж?")) return;
+  if (!confirm(tr("plan_del_confirm"))) return;
   try {
     const resp = await api("/api-planned-payments?id=" + planning.editingId, {
       method: "DELETE",
     });
     const data = await resp.json();
     if (!resp.ok || data.error) {
-      alert("Ошибка: " + (data.error || resp.status));
+      alert(tr("err_prefix", { msg: data.error || resp.status }));
       return;
     }
     closePlanForm();
     await loadPlannedPayments();
   } catch (e) {
-    if (!isSessionExpired(e)) alert("Сеть недоступна.");
+    if (!isSessionExpired(e)) alert(tr("net_unavailable"));
   }
 }
 
@@ -2069,7 +2094,11 @@ async function loadBudgets() {
 }
 
 function periodShortLabel(p) {
-  return { weekly: "ЕЖЕНЕДЕЛЬНО", monthly: "ЕЖЕМЕСЯЧНО", yearly: "ЕЖЕГОДНО" }[p] || p;
+  return {
+    weekly: tr("bud_period_weekly"),
+    monthly: tr("bud_period_monthly"),
+    yearly: tr("bud_period_yearly"),
+  }[p] || p;
 }
 
 function renderBudgets() {
@@ -2079,7 +2108,7 @@ function renderBudgets() {
   if (budgetsState.items.length === 0) {
     const li = document.createElement("li");
     li.className = "budgets-empty";
-    li.textContent = "Бюджетов пока нет.";
+    li.textContent = tr("bud_empty");
     list.appendChild(li);
     return;
   }
@@ -2179,7 +2208,7 @@ function openBudgetForm(item) {
   budgetsState.editingId = item ? item.id : null;
   budgetsState.selectedCats = new Set(item?.category_ids || []);
 
-  $("#budget-form-title").textContent = item ? "Редактировать бюджет" : "Добавить бюджет";
+  $("#budget-form-title").textContent = item ? tr("bud_form_edit") : tr("budget_form_new");
   $("#budget-form-amount").value = item ? item.amount : "";
   $("#budget-form-currency").value = item ? item.currency : "EUR";
   $("#budget-form-name").value = item ? item.name : "";
@@ -2205,11 +2234,11 @@ async function saveBudgetForm() {
   const amount = parseFloat($("#budget-form-amount").value);
   const name = $("#budget-form-name").value.trim();
   if (!name || !(amount > 0)) {
-    alert("Укажи название и сумму > 0.");
+    alert(tr("bud_validation"));
     return;
   }
   if (budgetsState.selectedCats.size === 0) {
-    alert("Выбери хотя бы одну категорию.");
+    alert(tr("bud_need_category"));
     return;
   }
   const payload = {
@@ -2238,32 +2267,32 @@ async function saveBudgetForm() {
     }
     const data = await resp.json();
     if (!resp.ok || data.error) {
-      alert("Ошибка: " + (data.error || resp.status));
+      alert(tr("err_prefix", { msg: data.error || resp.status }));
       return;
     }
     closeBudgetForm();
     await loadBudgets();
   } catch (e) {
-    if (!isSessionExpired(e)) alert("Сеть недоступна.");
+    if (!isSessionExpired(e)) alert(tr("net_unavailable"));
   }
 }
 
 async function deleteBudgetForm() {
   if (!budgetsState.editingId) return;
-  if (!confirm("Удалить этот бюджет?")) return;
+  if (!confirm(tr("bud_del_confirm"))) return;
   try {
     const resp = await api("/api-budgets?id=" + budgetsState.editingId, {
       method: "DELETE",
     });
     const data = await resp.json();
     if (!resp.ok || data.error) {
-      alert("Ошибка: " + (data.error || resp.status));
+      alert(tr("err_prefix", { msg: data.error || resp.status }));
       return;
     }
     closeBudgetForm();
     await loadBudgets();
   } catch (e) {
-    if (!isSessionExpired(e)) alert("Сеть недоступна.");
+    if (!isSessionExpired(e)) alert(tr("net_unavailable"));
   }
 }
 
@@ -2287,18 +2316,18 @@ function isoDate(d) {
 function monthLabel(iso) {
   const [y, m] = iso.split("-").map(Number);
   const months = [
-    "Январь",
-    "Февраль",
-    "Март",
-    "Апрель",
-    "Май",
-    "Июнь",
-    "Июль",
-    "Август",
-    "Сентябрь",
-    "Октябрь",
-    "Ноябрь",
-    "Декабрь",
+    tr("month_jan"),
+    tr("month_feb"),
+    tr("month_mar"),
+    tr("month_apr"),
+    tr("month_may"),
+    tr("month_jun"),
+    tr("month_jul"),
+    tr("month_aug"),
+    tr("month_sep"),
+    tr("month_oct"),
+    tr("month_nov"),
+    tr("month_dec"),
   ];
   return `${months[m - 1]} ${y}`;
 }
@@ -2424,7 +2453,7 @@ function renderCalendarDayList() {
   list.innerHTML = "";
   const sel = paymentCalendar.selectedDate;
   if (!sel) {
-    title.textContent = "Выберите день";
+    title.textContent = tr("cal_pick_day");
     return;
   }
   title.textContent = formatPlanDate(sel);
@@ -2432,7 +2461,7 @@ function renderCalendarDayList() {
   if (events.length === 0) {
     const li = document.createElement("li");
     li.className = "cal-day-empty";
-    li.textContent = "В этот день платежей нет.";
+    li.textContent = tr("cal_no_payments");
     list.appendChild(li);
     return;
   }
@@ -2446,11 +2475,13 @@ function renderCalendarDayList() {
     const meta = document.createElement("div");
     meta.className = "ev-meta";
     const bits = [];
-    if (ev.source === "credit") bits.push("кредит");
-    if (ev.source === "debt") bits.push("долг");
-    if (ev.source === "planned") bits.push(ev.kind === "income" ? "доход (план)" : "расход (план)");
+    if (ev.source === "credit") bits.push(tr("cal_credit"));
+    if (ev.source === "debt") bits.push(tr("cal_debt"));
+    if (ev.source === "planned") {
+      bits.push(ev.kind === "income" ? tr("cal_income_plan") : tr("cal_expense_plan"));
+    }
     if (ev.category_name) bits.push(ev.category_name);
-    if (ev.meta === "авто") bits.push("авто");
+    if (ev.meta === "авто") bits.push(tr("cal_auto"));
     meta.textContent = bits.join(" · ");
     left.appendChild(name);
     left.appendChild(meta);
@@ -2487,16 +2518,18 @@ function bindPaymentCalendar() {
 // Real CRUD against api-credits + a "Зафиксировать платёж" flow that
 // creates the matching expense row and decrements the credit balance.
 
-const CREDIT_TYPES = {
-  cash_loan: "Денежный кредит",
-  installment: "Рассрочка",
-  credit_card: "Кредитка",
-  mortgage: "Ипотека",
-  auto_loan: "Автокредит",
-  pos_credit: "POS-кредит",
-  microloan: "Микрозайм",
-  overdraft: "Овердрафт",
-  other: "Прочее",
+// Maps a credit type code to its i18n key; resolved via tr() at render time so
+// the label follows the active locale.
+const CREDIT_TYPE_KEYS = {
+  cash_loan: "cr_type_cash_loan",
+  installment: "cr_type_installment",
+  credit_card: "cr_type_credit_card",
+  mortgage: "cr_type_mortgage",
+  auto_loan: "cr_type_auto_loan",
+  pos_credit: "cr_type_pos_credit",
+  microloan: "cr_type_microloan",
+  overdraft: "cr_type_overdraft",
+  other: "cr_type_other",
 };
 
 const credits = {
@@ -2573,7 +2606,7 @@ function renderCreditsStats() {
 
     const head = document.createElement("div");
     head.className = "cs-group-head";
-    head.textContent = isMine ? "💼 Мои кредиты" : `🤝 Для: ${key}`;
+    head.textContent = isMine ? tr("cr_mine") : tr("cr_for", { name: key });
     section.appendChild(head);
 
     // Per-currency aggregation within this group.
@@ -2601,26 +2634,29 @@ function renderCreditsStats() {
       const top = document.createElement("div");
       top.className = "cs-top";
       const left = document.createElement("div");
-      left.innerHTML = `<span class="cs-num">${s.count}</span> активных в ${ccy}`;
+      left.innerHTML = tr("cr_active_in", { n: s.count, ccy });
       const right = document.createElement("div");
       right.className = "cs-monthly";
       // monthly_payment may be null (variable-amount credits like
       // overdraft interest) - show '~' marker instead of '0/мес'.
       right.textContent = s.monthly > 0
-        ? `${formatNumber(s.monthly)} ${ccy}/мес`
-        : "переменная сумма";
+        ? tr("cr_monthly", { amount: formatNumber(s.monthly), ccy })
+        : tr("cr_variable");
       top.appendChild(left);
       top.appendChild(right);
 
       const remain = document.createElement("div");
       remain.className = "cs-remain";
-      remain.innerHTML = `Остаток: <strong>${formatNumber(s.remaining)} ${ccy}</strong>`;
+      remain.innerHTML = tr("cr_remaining", { amount: formatNumber(s.remaining), ccy });
 
       const paidEl = document.createElement("div");
       paidEl.className = "cs-paid";
-      paidEl.textContent = `Выплачено ${formatNumber(paid)} из ${
-        formatNumber(s.principal)
-      } ${ccy} (${pct}%)`;
+      paidEl.textContent = tr("cr_paid_of", {
+        paid: formatNumber(paid),
+        total: formatNumber(s.principal),
+        ccy,
+        pct,
+      });
 
       const bar = document.createElement("div");
       bar.className = "cs-bar";
@@ -2654,10 +2690,12 @@ function renderCreditsStats() {
       row.className = "cs-next";
       const amountTxt = next.amount != null
         ? `${formatNumber(next.amount)} ${next.currency}`
-        : "переменная сумма";
-      row.innerHTML = `Ближайший платёж: <strong>${
-        formatPlanDate(next.date)
-      }</strong> · ${amountTxt} (${next.name})`;
+        : tr("cr_variable");
+      row.innerHTML = tr("cr_next_payment", {
+        date: formatPlanDate(next.date),
+        amount: amountTxt,
+        name: next.name,
+      });
       section.appendChild(row);
     }
 
@@ -2673,7 +2711,7 @@ function renderCredits() {
   if (credits.items.length === 0) {
     const li = document.createElement("li");
     li.className = "credits-empty";
-    li.textContent = "Кредитов пока нет.";
+    li.textContent = tr("cr_empty");
     list.appendChild(li);
     return;
   }
@@ -2689,7 +2727,7 @@ function renderCredits() {
     name.textContent = c.name;
     const type = document.createElement("div");
     type.className = "credit-row-type";
-    type.textContent = CREDIT_TYPES[c.type] || c.type;
+    type.textContent = CREDIT_TYPE_KEYS[c.type] ? tr(CREDIT_TYPE_KEYS[c.type]) : c.type;
     head.appendChild(name);
     head.appendChild(type);
 
@@ -2706,7 +2744,7 @@ function renderCredits() {
     } ${c.currency}`;
     const pct = document.createElement("div");
     pct.className = "credit-pct";
-    pct.textContent = `${c.paid_pct}% выплачено`;
+    pct.textContent = tr("cr_pct_paid", { pct: c.paid_pct });
     money.appendChild(amt);
     money.appendChild(pct);
 
@@ -2721,12 +2759,14 @@ function renderCredits() {
     meta.className = "credit-row-meta";
     const bits = [];
     if (c.monthly_payment) {
-      bits.push(`платёж ${formatNumber(c.monthly_payment)} ${c.currency}/мес`);
+      bits.push(
+        tr("cr_meta_monthly", { amount: formatNumber(c.monthly_payment), ccy: c.currency }),
+      );
     }
     if (c.interest_rate && Number(c.interest_rate) > 0) {
-      bits.push(`${c.interest_rate}% годовых`);
+      bits.push(tr("cr_meta_rate", { rate: c.interest_rate }));
     }
-    if (c.next_payment_date) bits.push(`след. ${c.next_payment_date}`);
+    if (c.next_payment_date) bits.push(tr("cr_meta_next", { date: c.next_payment_date }));
     meta.textContent = bits.join(" · ");
 
     li.appendChild(head);
@@ -2744,7 +2784,7 @@ function openCreditForm(item) {
   const modal = $("#credit-form-modal");
   if (!modal) return;
   credits.editingId = item ? item.id : null;
-  $("#credit-form-title").textContent = item ? "Редактировать кредит" : "Новый кредит";
+  $("#credit-form-title").textContent = item ? tr("cr_form_edit") : tr("credit_form_new");
   $("#credit-form-type").value = item ? item.type : "cash_loan";
   $("#credit-form-name").value = item ? item.name : "";
   $("#credit-form-lender").value = item ? (item.lender || "") : "";
@@ -2801,7 +2841,7 @@ async function saveCreditForm() {
   const name = $("#credit-form-name").value.trim();
   const principal = parseFloat($("#credit-form-principal").value);
   if (!name || !(principal > 0)) {
-    alert("Укажи название и сумму займа > 0.");
+    alert(tr("cr_validation"));
     return;
   }
   const term = parseInt($("#credit-form-term").value, 10);
@@ -2842,30 +2882,30 @@ async function saveCreditForm() {
     }
     const data = await resp.json();
     if (!resp.ok || data.error) {
-      alert("Ошибка: " + (data.error || resp.status));
+      alert(tr("err_prefix", { msg: data.error || resp.status }));
       return;
     }
     closeCreditForm();
     await loadCredits();
   } catch (e) {
-    if (!isSessionExpired(e)) alert("Сеть недоступна.");
+    if (!isSessionExpired(e)) alert(tr("net_unavailable"));
   }
 }
 
 async function deleteCreditForm() {
   if (!credits.editingId) return;
-  if (!confirm("Удалить этот кредит и его историю платежей?")) return;
+  if (!confirm(tr("cr_del_confirm"))) return;
   try {
     const resp = await api("/api-credits?id=" + credits.editingId, { method: "DELETE" });
     const data = await resp.json();
     if (!resp.ok || data.error) {
-      alert("Ошибка: " + (data.error || resp.status));
+      alert(tr("err_prefix", { msg: data.error || resp.status }));
       return;
     }
     closeCreditForm();
     await loadCredits();
   } catch (e) {
-    if (!isSessionExpired(e)) alert("Сеть недоступна.");
+    if (!isSessionExpired(e)) alert(tr("net_unavailable"));
   }
 }
 
@@ -2887,7 +2927,7 @@ async function saveCreditPay() {
   if (!credits.payTarget) return;
   const amount = parseFloat($("#credit-pay-amount").value);
   if (!(amount > 0)) {
-    alert("Сумма должна быть > 0.");
+    alert(tr("cr_amount_positive"));
     return;
   }
   const payload = {
@@ -2911,9 +2951,9 @@ async function saveCreditPay() {
         closeCreditPay();
         closeCreditForm();
         await loadCredits();
-        alert("Кредит уже закрыт или изменён - обновил список.");
+        alert(tr("cr_closed_refresh"));
       } else {
-        alert("Ошибка: " + (data.error || resp.status));
+        alert(tr("err_prefix", { msg: data.error || resp.status }));
       }
       return;
     }
@@ -2923,17 +2963,13 @@ async function saveCreditPay() {
     // Refresh transactions / KPIs since a new expense was just created.
     if (typeof refresh === "function") await refresh();
   } catch (e) {
-    if (!isSessionExpired(e)) alert("Сеть недоступна.");
+    if (!isSessionExpired(e)) alert(tr("net_unavailable"));
   }
 }
 
 async function linkCreditPastPayments() {
   if (!credits.editingId) return;
-  if (
-    !confirm(
-      "Найти прошлые платежи по этому кредиту (за 6 месяцев) и создать долги? Дубликаты не создаются.",
-    )
-  ) return;
+  if (!confirm(tr("cr_link_past_confirm"))) return;
   try {
     const resp = await api(
       "/api-credits?id=" + credits.editingId + "&action=link_past_payments",
@@ -2941,16 +2977,14 @@ async function linkCreditPastPayments() {
     );
     const data = await resp.json();
     if (!resp.ok || data.error) {
-      alert("Ошибка: " + (data.error || resp.status));
+      alert(tr("err_prefix", { msg: data.error || resp.status }));
       return;
     }
-    alert(
-      `Найдено платежей: ${data.scanned}. Создано долгов: ${data.created}.`,
-    );
+    alert(tr("cr_link_past_result", { scanned: data.scanned, created: data.created }));
     closeCreditForm();
     await loadCredits();
   } catch (e) {
-    if (!isSessionExpired(e)) alert("Сеть недоступна.");
+    if (!isSessionExpired(e)) alert(tr("net_unavailable"));
   }
 }
 
@@ -3032,7 +3066,7 @@ function renderDebts() {
   if (debts.items.length === 0) {
     const li = document.createElement("li");
     li.className = "credits-empty";
-    li.textContent = "Долгов пока нет.";
+    li.textContent = tr("debt_empty");
     list.appendChild(li);
     return;
   }
@@ -3047,10 +3081,10 @@ function renderDebts() {
     head.className = "credit-row-head";
     const name = document.createElement("div");
     name.className = "credit-row-name";
-    name.textContent = (d.direction === "i_owe" ? "Кому: " : "От кого: ") + d.counterparty;
+    name.textContent = (d.direction === "i_owe" ? tr("debt_to") : tr("debt_from")) + d.counterparty;
     const tag = document.createElement("div");
     tag.className = "credit-row-type";
-    tag.textContent = d.direction === "i_owe" ? "ДОЛЖЕН Я" : "ДОЛЖНЫ МНЕ";
+    tag.textContent = d.direction === "i_owe" ? tr("debt_i_owe_tag") : tr("debt_owed_tag");
     head.appendChild(name);
     head.appendChild(tag);
 
@@ -3063,7 +3097,9 @@ function renderDebts() {
     } ${d.currency}`;
     const pct = document.createElement("div");
     pct.className = "credit-pct";
-    pct.textContent = d.status === "closed" ? "погашено" : `${d.paid_pct}% возвращено`;
+    pct.textContent = d.status === "closed"
+      ? tr("debt_repaid")
+      : tr("debt_returned_pct", { pct: d.paid_pct });
     money.appendChild(amt);
     money.appendChild(pct);
 
@@ -3078,11 +3114,11 @@ function renderDebts() {
     meta.className = "credit-row-meta";
     const bits = [];
     if (d.due_date) {
-      if (d.is_overdue) bits.push(`просрочено: ${d.due_date}`);
-      else if (d.days_to_due === 0) bits.push("срок сегодня");
-      else if (d.days_to_due > 0) bits.push(`до срока: ${d.days_to_due} дн.`);
+      if (d.is_overdue) bits.push(tr("debt_overdue", { date: d.due_date }));
+      else if (d.days_to_due === 0) bits.push(tr("debt_due_today"));
+      else if (d.days_to_due > 0) bits.push(tr("debt_days_to_due", { days: d.days_to_due }));
     }
-    bits.push("взято: " + d.borrowed_at);
+    bits.push(tr("debt_borrowed_at", { date: d.borrowed_at }));
     meta.textContent = bits.join(" · ");
 
     li.appendChild(head);
@@ -3102,7 +3138,7 @@ function setDebtDirection(dir) {
   }
   const lbl = $("#debt-form-cp-label");
   if (lbl) {
-    lbl.firstChild.textContent = dir === "i_owe" ? "Кому должен" : "Кто должен";
+    lbl.firstChild.textContent = dir === "i_owe" ? tr("debt_cp_owe") : tr("debt_cp_owed");
   }
 }
 
@@ -3112,7 +3148,7 @@ function openDebtForm(item) {
   debts.editingId = item ? item.id : null;
   setDebtDirection(item ? item.direction : "i_owe");
 
-  $("#debt-form-title").textContent = item ? "Редактировать долг" : "Новый долг";
+  $("#debt-form-title").textContent = item ? tr("debt_form_edit") : tr("debt_form_new");
   $("#debt-form-amount").value = item ? item.amount : "";
   $("#debt-form-currency").value = item ? item.currency : "PLN";
   $("#debt-form-counterparty").value = item ? item.counterparty : "";
@@ -3138,7 +3174,7 @@ async function saveDebtForm() {
   const counterparty = $("#debt-form-counterparty").value.trim();
   const amount = parseFloat($("#debt-form-amount").value);
   if (!counterparty || !(amount > 0)) {
-    alert("Укажи контрагента и сумму > 0.");
+    alert(tr("debt_validation"));
     return;
   }
   const remaining = parseFloat($("#debt-form-remaining").value);
@@ -3173,30 +3209,30 @@ async function saveDebtForm() {
     }
     const data = await resp.json();
     if (!resp.ok || data.error) {
-      alert("Ошибка: " + (data.error || resp.status));
+      alert(tr("err_prefix", { msg: data.error || resp.status }));
       return;
     }
     closeDebtForm();
     await loadDebts();
   } catch (e) {
-    if (!isSessionExpired(e)) alert("Сеть недоступна.");
+    if (!isSessionExpired(e)) alert(tr("net_unavailable"));
   }
 }
 
 async function deleteDebtForm() {
   if (!debts.editingId) return;
-  if (!confirm("Удалить этот долг и историю платежей?")) return;
+  if (!confirm(tr("debt_del_confirm"))) return;
   try {
     const resp = await api("/api-debts?id=" + debts.editingId, { method: "DELETE" });
     const data = await resp.json();
     if (!resp.ok || data.error) {
-      alert("Ошибка: " + (data.error || resp.status));
+      alert(tr("err_prefix", { msg: data.error || resp.status }));
       return;
     }
     closeDebtForm();
     await loadDebts();
   } catch (e) {
-    if (!isSessionExpired(e)) alert("Сеть недоступна.");
+    if (!isSessionExpired(e)) alert(tr("net_unavailable"));
   }
 }
 
@@ -3206,13 +3242,11 @@ function openDebtPay() {
   if (!d) return;
   debts.payTarget = d.id;
   $("#debt-pay-title").textContent = d.direction === "i_owe"
-    ? "Зафиксировать выплату"
-    : "Зафиксировать возврат";
-  let hint = d.direction === "i_owe"
-    ? "Создастся запись расхода в счёт долга и уменьшится остаток."
-    : "Создастся запись дохода (возврат долга) и уменьшится остаток.";
+    ? tr("debt_pay_title_owe")
+    : tr("debt_pay_title_return");
+  let hint = d.direction === "i_owe" ? tr("debt_pay_hint_owe") : tr("debt_pay_hint_return");
   if (d.direction === "owed_to_me" && d.source_credit_name) {
-    hint += ` Также уменьшится остаток по кредиту "${d.source_credit_name}" на ту же сумму.`;
+    hint += tr("debt_pay_hint_credit", { name: d.source_credit_name });
   }
   $("#debt-pay-hint").textContent = hint;
   $("#debt-pay-amount").value = d.remaining_balance;
@@ -3230,7 +3264,7 @@ async function saveDebtPay() {
   if (!debts.payTarget) return;
   const amount = parseFloat($("#debt-pay-amount").value);
   if (!(amount > 0)) {
-    alert("Сумма должна быть > 0.");
+    alert(tr("debt_amount_positive"));
     return;
   }
   const payload = {
@@ -3255,9 +3289,9 @@ async function saveDebtPay() {
         closeDebtPay();
         closeDebtForm();
         await loadDebts();
-        alert("Этот долг уже погашен - обновил список.");
+        alert(tr("debt_closed_refresh"));
       } else {
-        alert("Ошибка: " + (data.error || resp.status));
+        alert(tr("err_prefix", { msg: data.error || resp.status }));
       }
       return;
     }
@@ -3271,7 +3305,7 @@ async function saveDebtPay() {
     }
     if (typeof refresh === "function") await refresh();
   } catch (e) {
-    if (!isSessionExpired(e)) alert("Сеть недоступна.");
+    if (!isSessionExpired(e)) alert(tr("net_unavailable"));
   }
 }
 
@@ -3430,18 +3464,18 @@ async function main() {
 
   // Populate month picker with last 12 months. Newest first; current first.
   const RU_MONTHS = [
-    "январь",
-    "февраль",
-    "март",
-    "апрель",
-    "май",
-    "июнь",
-    "июль",
-    "август",
-    "сентябрь",
-    "октябрь",
-    "ноябрь",
-    "декабрь",
+    tr("month_jan_l"),
+    tr("month_feb_l"),
+    tr("month_mar_l"),
+    tr("month_apr_l"),
+    tr("month_may_l"),
+    tr("month_jun_l"),
+    tr("month_jul_l"),
+    tr("month_aug_l"),
+    tr("month_sep_l"),
+    tr("month_oct_l"),
+    tr("month_nov_l"),
+    tr("month_dec_l"),
   ];
   monthSelect.innerHTML = "";
   const now = new Date();
@@ -3495,11 +3529,11 @@ async function main() {
     const from = fromInput.value;
     const to = toInput.value;
     if (!from || !to) {
-      TG.showAlert("Укажи обе даты.");
+      TG.showAlert(tr("range_both_dates"));
       return;
     }
     if (from > to) {
-      TG.showAlert("Начальная дата позже конечной.");
+      TG.showAlert(tr("range_from_after_to"));
       return;
     }
     state.period = "custom";
@@ -3539,12 +3573,12 @@ async function main() {
       a.remove();
       URL.revokeObjectURL(url);
     } catch (e) {
-      if (!isSessionExpired(e)) TG.showAlert("Не удалось скачать CSV.");
+      if (!isSessionExpired(e)) TG.showAlert(tr("export_csv_err"));
     }
   });
 }
 
 main().catch((e) => {
   console.error(e);
-  if (window.TG && TG.showAlert) TG.showAlert("Ошибка: " + e.message);
+  if (window.TG && TG.showAlert) TG.showAlert(tr("err_prefix", { msg: e.message }));
 });

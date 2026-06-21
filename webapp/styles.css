@@ -1168,6 +1168,8 @@ details.settings-section > summary {
   user-select: none;
   position: relative;
   padding-right: 36px;
+  display: flex;
+  align-items: center;
 }
 details.settings-section > summary::-webkit-details-marker {
   display: none;
@@ -1195,8 +1197,10 @@ details.settings-section[open] > summary::after {
 details.settings-section > summary:active {
   background: color-mix(in srgb, var(--neon-green) 8%, transparent);
 }
-details.settings-section > summary > .settings-section-head,
-details.settings-section > summary.settings-section-head {
+/* A .settings-section-head nested INSIDE a summary collapses to its contents,
+   but the summary itself must keep a real box (see the flex rule above) so its
+   ::after chevron renders - display:contents would suppress the pseudo-element. */
+details.settings-section > summary > .settings-section-head {
   display: contents;
 }
 details.settings-section > summary h4 {
