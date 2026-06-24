@@ -27,7 +27,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup Supabase CLI
-        uses: supabase/setup-cli@v1
+        uses: supabase/setup-cli@v2
         with:
           # Pinned (not "latest") so deploy doesn't depend on resolving the
           # newest release at runtime, which intermittently times out / rate
