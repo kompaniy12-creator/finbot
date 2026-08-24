@@ -84,6 +84,49 @@ export type PhotoOutcome =
 const DEDUP_WINDOW_DAYS = 30;
 const EMBED_DIMS = 384;
 
+/** A stored receipt candidate that already matches merchant+date+total+currency. */
+export interface DedupCandidate {
+  receipt_number?: string | null;
+  receipt_time?: string | null;
+}
+
+function normDiscriminator(v: string | null | undefined): string | null {
+  const s = (v ?? "").trim().toLowerCase();
+  return s.length > 0 ? s : null;
+}
+
+/**
+ * Decide whether an incoming receipt is really a duplicate of a stored
+ * candidate that ALREADY shares merchant + receipt_date + total + currency.
+ *
+ * The coarse fingerprint alone produced false positives: two genuinely
+ * different receipts (e.g. two identical 12 zł coffees the same day, or a batch
+ * of similar receipts uploaded together) collapsed into one. We use the fiscal
+ * receipt number and the printed time as tie-breakers, driven by whatever the
+ * INCOMING receipt exposes (so a new, clearly-identified receipt is never
+ * silently swallowed by an older row that predates these fields):
+ *
+ *   - If the incoming receipt has a receipt_number, it is a duplicate only when
+ *     the stored candidate carries the SAME number (numbers are unique per
+ *     merchant/day). A different number, or a candidate with no number to
+ *     confirm against, means NOT a duplicate.
+ *   - Else if the incoming receipt has a receipt_time, same rule on the time.
+ *   - Else the incoming receipt exposes no distinguisher, so we keep the old
+ *     behaviour and treat the coarse match as a duplicate.
+ *
+ * Bias: when in doubt we favour KEEPING the receipt (a wrongly-dropped receipt
+ * loses data silently; a rare wrongly-kept one is visible and can be deleted).
+ */
+export function isRealDuplicate(incoming: DedupCandidate, candidate: DedupCandidate): boolean {
+  const inNum = normDiscriminator(incoming.receipt_number);
+  if (inNum) return inNum === normDiscriminator(candidate.receipt_number);
+
+  const inTime = normDiscriminator(incoming.receipt_time);
+  if (inTime) return inTime === normDiscriminator(candidate.receipt_time);
+
+  return true;
+}
+
 // Guard against a malformed embedding poisoning the atomic bulk insert. The
 // expenses.embedding column is vector(384); anything else (wrong length, NaN)
 // would make the whole batch fail. Returns null so the row still saves.
@@ -351,35 +394,51 @@ export async function processPhotoMessage(args: {
   const totalPln = Math.round(receipt.total * receiptRate * 100) / 100;
 
   // Layer 2: content-fingerprint duplicate check.
-  // Same merchant + receipt_date + total + currency from the same family,
-  // not archived. Catches re-photographed-same-receipt cases.
+  // Coarse match on merchant + receipt_date + total + currency from the same
+  // family, not archived. This alone over-matched (distinct receipts sharing
+  // those four fields), so we pull the candidates and confirm with the finer
+  // discriminators (receipt_number, receipt_time) via isRealDuplicate: two
+  // receipts are the same only when their number (or, failing that, their time)
+  // agrees. Different number/time => a legitimately different receipt.
   const dupContentRes = await db.from("receipts")
-    .select("id, merchant, total, currency, receipt_date")
+    .select("id, merchant, total, currency, receipt_date, receipt_number, receipt_time")
     .eq("family_member_id", args.member.id)
     .eq("archived", false)
     .eq("merchant", receipt.merchant)
     .eq("receipt_date", receipt.receipt_date)
     .eq("currency", receipt.currency)
     .eq("total", receipt.total)
-    .limit(1)
-    .maybeSingle();
-  if (dupContentRes.data) {
-    const ex = dupContentRes.data as {
-      id: string;
-      merchant: string | null;
-      total: number;
-      currency: string;
-      receipt_date: string;
-    };
-    log("info", "photo_duplicate_content", { existing: ex.id });
+    .limit(20);
+  const candidates = (dupContentRes.data ?? []) as Array<{
+    id: string;
+    merchant: string | null;
+    total: number;
+    currency: string;
+    receipt_date: string;
+    receipt_number: string | null;
+    receipt_time: string | null;
+  }>;
+  const dupMatch = candidates.find((c) =>
+    isRealDuplicate(
+      { receipt_number: receipt.receipt_number, receipt_time: receipt.receipt_time },
+      c,
+    )
+  );
+  if (dupMatch) {
+    log("info", "photo_duplicate_content", {
+      existing: dupMatch.id,
+      by: normDiscriminator(receipt.receipt_number)
+        ? "receipt_number"
+        : (normDiscriminator(receipt.receipt_time) ? "receipt_time" : "coarse"),
+    });
     return {
       kind: "duplicate",
       reason: "content_match",
-      existing_receipt_id: ex.id,
-      existing_merchant: ex.merchant,
-      existing_total: Number(ex.total),
-      existing_currency: ex.currency,
-      existing_date: ex.receipt_date,
+      existing_receipt_id: dupMatch.id,
+      existing_merchant: dupMatch.merchant,
+      existing_total: Number(dupMatch.total),
+      existing_currency: dupMatch.currency,
+      existing_date: dupMatch.receipt_date,
     };
   }
 
@@ -387,6 +446,8 @@ export async function processPhotoMessage(args: {
   const recIns = await db.from("receipts").insert({
     merchant: receipt.merchant,
     receipt_date: receipt.receipt_date,
+    receipt_number: receipt.receipt_number ?? null,
+    receipt_time: receipt.receipt_time ?? null,
     currency: receipt.currency,
     total: receipt.total,
     total_pln: totalPln,

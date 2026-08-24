@@ -19,6 +19,21 @@ export const ParseReceiptTool: Anthropic.Messages.Tool = {
       },
       currency: { type: "string", enum: ["PLN", "EUR", "ALL", "USD"] },
       total: { type: "number", minimum: 0.01 },
+      receipt_number: {
+        type: "string",
+        description: "The fiscal / receipt number printed on the paragon, if legible. On Polish " +
+          "receipts look for labels like 'PARAGON FISKALNY' followed by a number, 'NR', " +
+          "'Nr wydruku', 'Nr:', a transaction/sequence number, or the fiscal counter " +
+          "(e.g. '1234', '0007/2026', 'ABC 12345'). Copy the value EXACTLY as printed " +
+          "(keep leading zeros, slashes, letters). Omit this field if no number is readable.",
+      },
+      receipt_time: {
+        type: "string",
+        pattern: "^\\d{2}:\\d{2}(:\\d{2})?$",
+        description:
+          "The time of purchase printed on the receipt in 24h HH:MM or HH:MM:SS format, " +
+          "if legible (usually next to the date). Omit if not readable.",
+      },
       kind: {
         type: "string",
         enum: ["expense", "income"],
@@ -72,6 +87,8 @@ Rules:
 - Date format on Polish receipts is usually DD-MM-YYYY or YYYY-MM-DD. Convert to ISO YYYY-MM-DD.
 - Receipt date should be very close to today's date (typically within the last few days). If the printed year is partly cut off or ambiguous (e.g. "25/05/26" could be 2025 or 2026), assume it is THIS year - the year given as "today" in the system prompt. Never emit a date more than 60 days in the past or more than 1 day in the future; if unsure, use today's date.
 - Currency: Polish receipts use 'zł' suffix or 'PLN'. Default PLN if unclear.
+- receipt_number: copy the fiscal/receipt number exactly as printed if you can read it (it distinguishes two otherwise-identical receipts). Omit if not legible, never invent one.
+- receipt_time: extract the printed time of purchase (HH:MM or HH:MM:SS, 24h) if legible. Omit if not readable, never invent one.
 - kind: set 'income' ONLY when the photo is clearly MONEY RECEIVED - a bank-app
   screenshot of an incoming/credited transfer (wpływy, uznanie, przychodzący,
   wynagrodzenie, a green or '+' amount, salary/dividend/payout deposit). A normal
@@ -119,6 +136,8 @@ export const ParsedReceiptSchema = z.object({
   receipt_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   currency: z.enum(["PLN", "EUR", "ALL", "USD"]),
   total: z.number().positive(),
+  receipt_number: z.string().min(1).max(64).optional(),
+  receipt_time: z.string().regex(/^\d{2}:\d{2}(:\d{2})?$/).optional(),
   kind: z.enum(["expense", "income"]).default("expense"),
   items: z.array(ParsedReceiptItemSchema).min(1),
   note: z.string().optional(),
